@@ -11,7 +11,12 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+var kubeConfig = ""
+
 func runCiliumCliWithContext(ctx context.Context, args ...string) (string, error) {
+	if kubeConfig != "" {
+		args = append([]string{"--kubeconfig", kubeConfig}, args...)
+	}
 	return utils.RunCommandWithContext(ctx, "cilium", args)
 }
 
@@ -195,7 +200,9 @@ func handleToggleClusterMesh(ctx context.Context, request mcp.CallToolRequest) (
 	return mcp.NewToolResultText(output), nil
 }
 
-func RegisterCiliumTools(s *server.MCPServer) {
+func RegisterCiliumTools(s *server.MCPServer, kubeconfig string) {
+	kubeConfig = kubeconfig
+
 	// Register debug tools
 	RegisterCiliumDbgTools(s)
 
@@ -329,6 +336,13 @@ func RegisterCiliumTools(s *server.MCPServer) {
 		mcp.WithString("states", mcp.Description("The states to update the service with")),
 		mcp.WithString("node_name", mcp.Description("The name of the node to update the service on")),
 	), handleUpdateService)
+
+	s.AddTool(mcp.NewTool("cilium_delete_service",
+		mcp.WithDescription("Delete a service from the cluster"),
+		mcp.WithString("service_id", mcp.Description("The ID of the service to delete")),
+		mcp.WithString("all", mcp.Description("Whether to delete all services (true/false)")),
+		mcp.WithString("node_name", mcp.Description("The name of the node to delete the service from")),
+	), handleDeleteService)
 }
 
 // -- Debug Tools --
@@ -1024,6 +1038,27 @@ func handleGetServiceInformation(ctx context.Context, request mcp.CallToolReques
 	output, err := runCiliumDbgCommand(cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get service information: %v", err)), nil
+	}
+	return mcp.NewToolResultText(output), nil
+}
+
+func handleDeleteService(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	serviceID := mcp.ParseString(request, "service_id", "")
+	all := mcp.ParseString(request, "all", "") == "true"
+	nodeName := mcp.ParseString(request, "node_name", "")
+
+	var cmd string
+	if all {
+		cmd = "service delete --all"
+	} else if serviceID != "" {
+		cmd = fmt.Sprintf("service delete %s", serviceID)
+	} else {
+		return mcp.NewToolResultError("either service_id or all=true must be provided"), nil
+	}
+
+	output, err := runCiliumDbgCommand(cmd, nodeName)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete service: %v", err)), nil
 	}
 	return mcp.NewToolResultText(output), nil
 }

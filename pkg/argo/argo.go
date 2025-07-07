@@ -20,12 +20,14 @@ import (
 
 // Argo Rollouts tools
 
+var kubeConfig = ""
+
 func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ns := mcp.ParseString(request, "namespace", "argo-rollouts")
 	label := mcp.ParseString(request, "label", "app.kubernetes.io/component=rollouts-controller")
 
 	cmd := []string{"get", "pods", "-n", ns, "-l", label, "-o", "jsonpath={.items[*].status.phase}"}
-	output, err := utils.RunCommandWithContext(ctx, "kubectl", cmd)
+	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
 		return mcp.NewToolResultError("Error: " + err.Error()), nil
 	}
@@ -60,7 +62,8 @@ func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request mcp.
 }
 
 func handleVerifyKubectlPluginInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	output, err := utils.RunCommandWithContext(ctx, "kubectl", []string{"argo", "rollouts", "version"})
+	args := []string{"argo", "rollouts", "version"}
+	output, err := runArgoRolloutCommand(ctx, args)
 	if err != nil {
 		return mcp.NewToolResultText("Kubectl Argo Rollouts plugin is not installed: " + err.Error()), nil
 	}
@@ -70,6 +73,13 @@ func handleVerifyKubectlPluginInstall(ctx context.Context, request mcp.CallToolR
 	}
 
 	return mcp.NewToolResultText(output), nil
+}
+
+func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
+	if kubeConfig != "" {
+		args = append(args, "--kubeconfig", kubeConfig)
+	}
+	return utils.RunCommandWithContext(ctx, "kubectl", args)
 }
 
 func handlePromoteRollout(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -91,7 +101,7 @@ func handlePromoteRollout(ctx context.Context, request mcp.CallToolRequest) (*mc
 		cmd = append(cmd, "--full")
 	}
 
-	output, err := utils.RunCommandWithContext(ctx, "kubectl", cmd)
+	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
 		return mcp.NewToolResultError("Error promoting rollout: " + err.Error()), nil
 	}
@@ -113,7 +123,7 @@ func handlePauseRollout(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	}
 	cmd = append(cmd, rolloutName)
 
-	output, err := utils.RunCommandWithContext(ctx, "kubectl", cmd)
+	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
 		return mcp.NewToolResultError("Error pausing rollout: " + err.Error()), nil
 	}
@@ -138,7 +148,7 @@ func handleSetRolloutImage(ctx context.Context, request mcp.CallToolRequest) (*m
 		cmd = append(cmd, "-n", ns)
 	}
 
-	output, err := utils.RunCommandWithContext(ctx, "kubectl", cmd)
+	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
 		return mcp.NewToolResultError("Error setting rollout image: " + err.Error()), nil
 	}
@@ -276,7 +286,7 @@ func handleVerifyGatewayPlugin(ctx context.Context, request mcp.CallToolRequest)
 
 	// Check if ConfigMap exists and is configured
 	cmd := []string{"get", "configmap", "argo-rollouts-config", "-n", namespace, "-o", "yaml"}
-	output, err := utils.RunCommandWithContext(ctx, "kubectl", cmd)
+	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err == nil && strings.Contains(output, "argoproj-labs/gatewayAPI") {
 		status := GatewayPluginStatus{
 			Installed:    true,
@@ -304,7 +314,7 @@ func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 	_ = mcp.ParseString(request, "timeout", "60")
 
 	cmd := []string{"logs", "-n", namespace, "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}
-	output, err := utils.RunCommandWithContext(ctx, "kubectl", cmd)
+	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
 		status := GatewayPluginStatus{
 			Installed:    false,
@@ -338,7 +348,8 @@ func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(status.String()), nil
 }
 
-func RegisterArgoTools(s *server.MCPServer) {
+func RegisterArgoTools(s *server.MCPServer, kubeconfig string) {
+	kubeConfig = kubeconfig
 	s.AddTool(mcp.NewTool("argo_verify_argo_rollouts_controller_install",
 		mcp.WithDescription("Verify that the Argo Rollouts controller is installed and running"),
 		mcp.WithString("namespace", mcp.Description("The namespace where Argo Rollouts is installed")),
