@@ -10,34 +10,41 @@ RUN apk update && apk add  \
     && rm -rf /var/cache/apk/*
 
 ARG TARGETARCH
-ARG TOOLS_HELM_VERSION
-ARG TOOLS_ISTIO_VERSION
-ARG TOOLS_ARGO_ROLLOUTS_VERSION
-ARG TOOLS_KUBECTL_VERSION
-ARG TOOLS_CILIUM_VERSION
-
 WORKDIR /downloads
 
+ARG TOOLS_KUBECTL_VERSION
 RUN curl -LO "https://dl.k8s.io/release/v$TOOLS_KUBECTL_VERSION/bin/linux/$TARGETARCH/kubectl" \
     && chmod +x kubectl \
     && /downloads/kubectl version --client
 
-RUN curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$TOOLS_ISTIO_VERSION TARGET_ARCH=$TARGETARCH sh - \
-    && mv istio-*/bin/istioctl /downloads/                                                           \
-    && rm -rf istio-* \
-    && /downloads/istioctl --help
-
 # Install Helm
+ARG TOOLS_HELM_VERSION
 RUN curl -Lo helm.tar.gz https://get.helm.sh/helm-v${TOOLS_HELM_VERSION}-linux-${TARGETARCH}.tar.gz  \
     && tar -xvf helm.tar.gz                                                                             \
     && mv linux-${TARGETARCH}/helm /downloads/helm                                           \
     && chmod +x /downloads/helm \
     && /downloads/helm version
 
+ARG TOOLS_ISTIO_VERSION
+RUN curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$TOOLS_ISTIO_VERSION TARGET_ARCH=$TARGETARCH sh - \
+    && mv istio-*/bin/istioctl /downloads/ \
+    && rm -rf istio-* \
+    && /downloads/istioctl --help
+
 # Install kubectl-argo-rollouts
+ARG TOOLS_ARGO_ROLLOUTS_VERSION
 RUN curl -Lo /downloads/kubectl-argo-rollouts https://github.com/argoproj/argo-rollouts/releases/download/v${TOOLS_ARGO_ROLLOUTS_VERSION}/kubectl-argo-rollouts-linux-${TARGETARCH} \
     && chmod +x /downloads/kubectl-argo-rollouts \
     && /downloads/kubectl-argo-rollouts version
+
+# Install Cilium CLI
+ARG TOOLS_CILIUM_VERSION
+RUN curl -Lo cilium.tar.gz https://github.com/cilium/cilium-cli/releases/download/v${TOOLS_CILIUM_VERSION}/cilium-linux-${TARGETARCH}.tar.gz \
+    && tar -xvf cilium.tar.gz \
+    && mv cilium /downloads/cilium \
+    && chmod +x /downloads/cilium \
+    && rm -rf cilium.tar.gz \
+    && /downloads/cilium version
 
 ### STAGE 2: build-tools MCP
 ARG BASE_IMAGE_REGISTRY=cgr.dev
@@ -88,6 +95,7 @@ COPY --from=tools --chown=65532:65532 /downloads/kubectl               /bin/kube
 COPY --from=tools --chown=65532:65532 /downloads/istioctl              /bin/istioctl
 COPY --from=tools --chown=65532:65532 /downloads/helm                  /bin/helm
 COPY --from=tools --chown=65532:65532 /downloads/kubectl-argo-rollouts /bin/kubectl-argo-rollouts
+COPY --from=tools --chown=65532:65532 /downloads/cilium                /bin/cilium
 # Copy the tool-server binary
 COPY --from=builder --chown=65532:65532 /workspace/tool-server           /tool-server
 

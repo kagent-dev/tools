@@ -8,7 +8,7 @@
       "TOOLS_ISTIO_VERSION": "1.26.2",
       "TOOLS_KUBECTL_VERSION": "1.33.2",
       "TOOLS_ARGO_ROLLOUTS_VERSION": "1.8.3",
-      "TOOLS_CILIUM_VERSION": "0.16.29"
+      "TOOLS_CILIUM_VERSION": "0.18.5"
     }
   },
   "features": {
