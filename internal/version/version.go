@@ -6,7 +6,6 @@ import (
 )
 
 var (
-	// These variables should be set during build time using -ldflags
 	Version   = "dev"
 	GitCommit = "none"
 	BuildDate = "unknown"

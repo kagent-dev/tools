@@ -24,7 +24,7 @@ func TestHandleGetCurrentDateTimeTool(t *testing.T) {
 		t.Fatal("Expected non-nil result")
 	}
 
-	if result.Content == nil || len(result.Content) == 0 {
+	if len(result.Content) == 0 {
 		t.Fatal("Expected content in result")
 	}
 

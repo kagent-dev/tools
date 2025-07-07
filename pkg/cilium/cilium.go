@@ -333,10 +333,6 @@ func RegisterCiliumTools(s *server.MCPServer) {
 
 // -- Debug Tools --
 
-func getCiliumPodName(nodeName string) (string, error) {
-	return getCiliumPodNameWithContext(context.Background(), nodeName)
-}
-
 func getCiliumPodNameWithContext(ctx context.Context, nodeName string) (string, error) {
 	args := []string{"get", "pod", "-l", "k8s-app=cilium", "-o", "name", "-n", "kube-system"}
 	if nodeName != "" {
@@ -1028,27 +1024,6 @@ func handleGetServiceInformation(ctx context.Context, request mcp.CallToolReques
 	output, err := runCiliumDbgCommand(cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get service information: %v", err)), nil
-	}
-	return mcp.NewToolResultText(output), nil
-}
-
-func handleDeleteService(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	serviceID := mcp.ParseString(request, "service_id", "")
-	all := mcp.ParseString(request, "all", "") == "true"
-	nodeName := mcp.ParseString(request, "node_name", "")
-
-	var cmd string
-	if all {
-		cmd = "service delete --all"
-	} else if serviceID != "" {
-		cmd = fmt.Sprintf("service delete %s", serviceID)
-	} else {
-		return mcp.NewToolResultError("either service_id or all=true must be provided"), nil
-	}
-
-	output, err := runCiliumDbgCommand(cmd, nodeName)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete service: %v", err)), nil
 	}
 	return mcp.NewToolResultText(output), nil
 }

@@ -300,13 +300,8 @@ func handleVerifyGatewayPlugin(ctx context.Context, request mcp.CallToolRequest)
 
 func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	namespace := mcp.ParseString(request, "namespace", "argo-rollouts")
-	timeoutStr := mcp.ParseString(request, "timeout", "60")
-
-	// Parse timeout (for potential future use)
-	_, err := strconv.Atoi(timeoutStr)
-	if err != nil {
-		// Use default timeout of 60 if parsing fails
-	}
+	// timeout parameter is parsed but not used currently
+	_ = mcp.ParseString(request, "timeout", "60")
 
 	cmd := []string{"logs", "-n", namespace, "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}
 	output, err := utils.RunCommandWithContext(ctx, "kubectl", cmd)

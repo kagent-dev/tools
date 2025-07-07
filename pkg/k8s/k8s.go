@@ -19,7 +19,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
-	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -68,97 +67,6 @@ func NewK8sTool(llmModel llms.Model) (*K8sTool, error) {
 	}
 
 	return &K8sTool{client: client, llmModel: llmModel}, nil
-}
-func (k *K8sTool) getPodsNative(ctx context.Context, name, namespace string, allNamespaces bool, output string) (*mcp.CallToolResult, error) {
-	var pods *corev1.PodList
-	var err error
-
-	if name != "" {
-		pod, err := k.client.clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to get pod: %v", err)), nil
-		}
-		pods = &corev1.PodList{Items: []corev1.Pod{*pod}}
-	} else if allNamespaces {
-		pods, err = k.client.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	} else {
-		pods, err = k.client.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
-	}
-
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list pods: %v", err)), nil
-	}
-
-	return formatResourceOutput(pods, output)
-}
-
-func (k *K8sTool) getServicesNative(ctx context.Context, name, namespace string, allNamespaces bool, output string) (*mcp.CallToolResult, error) {
-	var services *corev1.ServiceList
-	var err error
-
-	if name != "" {
-		service, err := k.client.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to get service: %v", err)), nil
-		}
-		services = &corev1.ServiceList{Items: []corev1.Service{*service}}
-	} else if allNamespaces {
-		services, err = k.client.clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
-	} else {
-		services, err = k.client.clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
-	}
-
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list services: %v", err)), nil
-	}
-
-	return formatResourceOutput(services, output)
-}
-
-func (k *K8sTool) getDeploymentsNative(ctx context.Context, name, namespace string, allNamespaces bool, output string) (*mcp.CallToolResult, error) {
-	var deployments *v1.DeploymentList
-	var err error
-
-	if name != "" {
-		deployment, err := k.client.clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to get deployment: %v", err)), nil
-		}
-		deployments = &v1.DeploymentList{Items: []v1.Deployment{*deployment}}
-	} else if allNamespaces {
-		deployments, err = k.client.clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-	} else {
-		deployments, err = k.client.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
-	}
-
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list deployments: %v", err)), nil
-	}
-
-	return formatResourceOutput(deployments, output)
-}
-
-func (k *K8sTool) getConfigMapsNative(ctx context.Context, name, namespace string, allNamespaces bool, output string) (*mcp.CallToolResult, error) {
-	var configMaps *corev1.ConfigMapList
-	var err error
-
-	if name != "" {
-		configMap, err := k.client.clientset.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to get configmap: %v", err)), nil
-		}
-		configMaps = &corev1.ConfigMapList{Items: []corev1.ConfigMap{*configMap}}
-	} else if allNamespaces {
-		configMaps, err = k.client.clientset.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
-	} else {
-		configMaps, err = k.client.clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
-	}
-
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list configmaps: %v", err)), nil
-	}
-
-	return formatResourceOutput(configMaps, output)
 }
 
 func formatResourceOutput(data interface{}, output string) (*mcp.CallToolResult, error) {
@@ -321,7 +229,12 @@ func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request mc
 	// This is a complex operation to perform natively, involving creating a temporary pod.
 	// We'll keep the kubectl approach for this tool for now.
 	podName := fmt.Sprintf("curl-test-%d", rand.Intn(10000))
-	defer k.runKubectlCommand(ctx, []string{"delete", "pod", podName, "-n", namespace, "--ignore-not-found"})
+	defer func() {
+		if _, err := k.runKubectlCommand(ctx, []string{"delete", "pod", podName, "-n", namespace, "--ignore-not-found"}); err != nil {
+			// Log the error but don't fail the operation
+			fmt.Printf("Warning: Failed to cleanup pod %s: %v\n", podName, err)
+		}
+	}()
 
 	_, err := k.runKubectlCommand(ctx, []string{"run", podName, "--image=curlimages/curl", "-n", namespace, "--restart=Never", "--", "sleep", "3600"})
 	if err != nil {
