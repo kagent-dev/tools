@@ -3,8 +3,17 @@
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
-      "TOOLS_GO_VERSION": "1.24.4",
+      "TOOLS_GO_VERSION": "1.24",
+      "TOOLS_HELM_VERSION": "3.18.3",
+      "TOOLS_ISTIO_VERSION": "1.26.2",
+      "TOOLS_KUBECTL_VERSION": "1.33.2",
+      "TOOLS_ARGO_ROLLOUTS_VERSION": "1.8.3",
+      "TOOLS_CILIUM_VERSION": "0.16.29"
     }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/mpriscella/features/kind:1": {}
   },
   "customizations": {
     "vscode": {
@@ -37,7 +46,7 @@
   "remoteUser": "root",
 
   //forward the following ports
-  //"forwardPorts": [8084],
+  "forwardPorts": [8084],
 
   //mount docker directly on the host
   "mounts": ["source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"],
