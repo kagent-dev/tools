@@ -87,10 +87,16 @@ RETAGGED_TOOLS_IMG = $(RETAGGED_DOCKER_REGISTRY)/$(DOCKER_REPO)/$(TOOLS_IMAGE_NA
 
 LOCALARCH ?= $(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
 
-DOCKER_BUILDER ?= docker
-DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH)
+#buildx settings
+BUILDKIT_VERSION = v0.23.0
+BUILDX_NO_DEFAULT_ATTESTATIONS=1
+BUILDX_BUILDER_NAME ?= kagent-builder-$(BUILDKIT_VERSION)
 
-TOOLS_ISTIO_VERSION ?= 1.26.1
+DOCKER_BUILDER ?= docker buildx
+DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
+
+# tools image build args
+TOOLS_ISTIO_VERSION ?= 1.26.2
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
 TOOLS_KUBECTL_VERSION ?= 1.33.2
 TOOLS_HELM_VERSION ?= 3.18.3
@@ -98,13 +104,25 @@ TOOLS_HELM_VERSION ?= 3.18.3
 # build args
 TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg LDFLAGS="$(LDFLAGS)"
+TOOLS_IMAGE_BUILD_ARGS += --build-arg LOCALARCH=$(LOCALARCH)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ISTIO_VERSION=$(TOOLS_ISTIO_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ARGO_ROLLOUTS_VERSION=$(TOOLS_ARGO_ROLLOUTS_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_KUBECTL_VERSION=$(TOOLS_KUBECTL_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_HELM_VERSION=$(TOOLS_HELM_VERSION)
 
+.PHONY: buildx-create
+buildx-create:
+	docker buildx inspect $(BUILDX_BUILDER_NAME) 2>&1 > /dev/null || \
+	docker buildx create --name $(BUILDX_BUILDER_NAME) --platform linux/amd64,linux/arm64 --driver docker-container --use || true
+
 .PHONY: docker-build  # build tools image
-docker-build: fmt
+docker-build: fmt buildx-create
+	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -f Dockerfile ./
+
+.PHONY: docker-build  # build tools image for amd64 and arm64
+docker-build-all: fmt buildx-create
+docker-build-all: DOCKER_BUILD_ARGS = --progress=plain --builder $(BUILDX_BUILDER_NAME) --platform linux/amd64,linux/arm64 --output type=tar,dest=/dev/null
+docker-build-all:
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -f Dockerfile ./
 
 ## Tool Binaries
