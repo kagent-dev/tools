@@ -1,3 +1,25 @@
+<div align="center">
+  <div>
+    <a href="https://github.com/kagent-dev/tools/releases">
+      <img src="https://img.shields.io/github/v/release/kagent-dev/tools?style=flat&label=Latest%20version" alt="Release">
+    </a>
+    <a href="https://github.com/kagent-dev/tools/actions/workflows/ci.yaml">
+      <img src="https://github.com/kagent-dev/tools/actions/workflows/ci.yaml/badge.svg" alt="Build Status" height="20">
+    </a>
+      <a href="https://opensource.org/licenses/Apache-2.0">
+      <img src="https://img.shields.io/badge/License-Apache2.0-brightgreen.svg?style=flat" alt="License: Apache 2.0">
+    </a>
+     <a href="https://discord.gg/Fu3k65f2k3">
+      <img src="https://img.shields.io/discord/1346225185166065826?style=flat&label=Join%20Discord&color=6D28D9" alt="Discord">
+    </a>
+    <a href='https://codespaces.new/kagent-dev/tools'>
+      <img src='https://github.com/codespaces/badge.svg' alt='Open in Github Codespaces' style='max-width: 100%;' height="20">
+    </a>
+  </div>
+</div>
+
+---
+
 # KAgent Tools - Go Implementation
 
 This directory contains the Go implementation of all KAgent tools, migrated from the original Python implementation. The tools are designed to work with the Model Context Protocol (MCP) server and provide comprehensive Kubernetes, cloud-native, and observability functionality.

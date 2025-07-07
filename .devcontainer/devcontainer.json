@@ -1,0 +1,47 @@
+{
+  "name": "kagent-tools-container",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TOOLS_GO_VERSION": "1.24.4",
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "redhat.vscode-yaml",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-kubernetes-tools.kind-vscode",
+        "dbaeumer.vscode-eslint",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.makefile-tools",
+        "ms-vscode.vscode-go",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter",
+        "ms-vscode.makefile-tools",
+        "ms-remote.remote-containers",
+        "ms-vscode.vscode-typescript-next",
+        "ms-azuretools.vscode-containers",
+        "ms-windows-ai-studio.windows-ai-studio",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "Catppuccin.catppuccin-vsc",
+        "Catppuccin.catppuccin-vsc-icons"
+      ]
+    }
+  },
+
+  //user settings
+  "remoteUser": "root",
+
+  //forward the following ports
+  //"forwardPorts": [8084],
+
+  //mount docker directly on the host
+  "mounts": ["source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"],
+
+  // Uncomment the next line to run commands after the container is created.
+  "postCreateCommand": "echo 'Container is ready!'"
+}
