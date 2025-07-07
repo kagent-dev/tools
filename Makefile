@@ -117,7 +117,7 @@ buildx-create:
 
 .PHONY: docker-build  # build tools image
 docker-build: fmt buildx-create
-	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -f Dockerfile ./
+	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -t $(TOOLS_IMG) -f Dockerfile ./
 
 .PHONY: docker-build  # build tools image for amd64 and arm64
 docker-build-all: fmt buildx-create
