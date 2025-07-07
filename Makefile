@@ -86,7 +86,7 @@ build:
 run: docker-build
 	@echo "Running tool server on http://localhost:8084/mcp ..."
 	@echo "Use:  npx @modelcontextprotocol/inspector to connect to the tool server"
-	@docker run --rm -p 8084:8084 -e KAGENT_TOOLS_PORT=8084 $(TOOLS_IMG)
+	@docker run --rm --net=host -p 8084:8084 -e OPENAI_API_KEY=$(OPENAI_API_KEY) -v $(HOME)/.kube:/home/nonroot/.kube -e KAGENT_TOOLS_PORT=8084 $(TOOLS_IMG) -- --kubeconfig /root/.kube/config
 
 PHONY: retag
 retag: docker-build
