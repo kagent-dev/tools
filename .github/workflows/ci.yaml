@@ -50,6 +50,6 @@ jobs:
           cache: true
 
       - name: Run cmd/main.go tests
-        working-directory: go
+        working-directory: .
         run: |
           go test -v ./...
