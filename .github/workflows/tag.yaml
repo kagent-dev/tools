@@ -70,7 +70,7 @@ jobs:
         else
           export VERSION=$(echo "$GITHUB_REF" | cut -c12-)
         fi
-        make docker-build
+        make build
     - name: Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
