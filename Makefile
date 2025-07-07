@@ -76,7 +76,7 @@ bin/kagent-tools-windows-amd64.exe.sha256: bin/kagent-tools-windows-amd64.exe
 	sha256sum bin/kagent-tools-windows-amd64.exe > bin/kagent-tools-windows-amd64.exe.sha256
 
 .PHONY: build
-build: $(LOCALBIN) tidy fmt lint bin/kagent-tools-linux-amd64.sha256 bin/kagent-tools-linux-arm64.sha256 bin/kagent-tools-darwin-amd64.sha256 bin/kagent-tools-darwin-arm64.sha256 bin/kagent-tools-windows-amd64.exe.sha256
+build: $(LOCALBIN) bin/kagent-tools-linux-amd64.sha256 bin/kagent-tools-linux-arm64.sha256 bin/kagent-tools-darwin-amd64.sha256 bin/kagent-tools-darwin-arm64.sha256 bin/kagent-tools-windows-amd64.exe.sha256
 build:
 	@echo "Build complete. Binaries are available in the bin/ directory."
 	ls -lt bin/kagent-tools-*
