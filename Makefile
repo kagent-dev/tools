@@ -1,6 +1,7 @@
 DOCKER_REGISTRY ?= ghcr.io
 BASE_IMAGE_REGISTRY ?= cgr.dev
 DOCKER_REPO ?= kagent-dev/kagent
+KIND_CLUSTER_NAME ?= kagent
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT := $(shell git rev-parse --short HEAD || echo "unknown")
@@ -80,6 +81,18 @@ build: $(LOCALBIN) bin/kagent-tools-linux-amd64.sha256 bin/kagent-tools-linux-ar
 build:
 	@echo "Build complete. Binaries are available in the bin/ directory."
 	ls -lt bin/kagent-tools-*
+
+.PHONY: run
+run: docker-build
+	@echo "Running tool server on http://localhost:8084/mcp ..."
+	@echo "Use:  npx @modelcontextprotocol/inspector to connect to the tool server"
+	@docker run --rm -p 8084:8084 -e KAGENT_TOOLS_PORT=8084 $(TOOLS_IMG)
+
+PHONY: retag
+retag: docker-build
+	@echo "Retagging tools image to $(RETAGGED_TOOLS_IMG)"
+	docker tag $(TOOLS_IMG) $(RETAGGED_TOOLS_IMG)
+	kind load docker-image --name $(KIND_CLUSTER_NAME) $(RETAGGED_TOOLS_IMG)
 
 TOOLS_IMAGE_NAME ?= tools
 TOOLS_IMAGE_TAG ?= $(VERSION)

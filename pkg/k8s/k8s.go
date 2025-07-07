@@ -568,8 +568,6 @@ func RegisterK8sTools(s *server.MCPServer) {
 		// Log the error and proceed without native tool implementations
 		logger.Get().Info("Failed to initialize Kubernetes client, falling back to kubectl commands",
 			"level", "warn", "error", err.Error())
-		// Here you could register the pure-kubectl versions of the tools as a fallback
-		return
 	}
 	s.AddTool(mcp.NewTool("k8s_get_resources",
 		mcp.WithDescription("Get Kubernetes resources using kubectl with enhanced native client support"),

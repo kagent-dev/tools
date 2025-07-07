@@ -286,24 +286,8 @@ make bin/kagent-tools-linux-amd64
 # Build Docker image
 make docker-build
 
-# Build with specific version
-VERSION=v1.0.0 make docker-build
-
 # Run in Docker
-docker run --rm kagent-tools:latest
-```
-
-### Release Process
-
-```bash
-# Tag version
-git tag v1.0.0
-
-# Build release artifacts
-make release
-
-# Push Docker image
-make docker-push
+make run
 ```
 
 ## Environment Configuration
