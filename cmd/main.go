@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/joho/godotenv"
-	"github.com/kagent-dev/tools/internal/version"
-	"github.com/kagent-dev/tools/pkg/logger"
-	"github.com/kagent-dev/tools/pkg/utils"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +11,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/joho/godotenv"
+	"github.com/kagent-dev/tools/internal/version"
+	"github.com/kagent-dev/tools/pkg/logger"
+	"github.com/kagent-dev/tools/pkg/utils"
 
 	"github.com/kagent-dev/tools/pkg/argo"
 	"github.com/kagent-dev/tools/pkg/cilium"
@@ -90,7 +91,7 @@ func run(cmd *cobra.Command, args []string) {
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
 	// HTTP server reference (only used when not in stdio mode)
-	var sseServer *server.SSEServer
+	var sseServer *server.StreamableHTTPServer
 
 	// Start server based on chosen mode
 	wg.Add(1)
@@ -100,7 +101,7 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcp)
 		}()
 	} else {
-		sseServer = server.NewSSEServer(mcp)
+		sseServer = server.NewStreamableHTTPServer(mcp)
 		go func() {
 			defer wg.Done()
 			addr := fmt.Sprintf(":%d", port)
