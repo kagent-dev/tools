@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kagent-dev/tools/internal/version"
 	"github.com/kagent-dev/tools/pkg/logger"
+	"github.com/kagent-dev/tools/pkg/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 
 	"github.com/kagent-dev/tools/pkg/argo"
@@ -25,6 +26,9 @@ import (
 	"github.com/kagent-dev/tools/pkg/prometheus"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var (
@@ -69,11 +73,41 @@ func run(cmd *cobra.Command, args []string) {
 	logger.Init()
 	defer logger.Sync()
 
-	logger.Get().Info("Starting "+Name, "version", Version, "git_commit", GitCommit, "build_date", BuildDate)
-
 	// Setup context with cancellation for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Initialize OpenTelemetry tracing
+	otelConfig := telemetry.LoadConfig()
+	otelConfig.ServiceVersion = Version
+
+	otelShutdown, err := telemetry.SetupOTelSDK(ctx, otelConfig)
+	if err != nil {
+		logger.Get().Error(err, "Failed to setup OpenTelemetry SDK")
+		os.Exit(1)
+	}
+	defer func() {
+		if err := otelShutdown(ctx); err != nil {
+			logger.Get().Error(err, "Failed to shutdown OpenTelemetry SDK")
+		}
+	}()
+
+	// Start root span for server lifecycle
+	tracer := otel.Tracer("kagent-tools/server")
+	ctx, rootSpan := tracer.Start(ctx, "server.lifecycle")
+	defer rootSpan.End()
+
+	rootSpan.SetAttributes(
+		attribute.String("server.name", Name),
+		attribute.String("server.version", Version),
+		attribute.String("server.git_commit", GitCommit),
+		attribute.String("server.build_date", BuildDate),
+		attribute.Bool("server.stdio_mode", stdio),
+		attribute.Int("server.port", port),
+		attribute.StringSlice("server.tools", tools),
+	)
+
+	logger.Get().Info("Starting "+Name, "version", Version, "git_commit", GitCommit, "build_date", BuildDate)
 
 	mcp := server.NewMCPServer(
 		Name,
@@ -121,6 +155,9 @@ func run(cmd *cobra.Command, args []string) {
 		<-signalChan
 		logger.Get().Info("Received termination signal, shutting down server...")
 
+		// Mark root span as shutting down
+		rootSpan.AddEvent("server.shutdown.initiated")
+
 		// Cancel context to notify any context-aware operations
 		cancel()
 
@@ -131,6 +168,10 @@ func run(cmd *cobra.Command, args []string) {
 
 			if err := sseServer.Shutdown(shutdownCtx); err != nil {
 				logger.Get().Error(err, "Failed to shutdown server gracefully")
+				rootSpan.RecordError(err)
+				rootSpan.SetStatus(codes.Error, "Server shutdown failed")
+			} else {
+				rootSpan.AddEvent("server.shutdown.completed")
 			}
 		}
 	}()

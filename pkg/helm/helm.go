@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kagent-dev/tools/pkg/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -240,14 +241,14 @@ func RegisterHelmTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithString("pending", mcp.Description("List pending releases")),
 		mcp.WithString("filter", mcp.Description("A regular expression to filter releases by")),
 		mcp.WithString("output", mcp.Description("The output format (e.g., 'json', 'yaml', 'table')")),
-	), handleHelmListReleases)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_list_releases", handleHelmListReleases)))
 
 	s.AddTool(mcp.NewTool("helm_get_release",
 		mcp.WithDescription("Get extended information about a Helm release"),
 		mcp.WithString("name", mcp.Description("The name of the release"), mcp.Required()),
 		mcp.WithString("namespace", mcp.Description("The namespace of the release"), mcp.Required()),
 		mcp.WithString("resource", mcp.Description("The resource to get (all, hooks, manifest, notes, values)")),
-	), handleHelmGetRelease)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_get_release", handleHelmGetRelease)))
 
 	s.AddTool(mcp.NewTool("helm_upgrade",
 		mcp.WithDescription("Upgrade or install a Helm release"),
@@ -260,7 +261,7 @@ func RegisterHelmTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithString("install", mcp.Description("Run an install if the release is not present")),
 		mcp.WithString("dry_run", mcp.Description("Simulate an upgrade")),
 		mcp.WithString("wait", mcp.Description("Wait for the upgrade to complete")),
-	), handleHelmUpgradeRelease)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_upgrade", handleHelmUpgradeRelease)))
 
 	s.AddTool(mcp.NewTool("helm_uninstall",
 		mcp.WithDescription("Uninstall a Helm release"),
@@ -268,15 +269,15 @@ func RegisterHelmTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithString("namespace", mcp.Description("The namespace of the release"), mcp.Required()),
 		mcp.WithString("dry_run", mcp.Description("Simulate an uninstall")),
 		mcp.WithString("wait", mcp.Description("Wait for the uninstall to complete")),
-	), handleHelmUninstall)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_uninstall", handleHelmUninstall)))
 
 	s.AddTool(mcp.NewTool("helm_repo_add",
 		mcp.WithDescription("Add a Helm repository"),
 		mcp.WithString("name", mcp.Description("The name of the repository"), mcp.Required()),
 		mcp.WithString("url", mcp.Description("The URL of the repository"), mcp.Required()),
-	), handleHelmRepoAdd)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_repo_add", handleHelmRepoAdd)))
 
 	s.AddTool(mcp.NewTool("helm_repo_update",
 		mcp.WithDescription("Update information of available charts locally from chart repositories"),
-	), handleHelmRepoUpdate)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_repo_update", handleHelmRepoUpdate)))
 }

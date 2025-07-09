@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/kagent-dev/tools/pkg/telemetry"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -207,7 +208,7 @@ func RegisterPrometheusTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithDescription("Execute a PromQL query against Prometheus"),
 		mcp.WithString("query", mcp.Description("PromQL query to execute"), mcp.Required()),
 		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), handlePrometheusQueryTool)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_query_tool", handlePrometheusQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_query_range_tool",
 		mcp.WithDescription("Execute a PromQL range query against Prometheus"),
@@ -216,20 +217,20 @@ func RegisterPrometheusTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithString("end", mcp.Description("End time (Unix timestamp or relative time)")),
 		mcp.WithString("step", mcp.Description("Query resolution step (default: 15s)")),
 		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), handlePrometheusRangeQueryTool)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_query_range_tool", handlePrometheusRangeQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_label_names_tool",
 		mcp.WithDescription("Get all available labels from Prometheus"),
 		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), handlePrometheusLabelsQueryTool)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_label_names_tool", handlePrometheusLabelsQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_targets_tool",
 		mcp.WithDescription("Get all Prometheus targets and their status"),
 		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), handlePrometheusTargetsQueryTool)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_targets_tool", handlePrometheusTargetsQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_promql_tool",
 		mcp.WithDescription("Generate a PromQL query"),
 		mcp.WithString("query_description", mcp.Description("A string describing the query to generate"), mcp.Required()),
-	), handlePromql)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_promql_tool", handlePromql)))
 }

@@ -48,6 +48,9 @@
   //forward the following ports
   "forwardPorts": [8084],
 
+  //network
+  "network": "host",
+
   //mount docker directly on the host
   "mounts": ["source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"],
 

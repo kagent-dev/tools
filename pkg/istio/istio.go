@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kagent-dev/tools/pkg/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -306,7 +307,7 @@ func RegisterIstioTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithDescription("Get Envoy proxy status for pods, retrieves last sent and acknowledged xDS sync from Istiod to each Envoy in the mesh"),
 		mcp.WithString("pod_name", mcp.Description("Name of the pod to get proxy status for")),
 		mcp.WithString("namespace", mcp.Description("Namespace of the pod")),
-	), handleIstioProxyStatus)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_proxy_status", handleIstioProxyStatus)))
 
 	// Istio proxy config
 	s.AddTool(mcp.NewTool("istio_proxy_config",
@@ -314,79 +315,62 @@ func RegisterIstioTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithString("pod_name", mcp.Description("Name of the pod to get proxy configuration for"), mcp.Required()),
 		mcp.WithString("namespace", mcp.Description("Namespace of the pod")),
 		mcp.WithString("config_type", mcp.Description("Type of configuration (all, bootstrap, cluster, ecds, listener, log, route, secret)")),
-	), handleIstioProxyConfig)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_proxy_config", handleIstioProxyConfig)))
 
 	// Istio install
 	s.AddTool(mcp.NewTool("istio_install_istio",
 		mcp.WithDescription("Install Istio with a specified configuration profile"),
 		mcp.WithString("profile", mcp.Description("Istio configuration profile (ambient, default, demo, minimal, empty)")),
-	), handleIstioInstall)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_install_istio", handleIstioInstall)))
 
 	// Istio generate manifest
 	s.AddTool(mcp.NewTool("istio_generate_manifest",
-		mcp.WithDescription("Generate an Istio install manifest"),
+		mcp.WithDescription("Generate Istio manifest for a given profile"),
 		mcp.WithString("profile", mcp.Description("Istio configuration profile (ambient, default, demo, minimal, empty)")),
-	), handleIstioGenerateManifest)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_generate_manifest", handleIstioGenerateManifest)))
 
 	// Istio analyze
 	s.AddTool(mcp.NewTool("istio_analyze_cluster_configuration",
-		mcp.WithDescription("Analyze live cluster configuration for potential issues"),
-		mcp.WithString("namespace", mcp.Description("Namespace to analyze")),
-		mcp.WithString("all_namespaces", mcp.Description("Analyze all namespaces (true/false)")),
-	), handleIstioAnalyzeClusterConfiguration)
+		mcp.WithDescription("Analyze Istio cluster configuration for issues"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_analyze_cluster_configuration", handleIstioAnalyzeClusterConfiguration)))
 
 	// Istio version
 	s.AddTool(mcp.NewTool("istio_version",
-		mcp.WithDescription("Get Istio CLI client version, control plane and data plane versions"),
-		mcp.WithString("short", mcp.Description("Show short version format (true/false)")),
-	), handleIstioVersion)
+		mcp.WithDescription("Get Istio version information"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_version", handleIstioVersion)))
 
 	// Istio remote clusters
 	s.AddTool(mcp.NewTool("istio_remote_clusters",
-		mcp.WithDescription("List remote clusters each istiod instance is connected to"),
-	), handleIstioRemoteClusters)
+		mcp.WithDescription("List remote clusters registered with Istio"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_remote_clusters", handleIstioRemoteClusters)))
 
 	// Waypoint list
 	s.AddTool(mcp.NewTool("istio_list_waypoints",
-		mcp.WithDescription("List managed waypoint configurations in the cluster"),
-		mcp.WithString("namespace", mcp.Description("Namespace to list waypoints for")),
-		mcp.WithString("all_namespaces", mcp.Description("List waypoints for all namespaces (true/false)")),
-	), handleWaypointList)
+		mcp.WithDescription("List all waypoints in the mesh"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_list_waypoints", handleWaypointList)))
 
 	// Waypoint generate
 	s.AddTool(mcp.NewTool("istio_generate_waypoint",
-		mcp.WithDescription("Generate a waypoint configuration as YAML"),
-		mcp.WithString("namespace", mcp.Description("Namespace to generate the waypoint for"), mcp.Required()),
-		mcp.WithString("name", mcp.Description("Name of the waypoint to generate")),
-		mcp.WithString("traffic_type", mcp.Description("Traffic type for the waypoint (all, inbound, outbound)")),
-	), handleWaypointGenerate)
+		mcp.WithDescription("Generate a waypoint resource YAML"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_generate_waypoint", handleWaypointGenerate)))
 
 	// Waypoint apply
 	s.AddTool(mcp.NewTool("istio_apply_waypoint",
-		mcp.WithDescription("Apply a waypoint configuration to a cluster"),
-		mcp.WithString("namespace", mcp.Description("Namespace to apply the waypoint to"), mcp.Required()),
-		mcp.WithString("enroll_namespace", mcp.Description("Label the namespace with the waypoint name (true/false)")),
-	), handleWaypointApply)
+		mcp.WithDescription("Apply a waypoint resource to the cluster"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_apply_waypoint", handleWaypointApply)))
 
 	// Waypoint delete
 	s.AddTool(mcp.NewTool("istio_delete_waypoint",
-		mcp.WithDescription("Delete waypoint configurations from a cluster"),
-		mcp.WithString("namespace", mcp.Description("Namespace to delete waypoints from"), mcp.Required()),
-		mcp.WithString("names", mcp.Description("Comma-separated list of waypoint names to delete")),
-		mcp.WithString("all", mcp.Description("Delete all waypoints in the namespace (true/false)")),
-	), handleWaypointDelete)
+		mcp.WithDescription("Delete a waypoint resource from the cluster"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_delete_waypoint", handleWaypointDelete)))
 
 	// Waypoint status
 	s.AddTool(mcp.NewTool("istio_waypoint_status",
-		mcp.WithDescription("Get status of a waypoint"),
-		mcp.WithString("namespace", mcp.Description("Namespace of the waypoint"), mcp.Required()),
-		mcp.WithString("name", mcp.Description("Name of the waypoint to get status for")),
-	), handleWaypointStatus)
+		mcp.WithDescription("Get the status of a waypoint resource"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_waypoint_status", handleWaypointStatus)))
 
 	// Ztunnel config
 	s.AddTool(mcp.NewTool("istio_ztunnel_config",
-		mcp.WithDescription("Get ztunnel configuration"),
-		mcp.WithString("namespace", mcp.Description("Namespace of the pod")),
-		mcp.WithString("config_type", mcp.Description("Type of configuration (all, bootstrap, cluster, ecds, listener, log, route, secret)")),
-	), handleZtunnelConfig)
+		mcp.WithDescription("Get the ztunnel configuration for a namespace"),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_ztunnel_config", handleZtunnelConfig)))
 }
