@@ -119,7 +119,7 @@ app2    kube-system 2           2023-01-02 12:00:00.000000000 +0000 UTC    deplo
 
 		assert.NoError(t, err) // MCP handlers should not return Go errors
 		assert.True(t, result.IsError)
-		assert.Contains(t, getResultText(result), "Helm list command failed")
+		assert.Contains(t, getResultText(result), "**Helm Error**")
 	})
 }
 

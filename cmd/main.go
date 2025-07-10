@@ -18,6 +18,8 @@ import (
 	"github.com/kagent-dev/tools/internal/version"
 	"github.com/kagent-dev/tools/pkg/utils"
 
+	"runtime"
+
 	"github.com/kagent-dev/tools/pkg/argo"
 	"github.com/kagent-dev/tools/pkg/cilium"
 	"github.com/kagent-dev/tools/pkg/helm"
@@ -143,31 +145,34 @@ func run(cmd *cobra.Command, args []string) {
 		// Add health endpoint
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("OK"))
+			if err := writeResponse(w, []byte("OK")); err != nil {
+				logger.Get().Error(err, "Failed to write health response")
+			}
 		})
 
 		// Add metrics endpoint (basic implementation for e2e tests)
 		mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			// Basic metrics for testing
-			_, _ = w.Write([]byte("# HELP go_info Information about the Go environment.\n"))
-			_, _ = w.Write([]byte("# TYPE go_info gauge\n"))
-			_, _ = w.Write([]byte("go_info{version=\"go1.21.0\"} 1\n"))
-			_, _ = w.Write([]byte("# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n"))
-			_, _ = w.Write([]byte("# TYPE process_start_time_seconds gauge\n"))
-			_, _ = w.Write([]byte("process_start_time_seconds 1609459200\n"))
+
+			// Generate real runtime metrics instead of hardcoded values
+			metrics := generateRuntimeMetrics()
+			if err := writeResponse(w, []byte(metrics)); err != nil {
+				logger.Get().Error(err, "Failed to write metrics response")
+			}
 		})
 
 		// Handle all other routes with the MCP server
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			// Only delegate to MCP server if it's not the health endpoint
-			if r.URL.Path != "/health" {
+			if r.URL.Path != "/health" && r.URL.Path != "/metrics" {
 				sseServer.ServeHTTP(w, r)
 			} else {
-				// This shouldn't happen due to the specific handler above, but just in case
+				// This shouldn't happen due to the specific handlers above, but just in case
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("OK"))
+				if err := writeResponse(w, []byte("OK")); err != nil {
+					logger.Get().Error(err, "Failed to write fallback response")
+				}
 			}
 		})
 
@@ -218,6 +223,53 @@ func run(cmd *cobra.Command, args []string) {
 	// Wait for all server operations to complete
 	wg.Wait()
 	logger.Get().Info("Server shutdown complete")
+}
+
+// writeResponse writes data to an HTTP response writer with proper error handling
+func writeResponse(w http.ResponseWriter, data []byte) error {
+	_, err := w.Write(data)
+	return err
+}
+
+// generateRuntimeMetrics generates real runtime metrics for the /metrics endpoint
+func generateRuntimeMetrics() string {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	now := time.Now().Unix()
+
+	// Build metrics in Prometheus format
+	metrics := strings.Builder{}
+
+	// Go runtime info
+	metrics.WriteString("# HELP go_info Information about the Go environment.\n")
+	metrics.WriteString("# TYPE go_info gauge\n")
+	metrics.WriteString(fmt.Sprintf("go_info{version=\"%s\"} 1\n", runtime.Version()))
+
+	// Process start time
+	metrics.WriteString("# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n")
+	metrics.WriteString("# TYPE process_start_time_seconds gauge\n")
+	metrics.WriteString(fmt.Sprintf("process_start_time_seconds %d\n", now))
+
+	// Memory metrics
+	metrics.WriteString("# HELP go_memstats_alloc_bytes Number of bytes allocated and still in use.\n")
+	metrics.WriteString("# TYPE go_memstats_alloc_bytes gauge\n")
+	metrics.WriteString(fmt.Sprintf("go_memstats_alloc_bytes %d\n", m.Alloc))
+
+	metrics.WriteString("# HELP go_memstats_total_alloc_bytes Total number of bytes allocated, even if freed.\n")
+	metrics.WriteString("# TYPE go_memstats_total_alloc_bytes counter\n")
+	metrics.WriteString(fmt.Sprintf("go_memstats_total_alloc_bytes %d\n", m.TotalAlloc))
+
+	metrics.WriteString("# HELP go_memstats_sys_bytes Number of bytes obtained from system.\n")
+	metrics.WriteString("# TYPE go_memstats_sys_bytes gauge\n")
+	metrics.WriteString(fmt.Sprintf("go_memstats_sys_bytes %d\n", m.Sys))
+
+	// Goroutine count
+	metrics.WriteString("# HELP go_goroutines Number of goroutines that currently exist.\n")
+	metrics.WriteString("# TYPE go_goroutines gauge\n")
+	metrics.WriteString(fmt.Sprintf("go_goroutines %d\n", runtime.NumGoroutine()))
+
+	return metrics.String()
 }
 
 func runStdioServer(ctx context.Context, mcp *server.MCPServer) {

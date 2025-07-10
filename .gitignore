@@ -9,4 +9,5 @@ bin/
 .env.production.local
 /logs/
 /kagent-tools
-/coverage.out
+/*.out
+*.html

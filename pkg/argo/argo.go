@@ -195,9 +195,13 @@ func getSystemArchitecture() (string, error) {
 	}
 }
 
-func getLatestVersion() string {
+func getLatestVersion(ctx context.Context) string {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get("https://api.github.com/repos/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/latest")
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/latest", nil)
+	if err != nil {
+		return "0.5.0" // Default version
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "0.5.0" // Default version
 	}
@@ -217,7 +221,7 @@ func getLatestVersion() string {
 	return "0.5.0"
 }
 
-func configureGatewayPlugin(version, namespace string) GatewayPluginStatus {
+func configureGatewayPlugin(ctx context.Context, version, namespace string) GatewayPluginStatus {
 	arch, err := getSystemArchitecture()
 	if err != nil {
 		return GatewayPluginStatus{
@@ -227,7 +231,7 @@ func configureGatewayPlugin(version, namespace string) GatewayPluginStatus {
 	}
 
 	if version == "" {
-		version = getLatestVersion()
+		version = getLatestVersion(ctx)
 	}
 
 	configMap := fmt.Sprintf(`apiVersion: v1
@@ -260,7 +264,7 @@ data:
 	tmpFile.Close()
 
 	// Apply the ConfigMap
-	_, err = utils.RunCommandWithContext(context.Background(), "kubectl", []string{"apply", "-f", tmpFile.Name()})
+	_, err = utils.RunCommandWithContext(ctx, "kubectl", []string{"apply", "-f", tmpFile.Name()})
 	if err != nil {
 		return GatewayPluginStatus{
 			Installed:    false,
@@ -301,7 +305,7 @@ func handleVerifyGatewayPlugin(ctx context.Context, request mcp.CallToolRequest)
 	}
 
 	// Configure plugin
-	status := configureGatewayPlugin(version, namespace)
+	status := configureGatewayPlugin(ctx, version, namespace)
 	return mcp.NewToolResultText(status.String()), nil
 }
 

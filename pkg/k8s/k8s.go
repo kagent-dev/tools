@@ -10,7 +10,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/kagent-dev/tools/internal/errors"
 	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -117,6 +119,21 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError("resource_type, resource_name, and patch parameters are required"), nil
 	}
 
+	// Validate resource name for security
+	if err := security.ValidateK8sResourceName(resourceName); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid resource name: %v", err)), nil
+	}
+
+	// Validate namespace for security
+	if err := security.ValidateNamespace(namespace); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil
+	}
+
+	// Validate patch content as JSON/YAML
+	if err := security.ValidateYAMLContent(patch); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch content: %v", err)), nil
+	}
+
 	args := []string{"patch", resourceType, resourceName, "-p", patch, "-n", namespace}
 
 	return k.runKubectlCommand(ctx, args)
@@ -130,16 +147,39 @@ func (k *K8sTool) handleApplyManifest(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError("manifest parameter is required"), nil
 	}
 
-	tmpFile, err := os.CreateTemp("", "manifest-*.yaml")
+	// Validate YAML content for security
+	if err := security.ValidateYAMLContent(manifest); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid manifest content: %v", err)), nil
+	}
+
+	// Create temporary file with secure permissions
+	tmpFile, err := os.CreateTemp("", "k8s-manifest-*.yaml")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create temp file: %v", err)), nil
 	}
-	defer os.Remove(tmpFile.Name())
 
+	// Ensure file is removed regardless of execution path
+	defer func() {
+		if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+			logger.Get().Error(removeErr, "Failed to remove temporary file", "file", tmpFile.Name())
+		}
+	}()
+
+	// Set secure file permissions (readable/writable by owner only)
+	if err := os.Chmod(tmpFile.Name(), 0600); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to set file permissions: %v", err)), nil
+	}
+
+	// Write manifest content to temporary file
 	if _, err := tmpFile.WriteString(manifest); err != nil {
+		tmpFile.Close()
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to write to temp file: %v", err)), nil
 	}
-	tmpFile.Close()
+
+	// Close the file before passing to kubectl
+	if err := tmpFile.Close(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to close temp file: %v", err)), nil
+	}
 
 	return k.runKubectlCommand(ctx, []string{"apply", "-f", tmpFile.Name()})
 }
@@ -212,6 +252,21 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolReq
 
 	if podName == "" || command == "" {
 		return mcp.NewToolResultError("pod_name and command parameters are required"), nil
+	}
+
+	// Validate pod name for security
+	if err := security.ValidateK8sResourceName(podName); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid pod name: %v", err)), nil
+	}
+
+	// Validate namespace for security
+	if err := security.ValidateNamespace(namespace); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil
+	}
+
+	// Validate command input for security
+	if err := security.ValidateCommandInput(command); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid command: %v", err)), nil
 	}
 
 	args := []string{"exec", podName, "-n", namespace, "--", command}
@@ -471,7 +526,24 @@ func (k *K8sTool) runKubectlCommand(ctx context.Context, args []string) (*mcp.Ca
 	result, err := utils.RunCommandWithContext(ctx, "kubectl", args)
 	if err != nil {
 		telemetry.RecordError(span, err, "kubectl command failed")
-		return mcp.NewToolResultError(err.Error()), nil
+
+		// Create structured error with context
+		toolErr := errors.NewKubernetesError(strings.Join(args, " "), err).
+			WithContext("kubectl_args", args).
+			WithContext("kubeconfig", utils.GetKubeconfig())
+
+		// Add resource information if available
+		if len(args) > 0 {
+			toolErr = toolErr.WithContext("kubectl_operation", args[0])
+		}
+		if len(args) > 1 {
+			toolErr = toolErr.WithResource(args[1], "")
+		}
+		if len(args) > 2 {
+			toolErr = toolErr.WithResource(args[1], args[2])
+		}
+
+		return toolErr.ToMCPResult(), nil
 	}
 
 	telemetry.RecordSuccess(span, "kubectl command completed successfully")

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/logger"
@@ -17,24 +18,37 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// Kubeconfig is a shared global variable for kubeconfig path
-var Kubeconfig string
+// KubeConfigManager manages kubeconfig path with thread safety
+type KubeConfigManager struct {
+	mu             sync.RWMutex
+	kubeconfigPath string
+}
 
-// SetKubeconfig sets the global kubeconfig path
+// globalKubeConfigManager is the singleton instance
+var globalKubeConfigManager = &KubeConfigManager{}
+
+// SetKubeconfig sets the global kubeconfig path in a thread-safe manner
 func SetKubeconfig(path string) {
-	Kubeconfig = path
+	globalKubeConfigManager.mu.Lock()
+	defer globalKubeConfigManager.mu.Unlock()
+
+	globalKubeConfigManager.kubeconfigPath = path
 	logger.Get().Info("Setting shared kubeconfig", "path", path)
 }
 
-// GetKubeconfig returns the global kubeconfig path
+// GetKubeconfig returns the global kubeconfig path in a thread-safe manner
 func GetKubeconfig() string {
-	return Kubeconfig
+	globalKubeConfigManager.mu.RLock()
+	defer globalKubeConfigManager.mu.RUnlock()
+
+	return globalKubeConfigManager.kubeconfigPath
 }
 
 // AddKubeconfigArgs adds kubeconfig arguments to command args if configured
 func AddKubeconfigArgs(args []string) []string {
-	if Kubeconfig != "" {
-		return append([]string{"--kubeconfig", Kubeconfig}, args...)
+	kubeconfigPath := GetKubeconfig()
+	if kubeconfigPath != "" {
+		return append([]string{"--kubeconfig", kubeconfigPath}, args...)
 	}
 	return args
 }
@@ -251,6 +265,8 @@ func init() {
 }
 
 // RunCommand executes a command and returns output or error with OTEL tracing
+// Deprecated: Use RunCommandWithContext instead to ensure proper OTEL context propagation.
+// This function creates a new context.Background() which breaks distributed tracing.
 func RunCommand(command string, args []string) (string, error) {
 	return RunCommandWithContext(context.Background(), command, args)
 }

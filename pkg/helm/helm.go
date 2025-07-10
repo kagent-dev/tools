@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kagent-dev/tools/internal/errors"
+	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -68,6 +70,15 @@ func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*
 
 	result, err := runHelmCommand(ctx, args)
 	if err != nil {
+		// Check if it's a structured error
+		if toolErr, ok := err.(*errors.ToolError); ok {
+			// Add namespace context if provided
+			if namespace != "" {
+				toolErr = toolErr.WithContext("namespace", namespace)
+			}
+			return toolErr.ToMCPResult(), nil
+		}
+		// Fallback for non-structured errors
 		return mcp.NewToolResultError(fmt.Sprintf("Helm list command failed: %v", err)), nil
 	}
 
@@ -76,7 +87,21 @@ func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*
 
 func runHelmCommand(ctx context.Context, args []string) (string, error) {
 	args = utils.AddKubeconfigArgs(args)
-	return utils.RunCommandWithContext(ctx, "helm", args)
+	result, err := utils.RunCommandWithContext(ctx, "helm", args)
+	if err != nil {
+		// Create structured error with context
+		toolErr := errors.NewHelmError(strings.Join(args, " "), err).
+			WithContext("helm_args", args).
+			WithContext("kubeconfig", utils.GetKubeconfig())
+
+		// Add operation context
+		if len(args) > 0 {
+			toolErr = toolErr.WithContext("helm_operation", args[0])
+		}
+
+		return "", toolErr
+	}
+	return result, nil
 }
 
 // Helm get release
@@ -117,6 +142,25 @@ func handleHelmUpgradeRelease(ctx context.Context, request mcp.CallToolRequest) 
 
 	if name == "" || chart == "" {
 		return mcp.NewToolResultError("name and chart parameters are required"), nil
+	}
+
+	// Validate release name
+	if err := security.ValidateHelmReleaseName(name); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid release name: %v", err)), nil
+	}
+
+	// Validate namespace if provided
+	if namespace != "" {
+		if err := security.ValidateNamespace(namespace); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil
+		}
+	}
+
+	// Validate values file path if provided
+	if values != "" {
+		if err := security.ValidateFilePath(values); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid values file path: %v", err)), nil
+		}
 	}
 
 	args := []string{"upgrade", name, chart}
@@ -197,6 +241,16 @@ func handleHelmRepoAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 
 	if name == "" || url == "" {
 		return mcp.NewToolResultError("name and url parameters are required"), nil
+	}
+
+	// Validate repository name
+	if err := security.ValidateHelmReleaseName(name); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid repository name: %v", err)), nil
+	}
+
+	// Validate repository URL
+	if err := security.ValidateURL(url); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid repository URL: %v", err)), nil
 	}
 
 	args := []string{"repo", "add", name, url}

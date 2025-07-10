@@ -584,8 +584,8 @@ func getCiliumPodNameWithContext(ctx context.Context, nodeName string) (string, 
 	return strings.TrimSpace(podName), nil
 }
 
-func runCiliumDbgCommand(command, nodeName string) (string, error) {
-	return runCiliumDbgCommandWithContext(context.Background(), command, nodeName)
+func runCiliumDbgCommand(ctx context.Context, command, nodeName string) (string, error) {
+	return runCiliumDbgCommandWithContext(ctx, command, nodeName)
 }
 
 func runCiliumDbgCommandWithContext(ctx context.Context, command, nodeName string) (string, error) {
@@ -614,7 +614,7 @@ func handleGetEndpointDetails(ctx context.Context, request mcp.CallToolRequest) 
 		return mcp.NewToolResultError("either endpoint_id or labels must be provided"), nil
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoint details: %v", err)), nil
 	}
@@ -630,7 +630,7 @@ func handleGetEndpointLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	cmd := fmt.Sprintf("endpoint logs %s", endpointID)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoint logs: %v", err)), nil
 	}
@@ -646,7 +646,7 @@ func handleGetEndpointHealth(ctx context.Context, request mcp.CallToolRequest) (
 	}
 
 	cmd := fmt.Sprintf("endpoint health %s", endpointID)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoint health: %v", err)), nil
 	}
@@ -664,7 +664,7 @@ func handleManageEndpointLabels(ctx context.Context, request mcp.CallToolRequest
 	}
 
 	cmd := fmt.Sprintf("endpoint labels %s --%s %s", endpointID, action, labels)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to manage endpoint labels: %v", err)), nil
 	}
@@ -684,7 +684,7 @@ func handleManageEndpointConfiguration(ctx context.Context, request mcp.CallTool
 	}
 
 	command := fmt.Sprintf("endpoint config %s %s", endpointID, config)
-	output, err := runCiliumDbgCommand(command, nodeName)
+	output, err := runCiliumDbgCommand(ctx, command, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError("Error managing endpoint configuration: " + err.Error()), nil
 	}
@@ -701,7 +701,7 @@ func handleDisconnectEndpoint(ctx context.Context, request mcp.CallToolRequest) 
 	}
 
 	cmd := fmt.Sprintf("endpoint disconnect %s", endpointID)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to disconnect endpoint: %v", err)), nil
 	}
@@ -711,7 +711,7 @@ func handleDisconnectEndpoint(ctx context.Context, request mcp.CallToolRequest) 
 func handleGetEndpointsList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("endpoint list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "endpoint list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoints list: %v", err)), nil
 	}
@@ -721,7 +721,7 @@ func handleGetEndpointsList(ctx context.Context, request mcp.CallToolRequest) (*
 func handleListIdentities(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("identity list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "identity list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list identities: %v", err)), nil
 	}
@@ -737,7 +737,7 @@ func handleGetIdentityDetails(ctx context.Context, request mcp.CallToolRequest) 
 	}
 
 	cmd := fmt.Sprintf("identity get %s", identityID)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get identity details: %v", err)), nil
 	}
@@ -761,7 +761,7 @@ func handleShowConfigurationOptions(ctx context.Context, request mcp.CallToolReq
 		cmd = "endpoint config"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to show configuration options: %v", err)), nil
 	}
@@ -783,7 +783,7 @@ func handleToggleConfigurationOption(ctx context.Context, request mcp.CallToolRe
 	}
 
 	cmd := fmt.Sprintf("endpoint config %s=%s", option, valueStr)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to toggle configuration option: %v", err)), nil
 	}
@@ -793,7 +793,7 @@ func handleToggleConfigurationOption(ctx context.Context, request mcp.CallToolRe
 func handleRequestDebuggingInformation(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("debuginfo", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "debuginfo", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to request debugging information: %v", err)), nil
 	}
@@ -803,7 +803,7 @@ func handleRequestDebuggingInformation(ctx context.Context, request mcp.CallTool
 func handleDisplayEncryptionState(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("encrypt status", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "encrypt status", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to display encryption state: %v", err)), nil
 	}
@@ -813,7 +813,7 @@ func handleDisplayEncryptionState(ctx context.Context, request mcp.CallToolReque
 func handleFlushIPsecState(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("encrypt flush -f", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "encrypt flush -f", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to flush IPsec state: %v", err)), nil
 	}
@@ -829,7 +829,7 @@ func handleListEnvoyConfig(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	cmd := fmt.Sprintf("envoy admin %s", resourceName)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list Envoy config: %v", err)), nil
 	}
@@ -842,12 +842,12 @@ func handleFQDNCache(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 
 	var cmd string
 	if command == "clean" {
-		cmd = "fqdn cache clean -f"
+		cmd = "fqdn cache clean"
 	} else {
-		cmd = fmt.Sprintf("fqdn cache %s", command)
+		cmd = "fqdn cache list"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to manage FQDN cache: %v", err)), nil
 	}
@@ -857,7 +857,7 @@ func handleFQDNCache(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 func handleShowDNSNames(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("dns names", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "dns names", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to show DNS names: %v", err)), nil
 	}
@@ -867,7 +867,7 @@ func handleShowDNSNames(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 func handleListIPAddresses(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("ip list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "ip list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list IP addresses: %v", err)), nil
 	}
@@ -888,7 +888,7 @@ func handleShowIPCacheInformation(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("either cidr or labels must be provided"), nil
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to show IP cache information: %v", err)), nil
 	}
@@ -904,7 +904,7 @@ func handleDeleteKeyFromKVStore(ctx context.Context, request mcp.CallToolRequest
 	}
 
 	cmd := fmt.Sprintf("kvstore delete %s", key)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete key from kvstore: %v", err)), nil
 	}
@@ -920,7 +920,7 @@ func handleGetKVStoreKey(ctx context.Context, request mcp.CallToolRequest) (*mcp
 	}
 
 	cmd := fmt.Sprintf("kvstore get %s", key)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get key from kvstore: %v", err)), nil
 	}
@@ -937,7 +937,7 @@ func handleSetKVStoreKey(ctx context.Context, request mcp.CallToolRequest) (*mcp
 	}
 
 	cmd := fmt.Sprintf("kvstore set %s=%s", key, value)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to set key in kvstore: %v", err)), nil
 	}
@@ -947,7 +947,7 @@ func handleSetKVStoreKey(ctx context.Context, request mcp.CallToolRequest) (*mcp
 func handleShowLoadInformation(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("loadinfo", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "loadinfo", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to show load information: %v", err)), nil
 	}
@@ -957,7 +957,7 @@ func handleShowLoadInformation(ctx context.Context, request mcp.CallToolRequest)
 func handleListLocalRedirectPolicies(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("lrp list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "lrp list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list local redirect policies: %v", err)), nil
 	}
@@ -973,7 +973,7 @@ func handleListBPFMapEvents(ctx context.Context, request mcp.CallToolRequest) (*
 	}
 
 	cmd := fmt.Sprintf("bpf map events %s", mapName)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list BPF map events: %v", err)), nil
 	}
@@ -989,7 +989,7 @@ func handleGetBPFMap(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	}
 
 	cmd := fmt.Sprintf("bpf map get %s", mapName)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get BPF map: %v", err)), nil
 	}
@@ -999,7 +999,7 @@ func handleGetBPFMap(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 func handleListBPFMaps(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("bpf map list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "bpf map list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list BPF maps: %v", err)), nil
 	}
@@ -1017,7 +1017,7 @@ func handleListMetrics(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 		cmd = "metrics list"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list metrics: %v", err)), nil
 	}
@@ -1027,7 +1027,7 @@ func handleListMetrics(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 func handleListClusterNodes(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("nodes list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "nodes list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list cluster nodes: %v", err)), nil
 	}
@@ -1037,7 +1037,7 @@ func handleListClusterNodes(ctx context.Context, request mcp.CallToolRequest) (*
 func handleListNodeIds(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("nodeid list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "nodeid list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list node IDs: %v", err)), nil
 	}
@@ -1055,7 +1055,7 @@ func handleDisplayPolicyNodeInformation(ctx context.Context, request mcp.CallToo
 		cmd = "policy get"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to display policy node information: %v", err)), nil
 	}
@@ -1076,7 +1076,7 @@ func handleDeletePolicyRules(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError("either labels or all=true must be provided"), nil
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete policy rules: %v", err)), nil
 	}
@@ -1086,7 +1086,7 @@ func handleDeletePolicyRules(ctx context.Context, request mcp.CallToolRequest) (
 func handleDisplaySelectors(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("policy selectors", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "policy selectors", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to display selectors: %v", err)), nil
 	}
@@ -1096,7 +1096,7 @@ func handleDisplaySelectors(ctx context.Context, request mcp.CallToolRequest) (*
 func handleListXDPCIDRFilters(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("prefilter list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "prefilter list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list XDP CIDR filters: %v", err)), nil
 	}
@@ -1119,7 +1119,7 @@ func handleUpdateXDPCIDRFilters(ctx context.Context, request mcp.CallToolRequest
 		cmd = fmt.Sprintf("prefilter update --cidr %s", cidrPrefixes)
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to update XDP CIDR filters: %v", err)), nil
 	}
@@ -1142,7 +1142,7 @@ func handleDeleteXDPCIDRFilters(ctx context.Context, request mcp.CallToolRequest
 		cmd = fmt.Sprintf("prefilter delete --cidr %s", cidrPrefixes)
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete XDP CIDR filters: %v", err)), nil
 	}
@@ -1162,7 +1162,7 @@ func handleValidateCiliumNetworkPolicies(ctx context.Context, request mcp.CallTo
 		cmd += " --enable-k8s-api-discovery"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to validate Cilium network policies: %v", err)), nil
 	}
@@ -1172,7 +1172,7 @@ func handleValidateCiliumNetworkPolicies(ctx context.Context, request mcp.CallTo
 func handleListPCAPRecorders(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand("recorder list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "recorder list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list PCAP recorders: %v", err)), nil
 	}
@@ -1188,7 +1188,7 @@ func handleGetPCAPRecorder(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	cmd := fmt.Sprintf("recorder get %s", recorderID)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get PCAP recorder: %v", err)), nil
 	}
@@ -1204,7 +1204,7 @@ func handleDeletePCAPRecorder(ctx context.Context, request mcp.CallToolRequest) 
 	}
 
 	cmd := fmt.Sprintf("recorder delete %s", recorderID)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete PCAP recorder: %v", err)), nil
 	}
@@ -1223,7 +1223,7 @@ func handleUpdatePCAPRecorder(ctx context.Context, request mcp.CallToolRequest) 
 	}
 
 	cmd := fmt.Sprintf("recorder update %s --filters %s --caplen %s --id %s", recorderID, filters, caplen, id)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to update PCAP recorder: %v", err)), nil
 	}
@@ -1241,7 +1241,7 @@ func handleListServices(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 		cmd = "service list"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list services: %v", err)), nil
 	}
@@ -1257,7 +1257,7 @@ func handleGetServiceInformation(ctx context.Context, request mcp.CallToolReques
 	}
 
 	cmd := fmt.Sprintf("service get %s", serviceID)
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get service information: %v", err)), nil
 	}
@@ -1278,7 +1278,7 @@ func handleDeleteService(ctx context.Context, request mcp.CallToolRequest) (*mcp
 		return mcp.NewToolResultError("either service_id or all=true must be provided"), nil
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete service: %v", err)), nil
 	}
@@ -1337,7 +1337,7 @@ func handleUpdateService(ctx context.Context, request mcp.CallToolRequest) (*mcp
 		cmd += " --local-redirect"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to update service: %v", err)), nil
 	}
@@ -1377,7 +1377,7 @@ func handleGetDaemonStatus(ctx context.Context, request mcp.CallToolRequest) (*m
 		cmd += " --brief"
 	}
 
-	output, err := runCiliumDbgCommand(cmd, nodeName)
+	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get daemon status: %v", err)), nil
 	}

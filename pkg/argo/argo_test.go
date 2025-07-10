@@ -334,7 +334,7 @@ func TestGetSystemArchitecture(t *testing.T) {
 }
 
 func TestGetLatestVersion(t *testing.T) {
-	version := getLatestVersion()
+	version := getLatestVersion(context.Background())
 	if version == "" {
 		t.Error("Expected non-empty version")
 	}
