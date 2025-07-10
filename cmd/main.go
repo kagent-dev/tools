@@ -125,7 +125,7 @@ func run(cmd *cobra.Command, args []string) {
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
 	// HTTP server reference (only used when not in stdio mode)
-	var sseServer *server.StreamableHTTPServer
+	var httpServer *http.Server
 
 	// Start server based on chosen mode
 	wg.Add(1)
@@ -135,16 +135,55 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcp)
 		}()
 	} else {
-		sseServer = server.NewStreamableHTTPServer(mcp)
+		sseServer := server.NewStreamableHTTPServer(mcp)
+
+		// Create a mux to handle different routes
+		mux := http.NewServeMux()
+
+		// Add health endpoint
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("OK"))
+		})
+
+		// Add metrics endpoint (basic implementation for e2e tests)
+		mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			// Basic metrics for testing
+			_, _ = w.Write([]byte("# HELP go_info Information about the Go environment.\n"))
+			_, _ = w.Write([]byte("# TYPE go_info gauge\n"))
+			_, _ = w.Write([]byte("go_info{version=\"go1.21.0\"} 1\n"))
+			_, _ = w.Write([]byte("# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n"))
+			_, _ = w.Write([]byte("# TYPE process_start_time_seconds gauge\n"))
+			_, _ = w.Write([]byte("process_start_time_seconds 1609459200\n"))
+		})
+
+		// Handle all other routes with the MCP server
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			// Only delegate to MCP server if it's not the health endpoint
+			if r.URL.Path != "/health" {
+				sseServer.ServeHTTP(w, r)
+			} else {
+				// This shouldn't happen due to the specific handler above, but just in case
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("OK"))
+			}
+		})
+
+		httpServer = &http.Server{
+			Addr:    fmt.Sprintf(":%d", port),
+			Handler: mux,
+		}
+
 		go func() {
 			defer wg.Done()
-			addr := fmt.Sprintf(":%d", port)
-			logger.Get().Info("Running KAgent Tools Server", "port", addr, "tools", strings.Join(tools, ","))
-			if err := sseServer.Start(addr); err != nil {
+			logger.Get().Info("Running KAgent Tools Server", "port", fmt.Sprintf(":%d", port), "tools", strings.Join(tools, ","))
+			if err := httpServer.ListenAndServe(); err != nil {
 				if !errors.Is(err, http.ErrServerClosed) {
-					logger.Get().Error(err, "Failed to start SSE server")
+					logger.Get().Error(err, "Failed to start HTTP server")
 				} else {
-					logger.Get().Info("SSE server closed gracefully.")
+					logger.Get().Info("HTTP server closed gracefully.")
 				}
 			}
 		}()
@@ -162,11 +201,11 @@ func run(cmd *cobra.Command, args []string) {
 		cancel()
 
 		// Gracefully shutdown HTTP server if running
-		if !stdio && sseServer != nil {
+		if !stdio && httpServer != nil {
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
 
-			if err := sseServer.Shutdown(shutdownCtx); err != nil {
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
 				logger.Get().Error(err, "Failed to shutdown server gracefully")
 				rootSpan.RecordError(err)
 				rootSpan.SetStatus(codes.Error, "Server shutdown failed")

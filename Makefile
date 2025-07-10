@@ -46,8 +46,8 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 test: build lint
 	go test -v -cover ./pkg/... ./internal/...
 
-.PHONY: test-e2e
-test-e2e: test
+.PHONY: e2e
+e2e: test docker-build
 	go test -v -cover ./e2e/...
 
 bin/kagent-tools-linux-amd64:
