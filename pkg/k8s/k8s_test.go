@@ -38,7 +38,7 @@ func TestHandleGetAvailableAPIResources(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `[{"name": "pods", "singularName": "pod", "namespaced": true, "kind": "Pod"}]`
-		mock.AddCommandString("kubectl", []string{"api-resources", "-o", "json", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"api-resources", "-o", "json"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -75,7 +75,7 @@ func TestHandleScaleDeployment(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment scaled`
-		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "5", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "5", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -122,7 +122,7 @@ func TestHandleScaleDeployment(t *testing.T) {
 	t.Run("missing replicas parameter uses default", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment scaled`
-		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "1", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "1", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -144,7 +144,7 @@ func TestHandleScaleDeployment(t *testing.T) {
 		callLog := mock.GetCallLog()
 		assert.Len(t, callLog, 1)
 		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Equal(t, []string{"scale", "deployment", "test-deployment", "--replicas", "1", "-n", "default", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"scale", "deployment", "test-deployment", "--replicas", "1", "-n", "default"}, callLog[0].Args)
 	})
 }
 
@@ -154,7 +154,7 @@ func TestHandleGetEvents(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `{"items": [{"metadata": {"name": "test-event"}, "message": "Test event message"}]}`
-		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "--all-namespaces", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "--all-namespaces"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -172,7 +172,7 @@ func TestHandleGetEvents(t *testing.T) {
 	t.Run("with namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `{"items": []}`
-		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "-n", "custom-namespace", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "-n", "custom-namespace"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -217,7 +217,7 @@ func TestHandlePatchResource(t *testing.T) {
 	t.Run("valid parameters", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment patched`
-		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "-p", `{"spec":{"replicas":5}}`, "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "-p", `{"spec":{"replicas":5}}`, "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -314,9 +314,9 @@ func TestHandleCheckServiceConnectivity(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 
 		// Mock the pod creation, wait, and exec commands using partial matchers
-		mock.AddPartialMatcherString("kubectl", []string{"run", "*", "--image=curlimages/curl", "-n", "default", "--restart=Never", "--", "sleep", "3600", "--timeout", "30s"}, "pod/curl-test-123 created", nil)
+		mock.AddPartialMatcherString("kubectl", []string{"run", "*", "--image=curlimages/curl", "-n", "default", "--restart=Never", "--", "sleep", "3600"}, "pod/curl-test-123 created", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"wait", "--for=condition=ready", "*", "-n", "default", "--timeout=60s", "--timeout", "30s"}, "pod/curl-test-123 condition met", nil)
-		mock.AddPartialMatcherString("kubectl", []string{"exec", "*", "-n", "default", "--", "curl", "-s", "test-service.default.svc.cluster.local:80", "--timeout", "30s"}, "Connection successful", nil)
+		mock.AddPartialMatcherString("kubectl", []string{"exec", "*", "-n", "default", "--", "curl", "-s", "test-service.default.svc.cluster.local:80"}, "Connection successful", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"delete", "pod", "*", "-n", "default", "--ignore-not-found", "--timeout", "30s"}, "pod deleted", nil)
 
 		ctx := cmd.WithShellExecutor(ctx, mock)
@@ -365,7 +365,7 @@ func TestHandleKubectlDescribeTool(t *testing.T) {
 		expectedOutput := `Name:               test-deployment
 Namespace:          default
 Labels:             app=test`
-		mock.AddCommandString("kubectl", []string{"describe", "deployment", "test-deployment", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"describe", "deployment", "test-deployment", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -409,7 +409,7 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 	t.Run("valid resource_type", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `{"items": [{"metadata": {"name": "pod1"}}]}`
-		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "json", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "json"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -445,7 +445,7 @@ func TestHandleKubectlLogsEnhanced(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `log line 1
 log line 2`
-		mock.AddCommandString("kubectl", []string{"logs", "test-pod", "-n", "default", "--tail", "50", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"logs", "test-pod", "-n", "default", "--tail", "50"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -496,13 +496,11 @@ spec:
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Len(t, callLog[0].Args, 5) // apply, -f, <temp-file>, --timeout, 30s
+		assert.Len(t, callLog[0].Args, 3) // apply, -f, <temp-file>
 		assert.Equal(t, "apply", callLog[0].Args[0])
 		assert.Equal(t, "-f", callLog[0].Args[1])
 		// Third argument should be the temporary file path
 		assert.Contains(t, callLog[0].Args[2], "manifest-")
-		assert.Equal(t, "--timeout", callLog[0].Args[3])
-		assert.Equal(t, "30s", callLog[0].Args[4])
 	})
 
 	t.Run("missing manifest parameter", func(t *testing.T) {
@@ -537,7 +535,7 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 .
 drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 
 		// The implementation passes the command as a single string after --
-		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls -la", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls -la"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -562,7 +560,7 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "ls -la", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "ls -la"}, callLog[0].Args)
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {
@@ -595,7 +593,7 @@ func TestHandleRollout(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/myapp restarted`
 
-		mock.AddCommandString("kubectl", []string{"rollout", "restart", "deployment/myapp", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"rollout", "restart", "deployment/myapp", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -621,7 +619,7 @@ func TestHandleRollout(t *testing.T) {
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Equal(t, []string{"rollout", "restart", "deployment/myapp", "-n", "default", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"rollout", "restart", "deployment/myapp", "-n", "default"}, callLog[0].Args)
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {

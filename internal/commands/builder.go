@@ -246,9 +246,11 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 		}
 	}
 
-	// Add timeout
+	// Add timeout only for commands that support it
 	if cb.timeout > 0 {
-		args = append(args, "--timeout", cb.timeout.String())
+		if cb.supportsTimeout() {
+			args = append(args, "--timeout", cb.timeout.String())
+		}
 	}
 
 	// Add dry run
@@ -272,6 +274,41 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 	}
 
 	return cb.command, args, nil
+}
+
+// supportsTimeout checks if the command supports the --timeout flag
+func (cb *CommandBuilder) supportsTimeout() bool {
+	// For kubectl, only specific commands support --timeout
+	if cb.command == "kubectl" {
+		if len(cb.args) == 0 {
+			return false
+		}
+
+		// Check the first argument (subcommand)
+		subcommand := cb.args[0]
+		switch subcommand {
+		case "wait":
+			return true
+		case "delete":
+			// kubectl delete supports --timeout when waiting for deletion
+			return true
+		case "rollout":
+			// kubectl rollout status supports --timeout
+			if len(cb.args) > 1 && cb.args[1] == "status" {
+				return true
+			}
+			return false
+		case "apply":
+			// kubectl apply supports --timeout when used with --wait
+			return cb.wait
+		default:
+			return false
+		}
+	}
+
+	// For other commands (helm, istioctl, cilium), assume they support timeout
+	// unless we find specific cases where they don't
+	return true
 }
 
 // Execute runs the command
