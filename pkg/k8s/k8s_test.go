@@ -1045,7 +1045,7 @@ kind: Config
 preferences: {}
 users:
 - name: default`
-		mock.AddCommandString("kubectl", []string{"config", "view", "-o", "json", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"config", "view", "-o", "json"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()

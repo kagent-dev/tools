@@ -278,7 +278,7 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 
 // supportsTimeout checks if the command supports the --timeout flag
 func (cb *CommandBuilder) supportsTimeout() bool {
-	// For kubectl, only specific commands support --timeout
+	// For kubectl, many commands support --timeout
 	if cb.command == "kubectl" {
 		if len(cb.args) == 0 {
 			return false
@@ -301,6 +301,15 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 		case "apply":
 			// kubectl apply supports --timeout when used with --wait
 			return cb.wait
+		case "annotate", "label":
+			// kubectl annotate and label support --timeout
+			return true
+		case "create":
+			// kubectl create supports --timeout
+			return true
+		case "get":
+			// kubectl get supports --timeout for some operations
+			return false // Most get operations don't need timeout, they're read-only
 		default:
 			return false
 		}

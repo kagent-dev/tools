@@ -205,7 +205,7 @@ func TestCommandBuilderBuild(t *testing.T) {
 
 func TestCommandBuilderBuildWithTimeout(t *testing.T) {
 	cb := NewCommandBuilder("kubectl").
-		WithArgs("get", "pods").
+		WithArgs("delete", "pod", "test-pod").
 		WithTimeout(45 * time.Second)
 
 	command, args, err := cb.Build()
