@@ -161,8 +161,8 @@ func run(cmd *cobra.Command, args []string) {
 			}
 		})
 
-		// Handle all other routes with the MCP server
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Handle all other routes with the MCP server wrapped in telemetry middleware
+		mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Only delegate to MCP server if it's not the health endpoint
 			if r.URL.Path != "/health" && r.URL.Path != "/metrics" {
 				sseServer.ServeHTTP(w, r)
@@ -173,7 +173,7 @@ func run(cmd *cobra.Command, args []string) {
 					logger.Get().Error("Failed to write fallback response", "error", err)
 				}
 			}
-		})
+		})))
 
 		httpServer = &http.Server{
 			Addr:    fmt.Sprintf(":%d", port),

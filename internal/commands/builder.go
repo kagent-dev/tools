@@ -307,6 +307,12 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 		case "create":
 			// kubectl create supports --timeout
 			return true
+		case "argo":
+			// kubectl argo rollouts commands support --timeout
+			if len(cb.args) > 1 && cb.args[1] == "rollouts" {
+				return true
+			}
+			return false
 		case "get":
 			// kubectl get supports --timeout for some operations
 			return false // Most get operations don't need timeout, they're read-only
