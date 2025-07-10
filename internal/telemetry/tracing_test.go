@@ -12,6 +12,11 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
+// Test protocol constants for additional test scenarios
+const (
+	ProtocolInvalid = "invalid"
+)
+
 func TestLoadConfig(t *testing.T) {
 	// Test default config
 	config := LoadConfig()
@@ -193,6 +198,7 @@ func TestCreateExporterWithEndpoint(t *testing.T) {
 	config := &Config{
 		Environment: "production",
 		Endpoint:    "http://localhost:4317",
+		Protocol:    ProtocolAuto,
 	}
 
 	exporter, err := createExporter(ctx, config)
@@ -209,10 +215,11 @@ func TestCreateExporterWithAuthHeaders(t *testing.T) {
 	config := &Config{
 		Environment: "production",
 		Endpoint:    "http://localhost:4317",
+		Protocol:    ProtocolAuto,
 	}
 
 	// Set auth header
-	os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Bearer token123")
+	os.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer token123")
 	defer os.Unsetenv("OTEL_EXPORTER_OTLP_HEADERS")
 
 	exporter, err := createExporter(ctx, config)
@@ -291,6 +298,7 @@ func TestConfigDefaults(t *testing.T) {
 		"OTEL_SERVICE_VERSION",
 		"OTEL_ENVIRONMENT",
 		"OTEL_EXPORTER_OTLP_ENDPOINT",
+		"OTEL_EXPORTER_OTLP_PROTOCOL",
 		"OTEL_TRACES_SAMPLER_ARG",
 		"OTEL_SDK_DISABLED",
 	}
@@ -316,6 +324,7 @@ func TestConfigDefaults(t *testing.T) {
 	assert.Equal(t, "dev", config.ServiceVersion)
 	assert.Equal(t, "development", config.Environment)
 	assert.Equal(t, "", config.Endpoint)
+	assert.Equal(t, ProtocolAuto, config.Protocol)
 	assert.Equal(t, 1.0, config.SamplingRatio) // development env sets to 1.0
 	assert.False(t, config.Disabled)
 }
@@ -408,4 +417,194 @@ func TestSetupOTelSDKWithCancellation(t *testing.T) {
 	// Clean up
 	err = shutdown(context.Background())
 	assert.NoError(t, err)
+}
+
+func TestProtocolDetection(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		expected string
+	}{
+		{"gRPC port 4317", "http://localhost:4317", ProtocolGRPC},
+		{"HTTP port 4318", "http://localhost:4318", ProtocolHTTP},
+		{"gRPC port 4317 without scheme", "localhost:4317", ProtocolGRPC},
+		{"HTTP port 4318 without scheme", "localhost:4318", ProtocolHTTP},
+		{"gRPC with docker internal", "http://host.docker.internal:4317", ProtocolGRPC},
+		{"HTTP with docker internal", "http://host.docker.internal:4318", ProtocolHTTP},
+		{"No port specified", "http://localhost", ProtocolHTTP},
+		{"Unknown port", "http://localhost:9090", ProtocolHTTP},
+		{"HTTPS with gRPC port", "https://otel-collector.example.com:4317", ProtocolGRPC},
+		{"HTTPS with HTTP port", "https://otel-collector.example.com:4318", ProtocolHTTP},
+		{"gRPC with path", "http://localhost:4317/v1/traces", ProtocolGRPC},
+		{"HTTP with path", "http://localhost:4318/v1/traces", ProtocolHTTP},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectProtocol(tt.endpoint)
+			assert.Equal(t, tt.expected, result, "Protocol detection failed for endpoint: %s", tt.endpoint)
+		})
+	}
+}
+
+func TestEndpointNormalization(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		expected string
+	}{
+		{"Basic gRPC endpoint", "http://localhost:4317", "localhost:4317"},
+		{"gRPC with path", "http://localhost:4317/v1/traces", "localhost:4317"},
+		{"gRPC without scheme", "localhost:4317", "localhost:4317"},
+		{"gRPC with HTTPS", "https://otel.example.com:4317", "otel.example.com:4317"},
+		{"Docker internal gRPC", "http://host.docker.internal:4317", "host.docker.internal:4317"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeGRPCEndpoint(tt.endpoint)
+			assert.Equal(t, tt.expected, result, "gRPC endpoint normalization failed for: %s", tt.endpoint)
+		})
+	}
+}
+
+func TestHTTPEndpointNormalization(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		expected string
+	}{
+		{"Basic HTTP endpoint", "http://localhost:4318", "http://localhost:4318/v1/traces"},
+		{"HTTP with path", "http://localhost:4318/v1/traces", "http://localhost:4318/v1/traces"},
+		{"HTTP without scheme", "localhost:4318", "http://localhost:4318/v1/traces"},
+		{"HTTP with trailing slash", "http://localhost:4318/", "http://localhost:4318/v1/traces"},
+		{"Docker internal HTTP", "host.docker.internal:4318", "http://host.docker.internal:4318/v1/traces"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeHTTPEndpoint(tt.endpoint)
+			assert.Equal(t, tt.expected, result, "HTTP endpoint normalization failed for: %s", tt.endpoint)
+		})
+	}
+}
+
+func TestParseHeaders(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]string
+	}{
+		{
+			"Empty string",
+			"",
+			map[string]string{},
+		},
+		{
+			"Single header",
+			"Authorization=Bearer token123",
+			map[string]string{"Authorization": "Bearer token123"},
+		},
+		{
+			"Multiple headers",
+			"Authorization=Bearer token123,Content-Type=application/json",
+			map[string]string{"Authorization": "Bearer token123", "Content-Type": "application/json"},
+		},
+		{
+			"Headers with spaces",
+			"Authorization = Bearer token123 , Content-Type = application/json",
+			map[string]string{"Authorization": "Bearer token123", "Content-Type": "application/json"},
+		},
+		{
+			"Invalid header format",
+			"InvalidHeader",
+			map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseHeaders(tt.input)
+			assert.Equal(t, tt.expected, result, "Header parsing failed for: %s", tt.input)
+		})
+	}
+}
+
+func TestCreateExporterWithProtocol(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		config      *Config
+		shouldError bool
+		description string
+	}{
+		{
+			"gRPC protocol",
+			&Config{
+				Environment: "development",
+				Endpoint:    "localhost:4317",
+				Protocol:    ProtocolGRPC,
+			},
+			false,
+			"Should create gRPC exporter",
+		},
+		{
+			"HTTP protocol",
+			&Config{
+				Environment: "development",
+				Endpoint:    "localhost:4318",
+				Protocol:    ProtocolHTTP,
+			},
+			false,
+			"Should create HTTP exporter",
+		},
+		{
+			"Auto protocol with gRPC port",
+			&Config{
+				Environment: "development",
+				Endpoint:    "localhost:4317",
+				Protocol:    ProtocolAuto,
+			},
+			false,
+			"Should auto-detect gRPC",
+		},
+		{
+			"Auto protocol with HTTP port",
+			&Config{
+				Environment: "development",
+				Endpoint:    "localhost:4318",
+				Protocol:    ProtocolAuto,
+			},
+			false,
+			"Should auto-detect HTTP",
+		},
+		{
+			"Invalid protocol",
+			&Config{
+				Environment: "development",
+				Endpoint:    "localhost:4317",
+				Protocol:    ProtocolInvalid,
+			},
+			true,
+			"Should fail with unsupported protocol",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exporter, err := createExporter(ctx, tt.config)
+
+			if tt.shouldError {
+				assert.Error(t, err, tt.description)
+				assert.Nil(t, exporter)
+			} else {
+				assert.NoError(t, err, tt.description)
+				assert.NotNil(t, exporter)
+				if exporter != nil {
+					_ = exporter.Shutdown(ctx)
+				}
+			}
+		})
+	}
 }

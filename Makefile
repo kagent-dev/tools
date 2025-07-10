@@ -147,6 +147,12 @@ docker-build-all: DOCKER_BUILD_ARGS = --progress=plain --builder $(BUILDX_BUILDE
 docker-build-all:
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -f Dockerfile ./
 
+.PHONY: kind-update-kagent
+kind-update-kagent: docker-build
+	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME)
+	kind load docker-image --name $(KIND_CLUSTER_NAME) $(TOOLS_IMG)
+	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(TOOLS_IMG)"}]'
+
 ## Tool Binaries
 ## Location to install dependencies t
 

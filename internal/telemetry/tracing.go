@@ -3,11 +3,14 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
@@ -16,11 +19,19 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
+// Protocol constants for OTLP exporters
+const (
+	ProtocolGRPC = "grpc"
+	ProtocolHTTP = "http"
+	ProtocolAuto = "auto"
+)
+
 type Config struct {
 	ServiceName    string
 	ServiceVersion string
 	Environment    string
 	Endpoint       string
+	Protocol       string // ProtocolGRPC, ProtocolHTTP, or ProtocolAuto (default)
 	SamplingRatio  float64
 	Disabled       bool
 }
@@ -31,7 +42,8 @@ func LoadConfig() *Config {
 		ServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
 		Environment:    getEnv("OTEL_ENVIRONMENT", "development"),
 		Endpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
-		SamplingRatio:  getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 0.1),
+		Protocol:       getEnv("OTEL_EXPORTER_OTLP_PROTOCOL", ProtocolAuto),
+		SamplingRatio:  getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 1),
 		Disabled:       getEnvBool("OTEL_SDK_DISABLED", false),
 	}
 
@@ -116,18 +128,133 @@ func createExporter(ctx context.Context, config *Config) (trace.SpanExporter, er
 		return stdouttrace.New(stdouttrace.WithPrettyPrint())
 	}
 
+	// Determine protocol
+	protocol := config.Protocol
+	if protocol == ProtocolAuto || protocol == "" {
+		protocol = detectProtocol(config.Endpoint)
+	}
+
+	switch strings.ToLower(protocol) {
+	case ProtocolGRPC:
+		return createGRPCExporter(ctx, config)
+	case ProtocolHTTP:
+		return createHTTPExporter(ctx, config)
+	default:
+		return nil, fmt.Errorf("unsupported protocol: %s (supported: %s, %s)", protocol, ProtocolGRPC, ProtocolHTTP)
+	}
+}
+
+// detectProtocol determines the protocol based on the endpoint URL
+func detectProtocol(endpoint string) string {
+	// Parse URL to extract port
+	if parsedURL, err := url.Parse(endpoint); err == nil {
+		port := parsedURL.Port()
+		if port == "" {
+			// Check for default ports in hostname
+			if strings.Contains(parsedURL.Host, ":4317") {
+				return ProtocolGRPC
+			}
+			if strings.Contains(parsedURL.Host, ":4318") {
+				return ProtocolHTTP
+			}
+		} else {
+			switch port {
+			case "4317":
+				return ProtocolGRPC
+			case "4318":
+				return ProtocolHTTP
+			}
+		}
+	}
+
+	// Check if endpoint contains port info directly
+	if strings.Contains(endpoint, ":4317") {
+		return ProtocolGRPC
+	}
+	if strings.Contains(endpoint, ":4318") {
+		return ProtocolHTTP
+	}
+
+	// Default to HTTP for backward compatibility
+	return ProtocolHTTP
+}
+
+// createGRPCExporter creates a gRPC OTLP exporter
+func createGRPCExporter(ctx context.Context, config *Config) (trace.SpanExporter, error) {
+	opts := []otlptracegrpc.Option{
+		otlptracegrpc.WithEndpoint(normalizeGRPCEndpoint(config.Endpoint)),
+		otlptracegrpc.WithTimeout(30 * time.Second),
+	}
+
+	// Check if we should use insecure connection (for development)
+	if config.Environment == "development" || strings.Contains(config.Endpoint, "localhost") || strings.Contains(config.Endpoint, "127.0.0.1") {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+
+	if authToken := getEnv("OTEL_EXPORTER_OTLP_HEADERS", ""); authToken != "" {
+		opts = append(opts, otlptracegrpc.WithHeaders(parseHeaders(authToken)))
+	}
+
+	return otlptracegrpc.New(ctx, opts...)
+}
+
+// createHTTPExporter creates an HTTP OTLP exporter
+func createHTTPExporter(ctx context.Context, config *Config) (trace.SpanExporter, error) {
 	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(config.Endpoint),
+		otlptracehttp.WithEndpointURL(normalizeHTTPEndpoint(config.Endpoint)),
 		otlptracehttp.WithTimeout(30 * time.Second),
 	}
 
 	if authToken := getEnv("OTEL_EXPORTER_OTLP_HEADERS", ""); authToken != "" {
-		opts = append(opts, otlptracehttp.WithHeaders(map[string]string{
-			"Authorization": authToken,
-		}))
+		opts = append(opts, otlptracehttp.WithHeaders(parseHeaders(authToken)))
 	}
 
 	return otlptracehttp.New(ctx, opts...)
+}
+
+// normalizeGRPCEndpoint normalizes the endpoint for gRPC usage
+func normalizeGRPCEndpoint(endpoint string) string {
+	// Remove http:// or https:// prefix for gRPC
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+
+	// Remove /v1/traces suffix if present
+	endpoint = strings.TrimSuffix(endpoint, "/v1/traces")
+
+	return endpoint
+}
+
+// normalizeHTTPEndpoint normalizes the endpoint for HTTP usage
+func normalizeHTTPEndpoint(endpoint string) string {
+	// Ensure we have a proper HTTP URL
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = "http://" + endpoint
+	}
+
+	// Add /v1/traces suffix if not present
+	if !strings.HasSuffix(endpoint, "/v1/traces") {
+		endpoint = strings.TrimSuffix(endpoint, "/") + "/v1/traces"
+	}
+
+	return endpoint
+}
+
+// parseHeaders parses header string into map
+func parseHeaders(headerStr string) map[string]string {
+	headers := make(map[string]string)
+	if headerStr == "" {
+		return headers
+	}
+
+	// Simple parsing - expect "key=value,key2=value2" format
+	pairs := strings.Split(headerStr, ",")
+	for _, pair := range pairs {
+		if parts := strings.SplitN(strings.TrimSpace(pair), "=", 2); len(parts) == 2 {
+			headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+
+	return headers
 }
 
 func getEnv(key, defaultValue string) string {
