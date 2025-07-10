@@ -33,6 +33,7 @@ type Config struct {
 	Endpoint       string
 	Protocol       string // ProtocolGRPC, ProtocolHTTP, or ProtocolAuto (default)
 	SamplingRatio  float64
+	Insecure       bool
 	Disabled       bool
 }
 
@@ -44,6 +45,7 @@ func LoadConfig() *Config {
 		Endpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 		Protocol:       getEnv("OTEL_EXPORTER_OTLP_PROTOCOL", ProtocolAuto),
 		SamplingRatio:  getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 1),
+		Insecure:       getEnvBool("OTEL_EXPORTER_OTLP_TRACES_INSECURE", false),
 		Disabled:       getEnvBool("OTEL_SDK_DISABLED", false),
 	}
 
@@ -186,8 +188,8 @@ func createGRPCExporter(ctx context.Context, config *Config) (trace.SpanExporter
 		otlptracegrpc.WithTimeout(30 * time.Second),
 	}
 
-	// Check if we should use insecure connection (for development)
-	if config.Environment == "development" || strings.Contains(config.Endpoint, "localhost") || strings.Contains(config.Endpoint, "127.0.0.1") {
+	// Use insecure connection if explicitly configured or for development/localhost
+	if config.Insecure || config.Environment == "development" || strings.Contains(config.Endpoint, "localhost") || strings.Contains(config.Endpoint, "127.0.0.1") {
 		opts = append(opts, otlptracegrpc.WithInsecure())
 	}
 
@@ -201,8 +203,13 @@ func createGRPCExporter(ctx context.Context, config *Config) (trace.SpanExporter
 // createHTTPExporter creates an HTTP OTLP exporter
 func createHTTPExporter(ctx context.Context, config *Config) (trace.SpanExporter, error) {
 	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpointURL(normalizeHTTPEndpoint(config.Endpoint)),
+		otlptracehttp.WithEndpointURL(normalizeHTTPEndpoint(config.Endpoint, config.Insecure)),
 		otlptracehttp.WithTimeout(30 * time.Second),
+	}
+
+	// Use insecure connection if explicitly configured
+	if config.Insecure {
+		opts = append(opts, otlptracehttp.WithInsecure())
 	}
 
 	if authToken := getEnv("OTEL_EXPORTER_OTLP_HEADERS", ""); authToken != "" {
@@ -225,10 +232,15 @@ func normalizeGRPCEndpoint(endpoint string) string {
 }
 
 // normalizeHTTPEndpoint normalizes the endpoint for HTTP usage
-func normalizeHTTPEndpoint(endpoint string) string {
+func normalizeHTTPEndpoint(endpoint string, insecure bool) string {
 	// Ensure we have a proper HTTP URL
 	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
-		endpoint = "http://" + endpoint
+		// Use HTTP if insecure is true or if endpoint contains localhost/127.0.0.1/docker.internal
+		if insecure || strings.Contains(endpoint, "localhost") || strings.Contains(endpoint, "127.0.0.1") || strings.Contains(endpoint, "docker.internal") {
+			endpoint = "http://" + endpoint
+		} else {
+			endpoint = "https://" + endpoint
+		}
 	}
 
 	// Add /v1/traces suffix if not present

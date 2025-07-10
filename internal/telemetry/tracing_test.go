@@ -55,7 +55,37 @@ func TestLoadConfigWithEnvVars(t *testing.T) {
 	assert.Equal(t, "production", config.Environment)
 	assert.Equal(t, "http://localhost:4317", config.Endpoint)
 	assert.Equal(t, 0.5, config.SamplingRatio)
+	assert.False(t, config.Insecure) // Default should be false
 	assert.True(t, config.Disabled)
+}
+
+func TestLoadConfigWithInsecureEnvVar(t *testing.T) {
+	// Set environment variables including insecure
+	os.Setenv("OTEL_SERVICE_NAME", "test-service")
+	os.Setenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE", "true")
+
+	defer func() {
+		os.Unsetenv("OTEL_SERVICE_NAME")
+		os.Unsetenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE")
+	}()
+
+	config := LoadConfig()
+
+	assert.Equal(t, "test-service", config.ServiceName)
+	assert.True(t, config.Insecure)
+}
+
+func TestLoadConfigInsecureFalse(t *testing.T) {
+	// Set environment variables with insecure explicitly false
+	os.Setenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE", "false")
+
+	defer func() {
+		os.Unsetenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE")
+	}()
+
+	config := LoadConfig()
+
+	assert.False(t, config.Insecure)
 }
 
 func TestLoadConfigProductionSampling(t *testing.T) {
@@ -97,7 +127,9 @@ func TestSetupOTelSDKEnabled(t *testing.T) {
 		ServiceVersion: "1.0.0",
 		Environment:    "development",
 		Endpoint:       "",
+		Protocol:       ProtocolAuto,
 		SamplingRatio:  1.0,
+		Insecure:       false,
 		Disabled:       false,
 	}
 
@@ -123,7 +155,9 @@ func TestNewTracerProviderDevelopment(t *testing.T) {
 		ServiceVersion: "1.0.0",
 		Environment:    "development",
 		Endpoint:       "",
+		Protocol:       ProtocolAuto,
 		SamplingRatio:  1.0,
+		Insecure:       false,
 		Disabled:       false,
 	}
 
@@ -148,7 +182,9 @@ func TestNewTracerProviderProduction(t *testing.T) {
 		ServiceVersion: "1.0.0",
 		Environment:    "production",
 		Endpoint:       "",
+		Protocol:       ProtocolAuto,
 		SamplingRatio:  0.1,
+		Insecure:       false,
 		Disabled:       false,
 	}
 
@@ -166,6 +202,8 @@ func TestCreateExporterDevelopment(t *testing.T) {
 	config := &Config{
 		Environment: "development",
 		Endpoint:    "",
+		Protocol:    ProtocolAuto,
+		Insecure:    false,
 	}
 
 	exporter, err := createExporter(ctx, config)
@@ -182,6 +220,8 @@ func TestCreateExporterNoEndpoint(t *testing.T) {
 	config := &Config{
 		Environment: "production",
 		Endpoint:    "",
+		Protocol:    ProtocolAuto,
+		Insecure:    false,
 	}
 
 	exporter, err := createExporter(ctx, config)
@@ -199,6 +239,25 @@ func TestCreateExporterWithEndpoint(t *testing.T) {
 		Environment: "production",
 		Endpoint:    "http://localhost:4317",
 		Protocol:    ProtocolAuto,
+		Insecure:    false,
+	}
+
+	exporter, err := createExporter(ctx, config)
+	require.NoError(t, err)
+	assert.NotNil(t, exporter)
+
+	// Clean up
+	err = exporter.Shutdown(ctx)
+	assert.NoError(t, err)
+}
+
+func TestCreateExporterWithInsecure(t *testing.T) {
+	ctx := context.Background()
+	config := &Config{
+		Environment: "production",
+		Endpoint:    "http://localhost:4317",
+		Protocol:    ProtocolAuto,
+		Insecure:    true,
 	}
 
 	exporter, err := createExporter(ctx, config)
@@ -216,6 +275,7 @@ func TestCreateExporterWithAuthHeaders(t *testing.T) {
 		Environment: "production",
 		Endpoint:    "http://localhost:4317",
 		Protocol:    ProtocolAuto,
+		Insecure:    false,
 	}
 
 	// Set auth header
@@ -472,19 +532,24 @@ func TestHTTPEndpointNormalization(t *testing.T) {
 	tests := []struct {
 		name     string
 		endpoint string
+		insecure bool
 		expected string
 	}{
-		{"Basic HTTP endpoint", "http://localhost:4318", "http://localhost:4318/v1/traces"},
-		{"HTTP with path", "http://localhost:4318/v1/traces", "http://localhost:4318/v1/traces"},
-		{"HTTP without scheme", "localhost:4318", "http://localhost:4318/v1/traces"},
-		{"HTTP with trailing slash", "http://localhost:4318/", "http://localhost:4318/v1/traces"},
-		{"Docker internal HTTP", "host.docker.internal:4318", "http://host.docker.internal:4318/v1/traces"},
+		{"Basic HTTP endpoint", "http://localhost:4318", false, "http://localhost:4318/v1/traces"},
+		{"HTTP with path", "http://localhost:4318/v1/traces", false, "http://localhost:4318/v1/traces"},
+		{"HTTP without scheme - secure localhost", "localhost:4318", false, "http://localhost:4318/v1/traces"},
+		{"HTTP without scheme - insecure localhost", "localhost:4318", true, "http://localhost:4318/v1/traces"},
+		{"HTTP with trailing slash", "http://localhost:4318/", false, "http://localhost:4318/v1/traces"},
+		{"Docker internal HTTP - secure", "host.docker.internal:4318", false, "http://host.docker.internal:4318/v1/traces"},
+		{"Docker internal HTTP - insecure", "host.docker.internal:4318", true, "http://host.docker.internal:4318/v1/traces"},
+		{"Remote endpoint - secure", "collector.example.com:4318", false, "https://collector.example.com:4318/v1/traces"},
+		{"Remote endpoint - insecure", "collector.example.com:4318", true, "http://collector.example.com:4318/v1/traces"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeHTTPEndpoint(tt.endpoint)
-			assert.Equal(t, tt.expected, result, "HTTP endpoint normalization failed for: %s", tt.endpoint)
+			result := normalizeHTTPEndpoint(tt.endpoint, tt.insecure)
+			assert.Equal(t, tt.expected, result, "HTTP endpoint normalization failed for: %s (insecure=%v)", tt.endpoint, tt.insecure)
 		})
 	}
 }
@@ -545,6 +610,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 				Environment: "development",
 				Endpoint:    "localhost:4317",
 				Protocol:    ProtocolGRPC,
+				Insecure:    false,
 			},
 			false,
 			"Should create gRPC exporter",
@@ -555,6 +621,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 				Environment: "development",
 				Endpoint:    "localhost:4318",
 				Protocol:    ProtocolHTTP,
+				Insecure:    false,
 			},
 			false,
 			"Should create HTTP exporter",
@@ -565,6 +632,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 				Environment: "development",
 				Endpoint:    "localhost:4317",
 				Protocol:    ProtocolAuto,
+				Insecure:    false,
 			},
 			false,
 			"Should auto-detect gRPC",
@@ -575,9 +643,32 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 				Environment: "development",
 				Endpoint:    "localhost:4318",
 				Protocol:    ProtocolAuto,
+				Insecure:    false,
 			},
 			false,
 			"Should auto-detect HTTP",
+		},
+		{
+			"gRPC protocol with insecure",
+			&Config{
+				Environment: "production",
+				Endpoint:    "collector.example.com:4317",
+				Protocol:    ProtocolGRPC,
+				Insecure:    true,
+			},
+			false,
+			"Should create insecure gRPC exporter",
+		},
+		{
+			"HTTP protocol with insecure",
+			&Config{
+				Environment: "production",
+				Endpoint:    "collector.example.com:4318",
+				Protocol:    ProtocolHTTP,
+				Insecure:    true,
+			},
+			false,
+			"Should create insecure HTTP exporter",
 		},
 		{
 			"Invalid protocol",
@@ -585,6 +676,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 				Environment: "development",
 				Endpoint:    "localhost:4317",
 				Protocol:    ProtocolInvalid,
+				Insecure:    false,
 			},
 			true,
 			"Should fail with unsupported protocol",
