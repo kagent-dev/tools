@@ -722,7 +722,7 @@ func TestToolRegistrationValidation(t *testing.T) {
 			}()
 
 			// Wait for server to be ready
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 
 			// Verify registered tools
 			output := server.GetOutput()
