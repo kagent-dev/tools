@@ -13,6 +13,10 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
 
+.PHONY: clean
+clean:
+	rm -rf ./bin/kagent-tools-*
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
