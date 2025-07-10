@@ -35,6 +35,14 @@ KAgent Tools is committed to supporting the broader MCP ecosystem development. O
 
 ### 🎯 Priority 1: Core Architecture Improvements
 
+#### Observability (Complete by August 2025)
+- **Objective**: Provide robust observability features across all tools
+- **Key Features**:
+  - Metrics collection and export
+  - Distributed tracing support - OpenTelemetry
+  - Centralized and structured logging improvements
+- **Success Metrics**: Comprehensive metrics, tracing, and logging coverage for all tool operations
+
 #### Tool Provider Registry (Complete by August 2025)
 - **Objective**: Finish migration to new registry pattern for better maintainability
 - **Key Features**:
