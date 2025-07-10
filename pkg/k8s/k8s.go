@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kagent-dev/tools/pkg/logger"
-	"github.com/kagent-dev/tools/pkg/telemetry"
+	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -186,7 +186,7 @@ func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request mc
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to wait for curl pod: %v", err)), nil
 	}
 
-	// Execute curl command
+	// Execute kubectl command
 	return k.runKubectlCommand(ctx, []string{"exec", podName, "-n", namespace, "--", "curl", "-s", serviceName})
 }
 
@@ -459,12 +459,12 @@ func (k *K8sTool) handleGenerateResource(ctx context.Context, request mcp.CallTo
 func (k *K8sTool) runKubectlCommand(ctx context.Context, args []string) (*mcp.CallToolResult, error) {
 	ctx, span := telemetry.StartSpan(ctx, "k8s.kubectl_command",
 		attribute.StringSlice("k8s.kubectl.args", args),
-		attribute.String("k8s.kubectl.kubeconfig", k.kubeconfig),
+		attribute.String("k8s.kubectl.kubeconfig", utils.GetKubeconfig()),
 	)
 	defer span.End()
 
-	if k.kubeconfig != "" {
-		args = append([]string{"--kubeconfig", k.kubeconfig}, args...)
+	args = utils.AddKubeconfigArgs(args)
+	if utils.GetKubeconfig() != "" {
 		span.SetAttributes(attribute.Bool("k8s.kubectl.custom_kubeconfig", true))
 	}
 
@@ -481,7 +481,7 @@ func (k *K8sTool) runKubectlCommand(ctx context.Context, args []string) (*mcp.Ca
 }
 
 // RegisterK8sTools registers all k8s tools with the MCP server
-func RegisterK8sTools(s *server.MCPServer, kubeconfig string) {
+func RegisterTools(s *server.MCPServer) {
 	var llm llms.Model
 	if openAiClient, err := openai.New(); err == nil {
 		llm = openAiClient
@@ -489,7 +489,7 @@ func RegisterK8sTools(s *server.MCPServer, kubeconfig string) {
 		logger.Get().Error(err, "Failed to initialize OpenAI LLM, k8s_generate_resource tool will not be available")
 	}
 
-	k8sTool := NewK8sToolWithConfig(kubeconfig, llm)
+	k8sTool := NewK8sTool(llm)
 
 	s.AddTool(mcp.NewTool("k8s_get_resources",
 		mcp.WithDescription("Get Kubernetes resources using kubectl"),

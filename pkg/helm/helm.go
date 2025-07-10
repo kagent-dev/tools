@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kagent-dev/tools/pkg/telemetry"
+	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
-
-var kubeConfig = "" // Global variable to hold kubeconfig path
 
 // Helm list releases
 func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -77,9 +75,7 @@ func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*
 }
 
 func runHelmCommand(ctx context.Context, args []string) (string, error) {
-	if kubeConfig != "" {
-		args = append(args, "--kubeconfig", kubeConfig)
-	}
+	args = utils.AddKubeconfigArgs(args)
 	return utils.RunCommandWithContext(ctx, "helm", args)
 }
 
@@ -226,8 +222,7 @@ func handleHelmRepoUpdate(ctx context.Context, request mcp.CallToolRequest) (*mc
 }
 
 // Register Helm tools
-func RegisterHelmTools(s *server.MCPServer, kubeconfig string) {
-	kubeConfig = kubeconfig
+func RegisterTools(s *server.MCPServer) {
 
 	s.AddTool(mcp.NewTool("helm_list_releases",
 		mcp.WithDescription("List Helm releases in a namespace"),

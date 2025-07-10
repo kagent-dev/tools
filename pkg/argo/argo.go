@@ -13,15 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kagent-dev/tools/pkg/telemetry"
+	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 // Argo Rollouts tools
-
-var kubeConfig = ""
 
 func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ns := mcp.ParseString(request, "namespace", "argo-rollouts")
@@ -77,9 +75,7 @@ func handleVerifyKubectlPluginInstall(ctx context.Context, request mcp.CallToolR
 }
 
 func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
-	if kubeConfig != "" {
-		args = append(args, "--kubeconfig", kubeConfig)
-	}
+	args = utils.AddKubeconfigArgs(args)
 	return utils.RunCommandWithContext(ctx, "kubectl", args)
 }
 
@@ -349,8 +345,7 @@ func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(status.String()), nil
 }
 
-func RegisterArgoTools(s *server.MCPServer, kubeconfig string) {
-	kubeConfig = kubeconfig
+func RegisterTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("argo_verify_argo_rollouts_controller_install",
 		mcp.WithDescription("Verify that the Argo Rollouts controller is installed and running"),
 		mcp.WithString("namespace", mcp.Description("The namespace where Argo Rollouts is installed")),

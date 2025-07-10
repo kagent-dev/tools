@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/internal/version"
-	"github.com/kagent-dev/tools/pkg/logger"
-	"github.com/kagent-dev/tools/pkg/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 
 	"github.com/kagent-dev/tools/pkg/argo"
@@ -191,18 +191,19 @@ func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
 
 func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string) {
 
-	var toolProviderMap = map[string]func(*server.MCPServer, string){
-		"utils":      utils.RegisterDateTimeTools,
-		"k8s":        k8s.RegisterK8sTools,
-		"prometheus": prometheus.RegisterPrometheusTools,
-		"helm":       helm.RegisterHelmTools,
-		"istio":      istio.RegisterIstioTools,
-		"argo":       argo.RegisterArgoTools,
-		"cilium":     cilium.RegisterCiliumTools,
+	var toolProviderMap = map[string]func(*server.MCPServer){
+		"utils":      utils.RegisterTools,
+		"k8s":        k8s.RegisterTools,
+		"prometheus": prometheus.RegisterTools,
+		"helm":       helm.RegisterTools,
+		"istio":      istio.RegisterTools,
+		"argo":       argo.RegisterTools,
+		"cilium":     cilium.RegisterTools,
 	}
 
+	// Set the shared kubeconfig
 	if len(kubeconfig) > 0 {
-		logger.Get().Info("Using kubeconfig file", "path", kubeconfig)
+		utils.SetKubeconfig(kubeconfig)
 	}
 
 	// If no tools specified, register all tools
@@ -210,7 +211,7 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 		logger.Get().Info("No specific tools provided, registering all tools")
 		for toolProvider, registerFunc := range toolProviderMap {
 			logger.Get().Info("Registering tools", "provider", toolProvider)
-			registerFunc(mcp, kubeconfig)
+			registerFunc(mcp)
 		}
 		return
 	}
@@ -220,7 +221,7 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 	for _, toolProviderName := range enabledToolProviders {
 		if registerFunc, ok := toolProviderMap[strings.ToLower(toolProviderName)]; ok {
 			logger.Get().Info("Registering tool", "provider", toolProviderName)
-			registerFunc(mcp, kubeconfig)
+			registerFunc(mcp)
 		} else {
 			logger.Get().Error(nil, "Unknown tool specified", "provider", toolProviderName)
 		}

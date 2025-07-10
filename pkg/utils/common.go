@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kagent-dev/tools/pkg/logger"
+	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel"
@@ -16,6 +16,28 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 )
+
+// Kubeconfig is a shared global variable for kubeconfig path
+var Kubeconfig string
+
+// SetKubeconfig sets the global kubeconfig path
+func SetKubeconfig(path string) {
+	Kubeconfig = path
+	logger.Get().Info("Setting shared kubeconfig", "path", path)
+}
+
+// GetKubeconfig returns the global kubeconfig path
+func GetKubeconfig() string {
+	return Kubeconfig
+}
+
+// AddKubeconfigArgs adds kubeconfig arguments to command args if configured
+func AddKubeconfigArgs(args []string) []string {
+	if Kubeconfig != "" {
+		return append([]string{"--kubeconfig", Kubeconfig}, args...)
+	}
+	return args
+}
 
 // ShellExecutor defines the interface for executing shell commands
 type ShellExecutor interface {
@@ -331,7 +353,18 @@ func shellTool(ctx context.Context, params shellParams) (string, error) {
 	return RunCommandWithContext(ctx, cmd, args)
 }
 
-func RegisterCommonTools(s *server.MCPServer) {
+// handleGetCurrentDateTimeTool provides datetime functionality for both MCP and testing
+func handleGetCurrentDateTimeTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Returns the current date and time in ISO 8601 format (RFC3339)
+	// This matches the Python implementation: datetime.datetime.now().isoformat()
+	now := time.Now()
+	return mcp.NewToolResultText(now.Format(time.RFC3339)), nil
+}
+
+func RegisterTools(s *server.MCPServer) {
+	logger.Get().Info("RegisterTools initialized")
+
+	// Register shell tool
 	s.AddTool(mcp.NewTool("shell",
 		mcp.WithDescription("Execute shell commands"),
 		mcp.WithString("command", mcp.Description("The shell command to execute"), mcp.Required()),
@@ -349,6 +382,11 @@ func RegisterCommonTools(s *server.MCPServer) {
 
 		return mcp.NewToolResultText(result), nil
 	})
+
+	// Register datetime tool
+	s.AddTool(mcp.NewTool("datetime_get_current_time",
+		mcp.WithDescription("Returns the current date and time in ISO 8601 format."),
+	), handleGetCurrentDateTimeTool)
 
 	// Note: LLM Tool implementation would go here if needed
 }

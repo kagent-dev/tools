@@ -43,8 +43,12 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 	go mod tidy
 
 .PHONY: test
-test:
-	go test -v -cover ./...
+test: build lint
+	go test -v -cover ./pkg/... ./internal/...
+
+.PHONY: test-e2e
+test-e2e: test
+	go test -v -cover ./e2e/...
 
 bin/kagent-tools-linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd

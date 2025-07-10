@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kagent-dev/tools/pkg/telemetry"
+	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
-
-var kubeConfig = "" // Global variable to hold kubeconfig path
 
 // Istio proxy status
 func handleIstioProxyStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -37,9 +35,7 @@ func handleIstioProxyStatus(ctx context.Context, request mcp.CallToolRequest) (*
 }
 
 func runIstioCtl(ctx context.Context, args []string) (string, error) {
-	if kubeConfig != "" {
-		args = append(args, "--kubeconfig", kubeConfig)
-	}
+	args = utils.AddKubeconfigArgs(args)
 	result, err := utils.RunCommandWithContext(ctx, "istioctl", args)
 	return result, err
 }
@@ -299,8 +295,7 @@ func handleZtunnelConfig(ctx context.Context, request mcp.CallToolRequest) (*mcp
 }
 
 // Register Istio tools
-func RegisterIstioTools(s *server.MCPServer, kubeconfig string) {
-	kubeConfig = kubeconfig
+func RegisterTools(s *server.MCPServer) {
 
 	// Istio proxy status
 	s.AddTool(mcp.NewTool("istio_proxy_status",

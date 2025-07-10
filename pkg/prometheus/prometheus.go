@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/kagent-dev/tools/pkg/telemetry"
+	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -203,7 +203,7 @@ func handlePrometheusTargetsQueryTool(ctx context.Context, request mcp.CallToolR
 	return mcp.NewToolResultText(string(prettyJSON)), nil
 }
 
-func RegisterPrometheusTools(s *server.MCPServer, kubeconfig string) {
+func RegisterTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("prometheus_query_tool",
 		mcp.WithDescription("Execute a PromQL query against Prometheus"),
 		mcp.WithString("query", mcp.Description("PromQL query to execute"), mcp.Required()),
