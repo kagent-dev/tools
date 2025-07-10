@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/errors"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
@@ -86,21 +87,23 @@ func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*
 }
 
 func runHelmCommand(ctx context.Context, args []string) (string, error) {
-	args = utils.AddKubeconfigArgs(args)
-	result, err := utils.RunCommandWithContext(ctx, "helm", args)
+	kubeconfigPath := utils.GetKubeconfig()
+	result, err := commands.NewCommandBuilder("helm").
+		WithArgs(args...).
+		WithKubeconfig(kubeconfigPath).
+		Execute(ctx)
+
 	if err != nil {
-		// Create structured error with context
-		toolErr := errors.NewHelmError(strings.Join(args, " "), err).
-			WithContext("helm_args", args).
-			WithContext("kubeconfig", utils.GetKubeconfig())
-
-		// Add operation context
-		if len(args) > 0 {
-			toolErr = toolErr.WithContext("helm_operation", args[0])
+		if toolErr, ok := err.(*errors.ToolError); ok {
+			if len(args) > 0 {
+				toolErr = toolErr.WithContext("helm_operation", args[0])
+			}
+			toolErr = toolErr.WithContext("helm_args", args)
+			return "", toolErr
 		}
-
-		return "", toolErr
+		return "", err
 	}
+
 	return result, nil
 }
 
@@ -120,7 +123,7 @@ func handleHelmGetRelease(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 	args := []string{"get", resource, name, "-n", namespace}
 
-	result, err := utils.RunCommandWithContext(ctx, "helm", args)
+	result, err := runHelmCommand(ctx, args)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Helm get command failed: %v", err)), nil
 	}
@@ -197,7 +200,7 @@ func handleHelmUpgradeRelease(ctx context.Context, request mcp.CallToolRequest) 
 		args = append(args, "--wait")
 	}
 
-	result, err := utils.RunCommandWithContext(ctx, "helm", args)
+	result, err := runHelmCommand(ctx, args)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Helm upgrade command failed: %v", err)), nil
 	}
@@ -226,7 +229,7 @@ func handleHelmUninstall(ctx context.Context, request mcp.CallToolRequest) (*mcp
 		args = append(args, "--wait")
 	}
 
-	result, err := utils.RunCommandWithContext(ctx, "helm", args)
+	result, err := runHelmCommand(ctx, args)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Helm uninstall command failed: %v", err)), nil
 	}
@@ -255,7 +258,7 @@ func handleHelmRepoAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 
 	args := []string{"repo", "add", name, url}
 
-	result, err := utils.RunCommandWithContext(ctx, "helm", args)
+	result, err := runHelmCommand(ctx, args)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Helm repo add command failed: %v", err)), nil
 	}
@@ -267,7 +270,7 @@ func handleHelmRepoAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 func handleHelmRepoUpdate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := []string{"repo", "update"}
 
-	result, err := utils.RunCommandWithContext(ctx, "helm", args)
+	result, err := runHelmCommand(ctx, args)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Helm repo update command failed: %v", err)), nil
 	}

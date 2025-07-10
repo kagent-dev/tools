@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -75,8 +76,11 @@ func handleVerifyKubectlPluginInstall(ctx context.Context, request mcp.CallToolR
 }
 
 func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
-	args = utils.AddKubeconfigArgs(args)
-	return utils.RunCommandWithContext(ctx, "kubectl", args)
+	kubeconfigPath := utils.GetKubeconfig()
+	return commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(kubeconfigPath).
+		Execute(ctx)
 }
 
 func handlePromoteRollout(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -264,11 +268,12 @@ data:
 	tmpFile.Close()
 
 	// Apply the ConfigMap
-	_, err = utils.RunCommandWithContext(ctx, "kubectl", []string{"apply", "-f", tmpFile.Name()})
+	cmdArgs := []string{"apply", "-f", tmpFile.Name()}
+	output, err := runArgoRolloutCommand(ctx, cmdArgs)
 	if err != nil {
 		return GatewayPluginStatus{
 			Installed:    false,
-			ErrorMessage: fmt.Sprintf("Failed to configure Gateway API plugin: %s", err.Error()),
+			ErrorMessage: fmt.Sprintf("Error applying Gateway API plugin config: %s. Output: %s", err.Error(), output),
 		}
 	}
 

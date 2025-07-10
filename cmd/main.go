@@ -7,18 +7,18 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/kagent-dev/tools/internal/config"
 	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/internal/version"
 	"github.com/kagent-dev/tools/pkg/utils"
-
-	"runtime"
 
 	"github.com/kagent-dev/tools/pkg/argo"
 	"github.com/kagent-dev/tools/pkg/cilium"
@@ -80,17 +80,16 @@ func run(cmd *cobra.Command, args []string) {
 	defer cancel()
 
 	// Initialize OpenTelemetry tracing
-	otelConfig := telemetry.LoadConfig()
-	otelConfig.ServiceVersion = Version
+	cfg := config.Load()
 
-	otelShutdown, err := telemetry.SetupOTelSDK(ctx, otelConfig)
+	otelShutdown, err := telemetry.SetupOTelSDK(ctx)
 	if err != nil {
-		logger.Get().Error(err, "Failed to setup OpenTelemetry SDK")
+		logger.Get().Error("Failed to setup OpenTelemetry SDK", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		if err := otelShutdown(ctx); err != nil {
-			logger.Get().Error(err, "Failed to shutdown OpenTelemetry SDK")
+			logger.Get().Error("Failed to shutdown OpenTelemetry SDK", "error", err)
 		}
 	}()
 
@@ -101,7 +100,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	rootSpan.SetAttributes(
 		attribute.String("server.name", Name),
-		attribute.String("server.version", Version),
+		attribute.String("server.version", cfg.Telemetry.ServiceVersion),
 		attribute.String("server.git_commit", GitCommit),
 		attribute.String("server.build_date", BuildDate),
 		attribute.Bool("server.stdio_mode", stdio),
@@ -146,7 +145,7 @@ func run(cmd *cobra.Command, args []string) {
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			if err := writeResponse(w, []byte("OK")); err != nil {
-				logger.Get().Error(err, "Failed to write health response")
+				logger.Get().Error("Failed to write health response", "error", err)
 			}
 		})
 
@@ -158,7 +157,7 @@ func run(cmd *cobra.Command, args []string) {
 			// Generate real runtime metrics instead of hardcoded values
 			metrics := generateRuntimeMetrics()
 			if err := writeResponse(w, []byte(metrics)); err != nil {
-				logger.Get().Error(err, "Failed to write metrics response")
+				logger.Get().Error("Failed to write metrics response", "error", err)
 			}
 		})
 
@@ -171,7 +170,7 @@ func run(cmd *cobra.Command, args []string) {
 				// This shouldn't happen due to the specific handlers above, but just in case
 				w.WriteHeader(http.StatusOK)
 				if err := writeResponse(w, []byte("OK")); err != nil {
-					logger.Get().Error(err, "Failed to write fallback response")
+					logger.Get().Error("Failed to write fallback response", "error", err)
 				}
 			}
 		})
@@ -186,7 +185,7 @@ func run(cmd *cobra.Command, args []string) {
 			logger.Get().Info("Running KAgent Tools Server", "port", fmt.Sprintf(":%d", port), "tools", strings.Join(tools, ","))
 			if err := httpServer.ListenAndServe(); err != nil {
 				if !errors.Is(err, http.ErrServerClosed) {
-					logger.Get().Error(err, "Failed to start HTTP server")
+					logger.Get().Error("Failed to start HTTP server", "error", err)
 				} else {
 					logger.Get().Info("HTTP server closed gracefully.")
 				}
@@ -211,7 +210,7 @@ func run(cmd *cobra.Command, args []string) {
 			defer shutdownCancel()
 
 			if err := httpServer.Shutdown(shutdownCtx); err != nil {
-				logger.Get().Error(err, "Failed to shutdown server gracefully")
+				logger.Get().Error("Failed to shutdown server gracefully", "error", err)
 				rootSpan.RecordError(err)
 				rootSpan.SetStatus(codes.Error, "Server shutdown failed")
 			} else {
@@ -281,40 +280,28 @@ func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
 }
 
 func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string) {
-
-	var toolProviderMap = map[string]func(*server.MCPServer){
-		"utils":      utils.RegisterTools,
-		"k8s":        k8s.RegisterTools,
-		"prometheus": prometheus.RegisterTools,
-		"helm":       helm.RegisterTools,
-		"istio":      istio.RegisterTools,
+	// A map to hold tool providers and their registration functions
+	toolProviderMap := map[string]func(*server.MCPServer){
 		"argo":       argo.RegisterTools,
 		"cilium":     cilium.RegisterTools,
+		"helm":       helm.RegisterTools,
+		"istio":      istio.RegisterTools,
+		"k8s":        func(s *server.MCPServer) { k8s.RegisterTools(s, nil, kubeconfig) },
+		"prometheus": prometheus.RegisterTools,
+		"utils":      utils.RegisterTools,
 	}
 
-	// Set the shared kubeconfig
-	if len(kubeconfig) > 0 {
-		utils.SetKubeconfig(kubeconfig)
-	}
-
-	// If no tools specified, register all tools
+	// If no specific tools are specified, register all available tools.
 	if len(enabledToolProviders) == 0 {
-		logger.Get().Info("No specific tools provided, registering all tools")
-		for toolProvider, registerFunc := range toolProviderMap {
-			logger.Get().Info("Registering tools", "provider", toolProvider)
-			registerFunc(mcp)
+		for name := range toolProviderMap {
+			enabledToolProviders = append(enabledToolProviders, name)
 		}
-		return
 	}
-
-	// Register only the specified tools
-	logger.Get().Info("provider list", "tools", enabledToolProviders)
 	for _, toolProviderName := range enabledToolProviders {
-		if registerFunc, ok := toolProviderMap[strings.ToLower(toolProviderName)]; ok {
-			logger.Get().Info("Registering tool", "provider", toolProviderName)
+		if registerFunc, ok := toolProviderMap[toolProviderName]; ok {
 			registerFunc(mcp)
 		} else {
-			logger.Get().Error(nil, "Unknown tool specified", "provider", toolProviderName)
+			logger.Get().Error("Unknown tool specified", "provider", toolProviderName)
 		}
 	}
 }

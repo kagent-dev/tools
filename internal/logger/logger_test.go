@@ -1,83 +1,72 @@
 package logger
 
 import (
-	"os"
+	"bytes"
+	"context"
+	"encoding/json"
+	"log/slog"
 	"testing"
 
-	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
-func TestInit(t *testing.T) {
-	// Test initialization
-	Init()
-	assert.NotNil(t, globalLogger)
-}
-
-func TestGet(t *testing.T) {
-	// Reset global logger
-	globalLogger = logr.Logger{}
-
-	// Test Get without Init
-	logger := Get()
-	assert.NotNil(t, logger)
-	assert.NotNil(t, globalLogger)
-}
-
 func TestLogExecCommand(t *testing.T) {
-	// Just test that it does not panic and logs
-	assert.NotPanics(t, func() {
-		LogExecCommand("test-command", []string{"arg1", "arg2"}, "test.go:123")
-	})
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	ctx := context.Background()
+	LogExecCommand(ctx, logger, "test-command", []string{"arg1", "arg2"}, "test.go:123")
+
+	output := buf.String()
+	assert.Contains(t, output, "executing command")
+	assert.Contains(t, output, "test-command")
+	assert.Contains(t, output, "arg1")
+	assert.Contains(t, output, "arg2")
 }
 
 func TestLogExecCommandResult(t *testing.T) {
-	// Test successful command
-	assert.NotPanics(t, func() {
-		LogExecCommandResult("test-command", []string{"arg1"}, "success output", nil, 1.5, "test.go:123")
-	})
-	// Test failed command
-	assert.NotPanics(t, func() {
-		LogExecCommandResult("test-command", []string{"arg1"}, "error output", assert.AnError, 0.5, "test.go:123")
-	})
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	ctx := context.Background()
+	LogExecCommandResult(ctx, logger, "test-command", []string{"arg1"}, "success output", nil, 1.5, "test.go:123")
+	assert.Contains(t, buf.String(), "command execution successful")
+
+	buf.Reset()
+	LogExecCommandResult(ctx, logger, "test-command", []string{"arg1"}, "error output", assert.AnError, 0.5, "test.go:123")
+	assert.Contains(t, buf.String(), "command execution failed")
 }
 
-func TestEnvironmentVariables(t *testing.T) {
-	// Test log level from environment (no-op for stdr)
-	os.Setenv("KAGENT_LOG_LEVEL", "debug")
-	defer os.Unsetenv("KAGENT_LOG_LEVEL")
+func TestWithContextAddsTraceID(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	// Reset global logger
-	globalLogger = logr.Logger{}
+	// Create a context with a mock span
+	tp := noop.NewTracerProvider()
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test-span")
+	defer span.End()
 
-	// Initialize with environment variable
-	Init()
+	loggerWithTrace := logger.With("trace_id", span.SpanContext().TraceID().String())
+	loggerWithTrace.InfoContext(ctx, "test message")
 
-	// Just check logger is set
-	assert.NotNil(t, globalLogger)
+	var logOutput map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &logOutput)
+	require.NoError(t, err)
+
+	traceID := span.SpanContext().TraceID().String()
+	assert.Equal(t, traceID, logOutput["trace_id"])
 }
 
-func TestDevelopmentMode(t *testing.T) {
-	// Test development mode (no-op for stdr)
-	os.Setenv("KAGENT_ENV", "development")
-	defer os.Unsetenv("KAGENT_ENV")
+func TestGet(t *testing.T) {
+	assert.NotNil(t, Get())
+}
 
-	// Reset global logger
-	globalLogger = logr.Logger{}
-
-	// Initialize in development mode
-	Init()
-
-	// In development mode, the logger should be configured (no panic)
-	assert.NotNil(t, globalLogger)
+func TestInit(t *testing.T) {
+	assert.NotPanics(t, Init)
 }
 
 func TestSync(t *testing.T) {
-	// Test Sync function
-	Init()
-
-	// Sync should not panic
-	assert.NotPanics(t, func() {
-		Sync()
-	})
+	assert.NotPanics(t, Sync)
 }

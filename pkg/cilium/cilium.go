@@ -3,8 +3,8 @@ package cilium
 import (
 	"context"
 	"fmt"
-	"strings"
 
+	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 
@@ -13,8 +13,11 @@ import (
 )
 
 func runCiliumCliWithContext(ctx context.Context, args ...string) (string, error) {
-	args = utils.AddKubeconfigArgs(args)
-	return utils.RunCommandWithContext(ctx, "cilium", args)
+	kubeconfigPath := utils.GetKubeconfig()
+	return commands.NewCommandBuilder("cilium").
+		WithArgs(args...).
+		WithKubeconfig(kubeconfigPath).
+		Execute(ctx)
 }
 
 func handleCiliumStatusAndVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -570,18 +573,12 @@ func RegisterTools(s *server.MCPServer) {
 // -- Debug Tools --
 
 func getCiliumPodNameWithContext(ctx context.Context, nodeName string) (string, error) {
-	args := []string{"get", "pod", "-l", "k8s-app=cilium", "-o", "name", "-n", "kube-system"}
-	if nodeName != "" {
-		args = append(args, "--field-selector", "spec.nodeName="+nodeName)
-	}
-	podName, err := utils.RunCommandWithContext(ctx, "kubectl", args)
-	if err != nil {
-		return "", fmt.Errorf("failed to get cilium pod name: %v", err)
-	}
-	if podName == "" {
-		return "", fmt.Errorf("no cilium pod found")
-	}
-	return strings.TrimSpace(podName), nil
+	args := []string{"get", "pods", "-n", "kube-system", "--selector=k8s-app=cilium", fmt.Sprintf("--field-selector=spec.nodeName=%s", nodeName), "-o", "jsonpath={.items[0].metadata.name}"}
+	kubeconfigPath := utils.GetKubeconfig()
+	return commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(kubeconfigPath).
+		Execute(ctx)
 }
 
 func runCiliumDbgCommand(ctx context.Context, command, nodeName string) (string, error) {
@@ -593,10 +590,12 @@ func runCiliumDbgCommandWithContext(ctx context.Context, command, nodeName strin
 	if err != nil {
 		return "", err
 	}
-	cmdParts := strings.Fields(command)
-	args := []string{"exec", "-it", podName, "-n", "kube-system", "--", "cilium-dbg"}
-	args = append(args, cmdParts...)
-	return utils.RunCommandWithContext(ctx, "kubectl", args)
+	args := []string{"exec", "-it", podName, "--", "cilium-dbg", command}
+	kubeconfigPath := utils.GetKubeconfig()
+	return commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(kubeconfigPath).
+		Execute(ctx)
 }
 
 func handleGetEndpointDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -141,7 +141,7 @@ func (c *Cache) SetWithTTL(key string, value interface{}, ttl time.Duration) {
 
 	c.data[key] = entry
 
-	logger.Get().V(1).Info("Cache set", "key", key, "ttl", ttl)
+	logger.Get().Debug("Cache set", "key", key, "ttl", ttl)
 }
 
 // Delete removes a value from the cache
@@ -152,7 +152,7 @@ func (c *Cache) Delete(key string) {
 	if _, exists := c.data[key]; exists {
 		delete(c.data, key)
 		c.size.Add(context.Background(), -1)
-		logger.Get().V(1).Info("Cache delete", "key", key)
+		logger.Get().Debug("Cache delete", "key", key)
 	}
 }
 
@@ -249,7 +249,7 @@ func (c *Cache) performCleanup() {
 		}
 
 		c.size.Add(context.Background(), -int64(len(keysToDelete)))
-		logger.Get().V(1).Info("Cache cleanup", "expired_items", len(keysToDelete))
+		logger.Get().Debug("Cache cleanup", "expired_items", len(keysToDelete))
 	}
 }
 
@@ -269,7 +269,7 @@ func (c *Cache) evictLRU() {
 		delete(c.data, oldestKey)
 		c.evictions.Add(context.Background(), 1)
 		c.size.Add(context.Background(), -1)
-		logger.Get().V(1).Info("Cache LRU eviction", "key", oldestKey)
+		logger.Get().Debug("Cache LRU eviction", "key", oldestKey)
 	}
 }
 

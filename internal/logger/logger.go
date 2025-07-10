@@ -1,30 +1,49 @@
 package logger
 
 import (
-	"github.com/go-logr/logr"
-	"github.com/go-logr/stdr"
+	"context"
+	"log/slog"
+	"os"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
-var globalLogger logr.Logger
+var globalLogger *slog.Logger
 
-// Init initializes the global logger with appropriate configuration
 func Init() {
-	// Set log level from environment variable (not directly supported by stdr, but can be extended)
-	// For now, just use stdr with default settings
-	globalLogger = stdr.New(nil)
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}
+
+	if os.Getenv("KAGENT_LOG_FORMAT") == "json" {
+		globalLogger = slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	} else {
+		globalLogger = slog.New(slog.NewTextHandler(os.Stdout, opts))
+	}
+
+	slog.SetDefault(globalLogger)
 }
 
-// Get returns the global logger instance
-func Get() logr.Logger {
-	if globalLogger.GetSink() == nil {
+func Get() *slog.Logger {
+	if globalLogger == nil {
 		Init()
 	}
 	return globalLogger
 }
 
-// LogExecCommand logs information about an exec command being executed
-func LogExecCommand(command string, args []string, caller string) {
+func WithContext(ctx context.Context) *slog.Logger {
 	logger := Get()
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		logger = logger.With(
+			"trace_id", span.SpanContext().TraceID().String(),
+			"span_id", span.SpanContext().SpanID().String(),
+		)
+	}
+	return logger
+}
+
+func LogExecCommand(ctx context.Context, logger *slog.Logger, command string, args []string, caller string) {
 	logger.Info("executing command",
 		"command", command,
 		"args", args,
@@ -32,14 +51,12 @@ func LogExecCommand(command string, args []string, caller string) {
 	)
 }
 
-// LogExecCommandResult logs the result of an exec command
-func LogExecCommandResult(command string, args []string, output string, err error, duration float64, caller string) {
-	logger := Get()
-
+func LogExecCommandResult(ctx context.Context, logger *slog.Logger, command string, args []string, output string, err error, duration float64, caller string) {
 	if err != nil {
-		logger.Error(err, "command execution failed",
+		logger.Error("command execution failed",
 			"command", command,
 			"args", args,
+			"error", err.Error(),
 			"duration_seconds", duration,
 			"caller", caller,
 		)
@@ -54,5 +71,6 @@ func LogExecCommandResult(command string, args []string, output string, err erro
 	}
 }
 
-// Sync is a no-op for logr/stdr
-func Sync() {}
+func Sync() {
+	// No-op for slog, but kept for compatibility
+}

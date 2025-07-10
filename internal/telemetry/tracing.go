@@ -5,18 +5,33 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kagent-dev/tools/internal/config"
+	"github.com/kagent-dev/tools/internal/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace/noop"
+)
+
+// Environment variable keys for telemetry configuration
+const (
+	OtelServiceName          = "OTEL_SERVICE_NAME"
+	OtelServiceVersion       = "OTEL_SERVICE_VERSION"
+	OtelEnvironment          = "OTEL_ENVIRONMENT"
+	OtelExporterOtlpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	OtelExporterOtlpProtocol = "OTEL_EXPORTER_OTLP_PROTOCOL"
+	OtelTracesSamplerArg     = "OTEL_TRACES_SAMPLER_ARG"
+	OtelExporterOtlpInsecure = "OTEL_EXPORTER_OTLP_TRACES_INSECURE"
+	OtelSdkDisabled          = "OTEL_SDK_DISABLED"
+	OtelExporterOtlpHeaders  = "OTEL_EXPORTER_OTLP_HEADERS"
 )
 
 // Protocol constants for OTLP exporters
@@ -26,121 +41,98 @@ const (
 	ProtocolAuto = "auto"
 )
 
-type Config struct {
-	ServiceName    string
-	ServiceVersion string
-	Environment    string
-	Endpoint       string
-	Protocol       string // ProtocolGRPC, ProtocolHTTP, or ProtocolAuto (default)
-	SamplingRatio  float64
-	Insecure       bool
-	Disabled       bool
-}
+// SetupOTelSDK initializes the OpenTelemetry SDK
+func SetupOTelSDK(ctx context.Context) (shutdown func(context.Context) error, err error) {
+	log := logger.WithContext(ctx)
+	cfg := config.Load()
+	telemetryConfig := cfg.Telemetry
 
-func LoadConfig() *Config {
-	config := &Config{
-		ServiceName:    getEnv("OTEL_SERVICE_NAME", "kagent-tools"),
-		ServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
-		Environment:    getEnv("OTEL_ENVIRONMENT", "development"),
-		Endpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
-		Protocol:       getEnv("OTEL_EXPORTER_OTLP_PROTOCOL", ProtocolAuto),
-		SamplingRatio:  getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 1),
-		Insecure:       getEnvBool("OTEL_EXPORTER_OTLP_TRACES_INSECURE", false),
-		Disabled:       getEnvBool("OTEL_SDK_DISABLED", false),
-	}
-
-	if config.Environment == "development" {
-		config.SamplingRatio = 1.0
-	}
-
-	return config
-}
-
-func SetupOTelSDK(ctx context.Context, config *Config) (shutdown func(context.Context) error, err error) {
-	if config.Disabled {
+	// If tracing is disabled, set a no-op tracer provider and return.
+	// This prevents further initialization and ensures no traces are exported.
+	if cfg.Telemetry.Disabled {
+		otel.SetTracerProvider(noop.NewTracerProvider())
 		return func(context.Context) error { return nil }, nil
 	}
 
 	res, err := resource.New(ctx,
+		resource.WithDetectors(), // Detectors for cloud provider, k8s, etc.
 		resource.WithAttributes(
-			semconv.ServiceName(config.ServiceName),
-			semconv.ServiceVersion(config.ServiceVersion),
-			semconv.DeploymentEnvironment(config.Environment),
+			semconv.ServiceNameKey.String(telemetryConfig.ServiceName),
+			semconv.ServiceVersionKey.String(telemetryConfig.ServiceVersion),
+			semconv.DeploymentEnvironmentKey.String(telemetryConfig.Environment),
 		),
 	)
 	if err != nil {
+		log.Error("failed to create resource", "error", err)
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	prop := propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	)
+	// Set up propagator
+	prop := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 	otel.SetTextMapPropagator(prop)
 
-	tracerProvider, err := newTracerProvider(ctx, res, config)
+	exporter, err := createExporter(ctx, &telemetryConfig)
 	if err != nil {
+		log.Error("failed to create exporter", "error", err)
+		return nil, fmt.Errorf("failed to create exporter: %w", err)
+	}
+
+	// Set up trace provider
+	tracerProvider, err := newTracerProvider(ctx, &telemetryConfig, exporter, res)
+	if err != nil {
+		log.Error("failed to create tracer provider", "error", err)
 		return nil, fmt.Errorf("failed to create tracer provider: %w", err)
 	}
 	otel.SetTracerProvider(tracerProvider)
 
+	log.Info("OpenTelemetry SDK successfully initialized")
 	return tracerProvider.Shutdown, nil
 }
 
-func newTracerProvider(ctx context.Context, res *resource.Resource, config *Config) (*trace.TracerProvider, error) {
-	exporter, err := createExporter(ctx, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exporter: %w", err)
+// newTracerProvider creates a new trace provider
+func newTracerProvider(ctx context.Context, cfg *config.Telemetry, exporter sdktrace.SpanExporter, res *resource.Resource) (*sdktrace.TracerProvider, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	sampler := trace.TraceIDRatioBased(config.SamplingRatio)
-	if config.Environment == "development" {
-		sampler = trace.AlwaysSample()
+	sampler := sdktrace.TraceIDRatioBased(cfg.SamplingRatio)
+	if cfg.Environment == "development" {
+		// In development, always sample for better debugging
+		sampler = sdktrace.AlwaysSample()
 	}
 
-	batchTimeout := time.Second * 5
-	maxExportBatchSize := 512
-	maxQueueSize := 2048
-
-	if config.Environment == "development" {
-		batchTimeout = time.Second * 1
-		maxExportBatchSize = 256
-		maxQueueSize = 1024
-	}
-
-	tp := trace.NewTracerProvider(
-		trace.WithBatcher(exporter,
-			trace.WithBatchTimeout(batchTimeout),
-			trace.WithMaxExportBatchSize(maxExportBatchSize),
-			trace.WithMaxQueueSize(maxQueueSize),
-		),
-		trace.WithResource(res),
-		trace.WithSampler(sampler),
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sampler),
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
 	)
-
 	return tp, nil
 }
 
-func createExporter(ctx context.Context, config *Config) (trace.SpanExporter, error) {
-	if config.Environment == "development" && config.Endpoint == "" {
+// createExporter creates a OTLP exporter
+func createExporter(ctx context.Context, cfg *config.Telemetry) (sdktrace.SpanExporter, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if cfg.Environment == "development" && cfg.Endpoint == "" {
 		return stdouttrace.New(stdouttrace.WithPrettyPrint())
 	}
 
-	if config.Endpoint == "" {
+	if cfg.Endpoint == "" {
 		return stdouttrace.New(stdouttrace.WithPrettyPrint())
 	}
 
 	// Determine protocol
-	protocol := config.Protocol
+	protocol := cfg.Protocol
 	if protocol == ProtocolAuto || protocol == "" {
-		protocol = detectProtocol(config.Endpoint)
+		protocol = detectProtocol(cfg.Endpoint)
 	}
 
 	switch strings.ToLower(protocol) {
 	case ProtocolGRPC:
-		return createGRPCExporter(ctx, config)
+		return createGRPCExporter(ctx, cfg)
 	case ProtocolHTTP:
-		return createHTTPExporter(ctx, config)
+		return createHTTPExporter(ctx, cfg)
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %s (supported: %s, %s)", protocol, ProtocolGRPC, ProtocolHTTP)
 	}
@@ -182,18 +174,18 @@ func detectProtocol(endpoint string) string {
 }
 
 // createGRPCExporter creates a gRPC OTLP exporter
-func createGRPCExporter(ctx context.Context, config *Config) (trace.SpanExporter, error) {
+func createGRPCExporter(ctx context.Context, cfg *config.Telemetry) (sdktrace.SpanExporter, error) {
 	opts := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(normalizeGRPCEndpoint(config.Endpoint)),
+		otlptracegrpc.WithEndpoint(normalizeGRPCEndpoint(cfg.Endpoint)),
 		otlptracegrpc.WithTimeout(30 * time.Second),
 	}
 
-	// Use insecure connection if explicitly configured or for development/localhost
-	if config.Insecure || config.Environment == "development" || strings.Contains(config.Endpoint, "localhost") || strings.Contains(config.Endpoint, "127.0.0.1") {
+	// Use insecure connection if explicitly configured
+	if cfg.Insecure {
 		opts = append(opts, otlptracegrpc.WithInsecure())
 	}
 
-	if authToken := getEnv("OTEL_EXPORTER_OTLP_HEADERS", ""); authToken != "" {
+	if authToken := os.Getenv(OtelExporterOtlpHeaders); authToken != "" {
 		opts = append(opts, otlptracegrpc.WithHeaders(parseHeaders(authToken)))
 	}
 
@@ -201,18 +193,18 @@ func createGRPCExporter(ctx context.Context, config *Config) (trace.SpanExporter
 }
 
 // createHTTPExporter creates an HTTP OTLP exporter
-func createHTTPExporter(ctx context.Context, config *Config) (trace.SpanExporter, error) {
+func createHTTPExporter(ctx context.Context, cfg *config.Telemetry) (sdktrace.SpanExporter, error) {
 	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpointURL(normalizeHTTPEndpoint(config.Endpoint, config.Insecure)),
+		otlptracehttp.WithEndpointURL(normalizeHTTPEndpoint(cfg.Endpoint, cfg.Insecure)),
 		otlptracehttp.WithTimeout(30 * time.Second),
 	}
 
 	// Use insecure connection if explicitly configured
-	if config.Insecure {
+	if cfg.Insecure {
 		opts = append(opts, otlptracehttp.WithInsecure())
 	}
 
-	if authToken := getEnv("OTEL_EXPORTER_OTLP_HEADERS", ""); authToken != "" {
+	if authToken := os.Getenv(OtelExporterOtlpHeaders); authToken != "" {
 		opts = append(opts, otlptracehttp.WithHeaders(parseHeaders(authToken)))
 	}
 
@@ -221,14 +213,16 @@ func createHTTPExporter(ctx context.Context, config *Config) (trace.SpanExporter
 
 // normalizeGRPCEndpoint normalizes the endpoint for gRPC usage
 func normalizeGRPCEndpoint(endpoint string) string {
-	// Remove http:// or https:// prefix for gRPC
-	endpoint = strings.TrimPrefix(endpoint, "http://")
-	endpoint = strings.TrimPrefix(endpoint, "https://")
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		return endpoint
+	}
 
-	// Remove /v1/traces suffix if present
-	endpoint = strings.TrimSuffix(endpoint, "/v1/traces")
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint // Should not happen with the check above, but as a safeguard
+	}
 
-	return endpoint
+	return u.Host + u.Path
 }
 
 // normalizeHTTPEndpoint normalizes the endpoint for HTTP usage
@@ -251,45 +245,13 @@ func normalizeHTTPEndpoint(endpoint string, insecure bool) string {
 	return endpoint
 }
 
-// parseHeaders parses header string into map
-func parseHeaders(headerStr string) map[string]string {
-	headers := make(map[string]string)
-	if headerStr == "" {
-		return headers
-	}
-
-	// Simple parsing - expect "key=value,key2=value2" format
-	pairs := strings.Split(headerStr, ",")
-	for _, pair := range pairs {
-		if parts := strings.SplitN(strings.TrimSpace(pair), "=", 2); len(parts) == 2 {
-			headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+// parseHeaders parses a comma-separated string of headers into a map
+func parseHeaders(headers string) map[string]string {
+	headerMap := make(map[string]string)
+	for _, h := range strings.Split(headers, ",") {
+		if parts := strings.SplitN(h, "=", 2); len(parts) == 2 {
+			headerMap[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
 	}
-
-	return headers
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvFloat(key string, defaultValue float64) float64 {
-	if value := os.Getenv(key); value != "" {
-		if f, err := strconv.ParseFloat(value, 64); err == nil {
-			return f
-		}
-	}
-	return defaultValue
-}
-
-func getEnvBool(key string, defaultValue bool) bool {
-	if value := os.Getenv(key); value != "" {
-		if b, err := strconv.ParseBool(value); err == nil {
-			return b
-		}
-	}
-	return defaultValue
+	return headerMap
 }

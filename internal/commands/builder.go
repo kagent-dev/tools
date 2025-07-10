@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/cache"
+	"github.com/kagent-dev/tools/internal/cmd"
 	"github.com/kagent-dev/tools/internal/errors"
 	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/security"
-	"github.com/kagent-dev/tools/pkg/utils"
 )
 
 // CommandBuilder provides a fluent interface for building CLI commands
@@ -80,7 +80,7 @@ func (cb *CommandBuilder) WithArgs(args ...string) *CommandBuilder {
 // WithNamespace sets the namespace
 func (cb *CommandBuilder) WithNamespace(namespace string) *CommandBuilder {
 	if err := security.ValidateNamespace(namespace); err != nil {
-		logger.Get().Error(err, "Invalid namespace", "namespace", namespace)
+		logger.Get().Error("Invalid namespace", "namespace", namespace, "error", err)
 		return cb
 	}
 	cb.namespace = namespace
@@ -90,7 +90,7 @@ func (cb *CommandBuilder) WithNamespace(namespace string) *CommandBuilder {
 // WithContext sets the Kubernetes context
 func (cb *CommandBuilder) WithContext(context string) *CommandBuilder {
 	if err := security.ValidateCommandInput(context); err != nil {
-		logger.Get().Error(err, "Invalid context", "context", context)
+		logger.Get().Error("Invalid context", "context", context, "error", err)
 		return cb
 	}
 	cb.context = context
@@ -100,7 +100,7 @@ func (cb *CommandBuilder) WithContext(context string) *CommandBuilder {
 // WithKubeconfig sets the kubeconfig file
 func (cb *CommandBuilder) WithKubeconfig(kubeconfig string) *CommandBuilder {
 	if err := security.ValidateFilePath(kubeconfig); err != nil {
-		logger.Get().Error(err, "Invalid kubeconfig path", "kubeconfig", kubeconfig)
+		logger.Get().Error("Invalid kubeconfig path", "kubeconfig", kubeconfig, "error", err)
 		return cb
 	}
 	cb.kubeconfig = kubeconfig
@@ -120,7 +120,7 @@ func (cb *CommandBuilder) WithOutput(output string) *CommandBuilder {
 	}
 
 	if !valid {
-		logger.Get().Error(nil, "Invalid output format", "output", output)
+		logger.Get().Error("Invalid output format", "output", output)
 		return cb
 	}
 
@@ -131,7 +131,7 @@ func (cb *CommandBuilder) WithOutput(output string) *CommandBuilder {
 // WithLabel adds a label selector
 func (cb *CommandBuilder) WithLabel(key, value string) *CommandBuilder {
 	if err := security.ValidateK8sLabel(key, value); err != nil {
-		logger.Get().Error(err, "Invalid label", "key", key, "value", value)
+		logger.Get().Error("Invalid label", "key", key, "value", value, "error", err)
 		return cb
 	}
 	cb.labels[key] = value
@@ -149,7 +149,7 @@ func (cb *CommandBuilder) WithLabels(labels map[string]string) *CommandBuilder {
 // WithAnnotation adds an annotation
 func (cb *CommandBuilder) WithAnnotation(key, value string) *CommandBuilder {
 	if err := security.ValidateK8sLabel(key, value); err != nil {
-		logger.Get().Error(err, "Invalid annotation", "key", key, "value", value)
+		logger.Get().Error("Invalid annotation", "key", key, "value", value, "error", err)
 		return cb
 	}
 	cb.annotations[key] = value
@@ -221,11 +221,9 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 		args = append(args, "--context", cb.context)
 	}
 
-	// Add kubeconfig if specified (or use global one)
+	// Add kubeconfig if specified
 	if cb.kubeconfig != "" {
 		args = append(args, "--kubeconfig", cb.kubeconfig)
-	} else if utils.GetKubeconfig() != "" {
-		args = append(args, "--kubeconfig", utils.GetKubeconfig())
 	}
 
 	// Add output format
@@ -313,9 +311,11 @@ func (cb *CommandBuilder) Execute(ctx context.Context) (string, error) {
 
 // executeCommand executes the actual command
 func (cb *CommandBuilder) executeCommand(ctx context.Context, command string, args []string) (string, error) {
-	logger.Get().V(1).Info("Executing command", "command", command, "args", args)
+	log := logger.WithContext(ctx)
+	log.Info("Executing command", "command", command, "args", args)
 
-	result, err := utils.RunCommandWithContext(ctx, command, args)
+	executor := cmd.GetShellExecutor(ctx)
+	output, err := executor.Exec(ctx, command, args...)
 	if err != nil {
 		// Create appropriate error based on command type
 		var toolError *errors.ToolError
@@ -335,7 +335,7 @@ func (cb *CommandBuilder) executeCommand(ctx context.Context, command string, ar
 		return "", toolError
 	}
 
-	return result, nil
+	return string(output), nil
 }
 
 // Common command patterns as helper functions
