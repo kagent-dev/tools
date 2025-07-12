@@ -3,9 +3,9 @@ package telemetry
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 
-	"github.com/kagent-dev/tools/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -21,52 +21,49 @@ const (
 
 // resetConfig is a helper to reset the singleton config for tests
 func resetConfig() {
-	config.Reset()
+	once = sync.Once{}
+	config = nil
 }
 
 func TestSetupOTelSDK_Disabled(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
-	os.Setenv("OTEL_SDK_DISABLED", "true")
-	defer os.Unsetenv("OTEL_SDK_DISABLED")
-	config.Reset()
-
-	shutdown, err := SetupOTelSDK(ctx)
+	err := os.Setenv("OTEL_SDK_DISABLED", "true")
 	require.NoError(t, err)
-	assert.NotNil(t, shutdown)
+	defer func() {
+		_ = os.Unsetenv("OTEL_SDK_DISABLED")
+	}()
+	resetConfig()
+
+	err = SetupOTelSDK(ctx)
+	require.NoError(t, err)
 
 	// In a disabled state, the tracer provider should be a no-op provider
 	tp := otel.GetTracerProvider()
 	assert.IsType(t, noop.NewTracerProvider(), tp)
 
 	// Shutdown should be a no-op function
-	err = shutdown(ctx)
 	assert.NoError(t, err)
 }
 
 func TestSetupOTelSDKEnabled(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
-	os.Setenv(OtelSdkDisabled, "false")
-	defer os.Unsetenv(OtelSdkDisabled)
-
-	shutdown, err := SetupOTelSDK(ctx)
+	err := os.Setenv(OtelSdkDisabled, "false")
 	require.NoError(t, err)
-	assert.NotNil(t, shutdown)
+	defer func() {
+		_ = os.Unsetenv(OtelSdkDisabled)
+	}()
 
-	t.Run("Graceful Shutdown", func(t *testing.T) {
-		defer func() {
-			err := shutdown(ctx)
-			assert.NoError(t, err)
-		}()
-	})
+	err = SetupOTelSDK(ctx)
+	require.NoError(t, err)
 }
 
 func TestNewTracerProviderDevelopment(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
 	res := resource.NewSchemaless()
-	cfg := &config.Telemetry{
+	cfg := &Telemetry{
 		Environment: "development",
 	}
 	exporter, _ := stdouttrace.New()
@@ -80,7 +77,7 @@ func TestNewTracerProviderProduction(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
 	res := resource.NewSchemaless()
-	cfg := &config.Telemetry{
+	cfg := &Telemetry{
 		Environment:   "production",
 		SamplingRatio: 0.5,
 	}
@@ -94,7 +91,7 @@ func TestNewTracerProviderProduction(t *testing.T) {
 func TestCreateExporterDevelopment(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
-	cfg := &config.Telemetry{
+	cfg := &Telemetry{
 		Environment: "development",
 	}
 
@@ -107,7 +104,7 @@ func TestCreateExporterDevelopment(t *testing.T) {
 func TestCreateExporterNoEndpoint(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
-	cfg := &config.Telemetry{
+	cfg := &Telemetry{
 		Environment: "production",
 	}
 
@@ -120,7 +117,7 @@ func TestCreateExporterNoEndpoint(t *testing.T) {
 func TestCreateExporterWithEndpoint(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
-	cfg := &config.Telemetry{
+	cfg := &Telemetry{
 		Environment: "production",
 		Endpoint:    "http://localhost:4317",
 		Protocol:    ProtocolAuto,
@@ -134,7 +131,7 @@ func TestCreateExporterWithEndpoint(t *testing.T) {
 func TestCreateExporterWithInsecure(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
-	cfg := &config.Telemetry{
+	cfg := &Telemetry{
 		Environment: "production",
 		Endpoint:    "localhost:4317",
 		Insecure:    true,
@@ -148,15 +145,18 @@ func TestCreateExporterWithInsecure(t *testing.T) {
 func TestCreateExporterWithAuthHeaders(t *testing.T) {
 	resetConfig()
 	ctx := context.Background()
-	cfg := &config.Telemetry{
+	cfg := &Telemetry{
 		Environment: "production",
 		Endpoint:    "http://localhost:4317",
 		Protocol:    ProtocolAuto,
 	}
 
 	// Set auth header
-	os.Setenv(OtelExporterOtlpHeaders, "Authorization=Bearer token123")
-	defer os.Unsetenv(OtelExporterOtlpHeaders)
+	err := os.Setenv(OtelExporterOtlpHeaders, "Authorization=Bearer token123")
+	require.NoError(t, err)
+	defer func() {
+		_ = os.Unsetenv(OtelExporterOtlpHeaders)
+	}()
 
 	exporter, err := createExporter(ctx, cfg)
 	require.NoError(t, err)
@@ -172,9 +172,8 @@ func TestSetupOTelSDKWithCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel context immediately
 
-	shutdown, err := SetupOTelSDK(ctx)
+	err := SetupOTelSDK(ctx)
 	require.Error(t, err) // Expect an error due to context cancellation
-	assert.Nil(t, shutdown)
 }
 
 func TestProtocolDetection(t *testing.T) {
@@ -274,18 +273,18 @@ func TestParseHeaders(t *testing.T) {
 }
 
 func TestCreateExporterWithProtocol(t *testing.T) {
-	resetConfig()
+
 	ctx := context.Background()
 
 	tests := []struct {
 		name        string
-		config      *config.Telemetry
+		config      *Telemetry
 		shouldError bool
 		description string
 	}{
 		{
 			"gRPC protocol",
-			&config.Telemetry{
+			&Telemetry{
 				Environment: "development",
 				Endpoint:    "localhost:4317",
 				Protocol:    ProtocolGRPC,
@@ -295,7 +294,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 		},
 		{
 			"HTTP protocol",
-			&config.Telemetry{
+			&Telemetry{
 				Environment: "development",
 				Endpoint:    "localhost:4318",
 				Protocol:    ProtocolHTTP,
@@ -305,7 +304,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 		},
 		{
 			"Auto protocol with gRPC port",
-			&config.Telemetry{
+			&Telemetry{
 				Environment: "development",
 				Endpoint:    "localhost:4317",
 				Protocol:    ProtocolAuto,
@@ -315,7 +314,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 		},
 		{
 			"Auto protocol with HTTP port",
-			&config.Telemetry{
+			&Telemetry{
 				Environment: "development",
 				Endpoint:    "localhost:4318",
 				Protocol:    ProtocolAuto,
@@ -325,7 +324,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 		},
 		{
 			"gRPC protocol with insecure",
-			&config.Telemetry{
+			&Telemetry{
 				Environment: "production",
 				Endpoint:    "localhost:4317",
 				Protocol:    ProtocolGRPC,
@@ -336,7 +335,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 		},
 		{
 			"HTTP protocol with insecure",
-			&config.Telemetry{
+			&Telemetry{
 				Environment: "production",
 				Endpoint:    "localhost:4318",
 				Protocol:    ProtocolHTTP,
@@ -347,7 +346,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 		},
 		{
 			"Invalid protocol",
-			&config.Telemetry{
+			&Telemetry{
 				Environment: "development",
 				Endpoint:    "localhost:1234",
 				Protocol:    ProtocolInvalid,
@@ -359,6 +358,7 @@ func TestCreateExporterWithProtocol(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetConfig()
 			exporter, err := createExporter(ctx, tt.config)
 			if tt.shouldError {
 				require.Error(t, err, tt.description)

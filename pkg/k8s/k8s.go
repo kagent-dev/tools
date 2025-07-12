@@ -10,13 +10,15 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+	"github.com/tmc/langchaingo/llms"
+
+	"github.com/kagent-dev/tools/internal/cache"
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
-	"github.com/tmc/langchaingo/llms"
 )
 
 // K8sTool struct to hold the LLM model
@@ -31,6 +33,22 @@ func NewK8sTool(llmModel llms.Model) *K8sTool {
 
 func NewK8sToolWithConfig(kubeconfig string, llmModel llms.Model) *K8sTool {
 	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel}
+}
+
+// runKubectlCommandWithCacheInvalidation runs a kubectl command and invalidates cache if it's a modification operation
+func (k *K8sTool) runKubectlCommandWithCacheInvalidation(ctx context.Context, args ...string) (*mcp.CallToolResult, error) {
+	result, err := k.runKubectlCommand(ctx, args...)
+
+	// If command succeeded and it's a modification command, invalidate cache
+	if err == nil && len(args) > 0 {
+		subcommand := args[0]
+		switch subcommand {
+		case "apply", "delete", "patch", "scale", "annotate", "label", "create", "run", "rollout":
+			cache.InvalidateKubernetesCache()
+		}
+	}
+
+	return result, err
 }
 
 // Enhanced kubectl get
@@ -102,7 +120,7 @@ func (k *K8sTool) handleScaleDeployment(ctx context.Context, request mcp.CallToo
 
 	args := []string{"scale", "deployment", deploymentName, "--replicas", fmt.Sprintf("%d", replicas), "-n", namespace}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
 }
 
 // Patch resource
@@ -133,7 +151,7 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 
 	args := []string{"patch", resourceType, resourceName, "-p", patch, "-n", namespace}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
 }
 
 // Apply manifest from content
@@ -178,7 +196,7 @@ func (k *K8sTool) handleApplyManifest(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to close temp file: %v", err)), nil
 	}
 
-	return k.runKubectlCommand(ctx, "apply", "-f", tmpFile.Name())
+	return k.runKubectlCommandWithCacheInvalidation(ctx, "apply", "-f", tmpFile.Name())
 }
 
 // Delete resource
@@ -193,7 +211,7 @@ func (k *K8sTool) handleDeleteResource(ctx context.Context, request mcp.CallTool
 
 	args := []string{"delete", resourceType, resourceName, "-n", namespace}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
 }
 
 // Check service connectivity

@@ -1,4 +1,4 @@
-package config
+package telemetry
 
 import (
 	"os"
@@ -29,8 +29,8 @@ var (
 	config *Config
 )
 
-// Load initializes and returns the application configuration.
-func Load() *Config {
+// LoadOtelCfg initializes and returns the application configuration.
+func LoadOtelCfg() *Config {
 	once.Do(func() {
 		config = &Config{
 			Telemetry: Telemetry{
@@ -44,18 +44,8 @@ func Load() *Config {
 				Disabled:       getEnvBool("OTEL_SDK_DISABLED", false),
 			},
 		}
-
-		if config.Telemetry.Environment == "development" {
-			config.Telemetry.SamplingRatio = 1.0
-		}
 	})
 	return config
-}
-
-// Reset is a helper function to reset the singleton config for tests.
-func Reset() {
-	once = sync.Once{}
-	config = nil
 }
 
 func getEnv(key, fallback string) string {

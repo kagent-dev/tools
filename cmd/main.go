@@ -14,23 +14,22 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/kagent-dev/tools/internal/config"
 	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/internal/version"
-	"github.com/kagent-dev/tools/pkg/utils"
-
 	"github.com/kagent-dev/tools/pkg/argo"
 	"github.com/kagent-dev/tools/pkg/cilium"
 	"github.com/kagent-dev/tools/pkg/helm"
 	"github.com/kagent-dev/tools/pkg/istio"
 	"github.com/kagent-dev/tools/pkg/k8s"
 	"github.com/kagent-dev/tools/pkg/prometheus"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+
+	"github.com/mark3labs/mcp-go/server"
 )
 
 var (
@@ -80,18 +79,13 @@ func run(cmd *cobra.Command, args []string) {
 	defer cancel()
 
 	// Initialize OpenTelemetry tracing
-	cfg := config.Load()
+	cfg := telemetry.LoadOtelCfg()
 
-	otelShutdown, err := telemetry.SetupOTelSDK(ctx)
+	err := telemetry.SetupOTelSDK(ctx)
 	if err != nil {
 		logger.Get().Error("Failed to setup OpenTelemetry SDK", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := otelShutdown(ctx); err != nil {
-			logger.Get().Error("Failed to shutdown OpenTelemetry SDK", "error", err)
-		}
-	}()
 
 	// Start root span for server lifecycle
 	tracer := otel.Tracer("kagent-tools/server")
@@ -163,16 +157,7 @@ func run(cmd *cobra.Command, args []string) {
 
 		// Handle all other routes with the MCP server wrapped in telemetry middleware
 		mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Only delegate to MCP server if it's not the health endpoint
-			if r.URL.Path != "/health" && r.URL.Path != "/metrics" {
-				sseServer.ServeHTTP(w, r)
-			} else {
-				// This shouldn't happen due to the specific handlers above, but just in case
-				w.WriteHeader(http.StatusOK)
-				if err := writeResponse(w, []byte("OK")); err != nil {
-					logger.Get().Error("Failed to write fallback response", "error", err)
-				}
-			}
+			sseServer.ServeHTTP(w, r)
 		})))
 
 		httpServer = &http.Server{

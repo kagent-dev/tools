@@ -1,4 +1,4 @@
-package config
+package telemetry
 
 import (
 	"os"
@@ -20,7 +20,7 @@ func TestLoad(t *testing.T) {
 		os.Unsetenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE")
 	}()
 
-	cfg := Load()
+	cfg := LoadOtelCfg()
 	assert.Equal(t, "test-service", cfg.Telemetry.ServiceName)
 	assert.True(t, cfg.Telemetry.Insecure)
 }
@@ -30,7 +30,7 @@ func TestLoadDefaults(t *testing.T) {
 	once = sync.Once{}
 	config = nil
 
-	cfg := Load()
+	cfg := LoadOtelCfg()
 	assert.Equal(t, "kagent-tools", cfg.Telemetry.ServiceName)
 	assert.False(t, cfg.Telemetry.Insecure)
 	assert.Equal(t, 1.0, cfg.Telemetry.SamplingRatio)
@@ -44,6 +44,6 @@ func TestLoadDevelopmentSampling(t *testing.T) {
 	os.Setenv("OTEL_ENVIRONMENT", "development")
 	defer os.Unsetenv("OTEL_ENVIRONMENT")
 
-	cfg := Load()
+	cfg := LoadOtelCfg()
 	assert.Equal(t, 1.0, cfg.Telemetry.SamplingRatio)
 }

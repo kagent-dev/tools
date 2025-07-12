@@ -27,11 +27,11 @@ vet: ## Run go vet against code.
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run
+	$(GOLANGCI_LINT) run --build-tags=test
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
+	$(GOLANGCI_LINT) run --build-tags=test --fix
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
@@ -47,12 +47,16 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 	go mod tidy
 
 .PHONY: test
-test: build lint
-	go test -v -cover ./pkg/... ./internal/...
+test: build lint ## Run all tests with build, lint, and coverage
+	go test -tags=test -v -cover ./pkg/... ./internal/...
+
+.PHONY: test-only
+test-only: ## Run tests only (without build/lint for faster iteration)
+	go test -tags=test -v -cover ./pkg/... ./internal/...
 
 .PHONY: e2e
 e2e: test docker-build
-	go test -v -cover ./e2e/...
+	go test -tags=test -v -cover ./e2e/...
 
 bin/kagent-tools-linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd

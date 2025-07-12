@@ -8,50 +8,73 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kagent-dev/tools/internal/config"
-	"github.com/kagent-dev/tools/internal/logger"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.32.0"
 	"go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/kagent-dev/tools/internal/logger"
 )
 
-// Environment variable keys for telemetry configuration
+// Standard OpenTelemetry environment variable names
+// These follow the official OTLP specification
 const (
-	OtelServiceName          = "OTEL_SERVICE_NAME"
-	OtelServiceVersion       = "OTEL_SERVICE_VERSION"
-	OtelEnvironment          = "OTEL_ENVIRONMENT"
+	// Service identification
+	OtelServiceName    = "OTEL_SERVICE_NAME"
+	OtelServiceVersion = "OTEL_SERVICE_VERSION"
+	OtelEnvironment    = "OTEL_ENVIRONMENT" // Custom extension, not in official spec
+
+	// OTLP Exporter configuration
 	OtelExporterOtlpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	OtelExporterOtlpProtocol = "OTEL_EXPORTER_OTLP_PROTOCOL"
-	OtelTracesSamplerArg     = "OTEL_TRACES_SAMPLER_ARG"
-	OtelExporterOtlpInsecure = "OTEL_EXPORTER_OTLP_TRACES_INSECURE"
-	OtelSdkDisabled          = "OTEL_SDK_DISABLED"
 	OtelExporterOtlpHeaders  = "OTEL_EXPORTER_OTLP_HEADERS"
+
+	// Trace-specific OTLP configuration
+	OtelExporterOtlpTracesInsecure = "OTEL_EXPORTER_OTLP_TRACES_INSECURE"
+
+	// Sampling configuration
+	OtelTracesSamplerArg = "OTEL_TRACES_SAMPLER_ARG"
+
+	// SDK control
+	OtelSdkDisabled = "OTEL_SDK_DISABLED"
 )
 
-// Protocol constants for OTLP exporters
+// OTLP Protocol constants
 const (
 	ProtocolGRPC = "grpc"
-	ProtocolHTTP = "http"
-	ProtocolAuto = "auto"
+	ProtocolHTTP = "http/protobuf"
+	ProtocolAuto = "auto" // Custom extension for automatic protocol detection
+)
+
+// Standard OTLP port numbers
+// These are the official OTLP default ports as per OpenTelemetry specification
+const (
+	DefaultOtlpGrpcPort = "4317" // Standard OTLP/gRPC port
+	DefaultOtlpHttpPort = "4318" // Standard OTLP/HTTP port
+)
+
+// Default endpoint paths
+const (
+	DefaultHttpTracesPath = "/v1/traces"
 )
 
 // SetupOTelSDK initializes the OpenTelemetry SDK
-func SetupOTelSDK(ctx context.Context) (shutdown func(context.Context) error, err error) {
+func SetupOTelSDK(ctx context.Context) error {
 	log := logger.WithContext(ctx)
-	cfg := config.Load()
+	cfg := LoadOtelCfg()
 	telemetryConfig := cfg.Telemetry
 
 	// If tracing is disabled, set a no-op tracer provider and return.
 	// This prevents further initialization and ensures no traces are exported.
 	if cfg.Telemetry.Disabled {
 		otel.SetTracerProvider(noop.NewTracerProvider())
-		return func(context.Context) error { return nil }, nil
+		return nil
 	}
 
 	res, err := resource.New(ctx,
@@ -59,12 +82,12 @@ func SetupOTelSDK(ctx context.Context) (shutdown func(context.Context) error, er
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(telemetryConfig.ServiceName),
 			semconv.ServiceVersionKey.String(telemetryConfig.ServiceVersion),
-			semconv.DeploymentEnvironmentKey.String(telemetryConfig.Environment),
+			attribute.String("deployment.environment", telemetryConfig.Environment),
 		),
 	)
 	if err != nil {
 		log.Error("failed to create resource", "error", err)
-		return nil, fmt.Errorf("failed to create resource: %w", err)
+		return fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	// Set up propagator
@@ -74,32 +97,37 @@ func SetupOTelSDK(ctx context.Context) (shutdown func(context.Context) error, er
 	exporter, err := createExporter(ctx, &telemetryConfig)
 	if err != nil {
 		log.Error("failed to create exporter", "error", err)
-		return nil, fmt.Errorf("failed to create exporter: %w", err)
+		return fmt.Errorf("failed to create exporter: %w", err)
 	}
 
 	// Set up trace provider
 	tracerProvider, err := newTracerProvider(ctx, &telemetryConfig, exporter, res)
 	if err != nil {
 		log.Error("failed to create tracer provider", "error", err)
-		return nil, fmt.Errorf("failed to create tracer provider: %w", err)
+		return fmt.Errorf("failed to create tracer provider: %w", err)
 	}
 	otel.SetTracerProvider(tracerProvider)
 
 	log.Info("OpenTelemetry SDK successfully initialized")
-	return tracerProvider.Shutdown, nil
+	//start goroutine and wait for ctx cancellation
+	go func() {
+		<-ctx.Done()
+		if err := tracerProvider.Shutdown(ctx); err != nil {
+			log.Error("failed to shutdown tracer provider", "error", err)
+		} else {
+			log.Info("OpenTelemetry SDK shutdown successfully")
+		}
+	}()
+	return nil
 }
 
 // newTracerProvider creates a new trace provider
-func newTracerProvider(ctx context.Context, cfg *config.Telemetry, exporter sdktrace.SpanExporter, res *resource.Resource) (*sdktrace.TracerProvider, error) {
+func newTracerProvider(ctx context.Context, cfg *Telemetry, exporter sdktrace.SpanExporter, res *resource.Resource) (*sdktrace.TracerProvider, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	sampler := sdktrace.TraceIDRatioBased(cfg.SamplingRatio)
-	if cfg.Environment == "development" {
-		// In development, always sample for better debugging
-		sampler = sdktrace.AlwaysSample()
-	}
+	sampler := sdktrace.AlwaysSample()
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sampler),
@@ -110,12 +138,9 @@ func newTracerProvider(ctx context.Context, cfg *config.Telemetry, exporter sdkt
 }
 
 // createExporter creates a OTLP exporter
-func createExporter(ctx context.Context, cfg *config.Telemetry) (sdktrace.SpanExporter, error) {
+func createExporter(ctx context.Context, cfg *Telemetry) (sdktrace.SpanExporter, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if cfg.Environment == "development" && cfg.Endpoint == "" {
-		return stdouttrace.New(stdouttrace.WithPrettyPrint())
 	}
 
 	if cfg.Endpoint == "" {
@@ -145,27 +170,27 @@ func detectProtocol(endpoint string) string {
 		port := parsedURL.Port()
 		if port == "" {
 			// Check for default ports in hostname
-			if strings.Contains(parsedURL.Host, ":4317") {
+			if strings.Contains(parsedURL.Host, ":"+DefaultOtlpGrpcPort) {
 				return ProtocolGRPC
 			}
-			if strings.Contains(parsedURL.Host, ":4318") {
+			if strings.Contains(parsedURL.Host, ":"+DefaultOtlpHttpPort) {
 				return ProtocolHTTP
 			}
 		} else {
 			switch port {
-			case "4317":
+			case DefaultOtlpGrpcPort:
 				return ProtocolGRPC
-			case "4318":
+			case DefaultOtlpHttpPort:
 				return ProtocolHTTP
 			}
 		}
 	}
 
 	// Check if endpoint contains port info directly
-	if strings.Contains(endpoint, ":4317") {
+	if strings.Contains(endpoint, ":"+DefaultOtlpGrpcPort) {
 		return ProtocolGRPC
 	}
-	if strings.Contains(endpoint, ":4318") {
+	if strings.Contains(endpoint, ":"+DefaultOtlpHttpPort) {
 		return ProtocolHTTP
 	}
 
@@ -174,7 +199,7 @@ func detectProtocol(endpoint string) string {
 }
 
 // createGRPCExporter creates a gRPC OTLP exporter
-func createGRPCExporter(ctx context.Context, cfg *config.Telemetry) (sdktrace.SpanExporter, error) {
+func createGRPCExporter(ctx context.Context, cfg *Telemetry) (sdktrace.SpanExporter, error) {
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(normalizeGRPCEndpoint(cfg.Endpoint)),
 		otlptracegrpc.WithTimeout(30 * time.Second),
@@ -193,7 +218,7 @@ func createGRPCExporter(ctx context.Context, cfg *config.Telemetry) (sdktrace.Sp
 }
 
 // createHTTPExporter creates an HTTP OTLP exporter
-func createHTTPExporter(ctx context.Context, cfg *config.Telemetry) (sdktrace.SpanExporter, error) {
+func createHTTPExporter(ctx context.Context, cfg *Telemetry) (sdktrace.SpanExporter, error) {
 	opts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpointURL(normalizeHTTPEndpoint(cfg.Endpoint, cfg.Insecure)),
 		otlptracehttp.WithTimeout(30 * time.Second),
@@ -238,8 +263,8 @@ func normalizeHTTPEndpoint(endpoint string, insecure bool) string {
 	}
 
 	// Add /v1/traces suffix if not present
-	if !strings.HasSuffix(endpoint, "/v1/traces") {
-		endpoint = strings.TrimSuffix(endpoint, "/") + "/v1/traces"
+	if !strings.HasSuffix(endpoint, DefaultHttpTracesPath) {
+		endpoint = strings.TrimSuffix(endpoint, "/") + DefaultHttpTracesPath
 	}
 
 	return endpoint

@@ -335,30 +335,34 @@ func (cb *CommandBuilder) Execute(ctx context.Context) (string, error) {
 
 	// Generate cache key if caching is enabled
 	if cb.cached {
-		cacheKey := cb.cacheKey
-		if cacheKey == "" {
-			cacheKey = cache.CacheKey(append([]string{command}, args...)...)
-		}
-
-		// Try to get from cache first
-		var cacheInstance *cache.Cache
-		switch command {
-		case "kubectl":
-			cacheInstance = cache.GetKubernetesCache()
-		case "helm":
-			cacheInstance = cache.GetHelmCache()
-		case "istioctl":
-			cacheInstance = cache.GetIstioCache()
-		default:
-			cacheInstance = cache.GetCommandCache()
-		}
-
-		return cache.CacheResult(cacheInstance, cacheKey, cb.cacheTTL, func() (string, error) {
-			return cb.executeCommand(ctx, command, args)
-		})
+		return cb.executeWithCache(ctx, command, args)
 	}
 
-	return cb.executeCommand(ctx, command, args)
+	// Execute the command
+	result, err := cb.executeCommand(ctx, command, args)
+	if err != nil {
+		return "", err
+	}
+
+	return result, nil
+}
+
+func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, args []string) (string, error) {
+	cacheKey := cb.cacheKey
+	if cacheKey == "" {
+		cacheKey = cache.CacheKey(append([]string{command}, args...)...)
+	}
+
+	// Try to get from cache first
+	cacheInstance := cache.GetCacheByCommand(command)
+
+	result, err := cache.CacheResult(cacheInstance, cacheKey, cb.cacheTTL, func() (string, error) {
+		return cb.executeCommand(ctx, command, args)
+	})
+	if err != nil {
+		return "", err
+	}
+	return result, nil
 }
 
 // executeCommand executes the actual command

@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewCache(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 
 	if cache.defaultTTL != 1*time.Minute {
 		t.Errorf("Expected default TTL of 1 minute, got %v", cache.defaultTTL)
@@ -21,11 +23,24 @@ func TestNewCache(t *testing.T) {
 		t.Errorf("Expected cleanup interval of 10 seconds, got %v", cache.cleanupInterval)
 	}
 
+	if cache.name != "test-cache" {
+		t.Errorf("Expected cache name 'test-cache', got %s", cache.name)
+	}
+
 	cache.Close()
 }
 
+func TestCacheName(t *testing.T) {
+	cache := NewCache[string]("my-test-cache", 1*time.Minute, 100, 10*time.Second)
+	defer cache.Close()
+
+	if cache.Name() != "my-test-cache" {
+		t.Errorf("Expected cache name 'my-test-cache', got %s", cache.Name())
+	}
+}
+
 func TestCacheSetAndGet(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	// Test set and get
@@ -42,7 +57,7 @@ func TestCacheSetAndGet(t *testing.T) {
 }
 
 func TestCacheSetWithTTL(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	// Test set with custom TTL
@@ -68,7 +83,7 @@ func TestCacheSetWithTTL(t *testing.T) {
 }
 
 func TestCacheDelete(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	cache.Set("key1", "value1")
@@ -81,7 +96,7 @@ func TestCacheDelete(t *testing.T) {
 }
 
 func TestCacheClear(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	cache.Set("key1", "value1")
@@ -99,7 +114,7 @@ func TestCacheClear(t *testing.T) {
 }
 
 func TestCacheEviction(t *testing.T) {
-	cache := NewCache(1*time.Minute, 2, 10*time.Second) // Small cache
+	cache := NewCache[string]("test-cache", 1*time.Minute, 2, 10*time.Second) // Small cache
 	defer cache.Close()
 
 	// Fill cache to capacity
@@ -128,7 +143,7 @@ func TestCacheEviction(t *testing.T) {
 }
 
 func TestCacheExpiration(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 50*time.Millisecond) // Fast cleanup
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 50*time.Millisecond) // Fast cleanup
 	defer cache.Close()
 
 	// Set item with short TTL
@@ -145,7 +160,7 @@ func TestCacheExpiration(t *testing.T) {
 }
 
 func TestCacheStats(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	cache.Set("key1", "value1")
@@ -189,7 +204,7 @@ func TestCacheKey(t *testing.T) {
 }
 
 func TestCacheResult(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	callCount := 0
@@ -224,7 +239,7 @@ func TestCacheResult(t *testing.T) {
 }
 
 func TestCacheResultWithError(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	testFunction := func() (string, error) {
@@ -246,42 +261,31 @@ func TestCacheResultWithError(t *testing.T) {
 	}
 }
 
-func TestGlobalCacheInitialization(t *testing.T) {
-	// Test that global caches are initialized
-	k8sCache := GetKubernetesCache()
-	if k8sCache == nil {
-		t.Error("Expected Kubernetes cache to be initialized")
+func TestCacheInitialization(t *testing.T) {
+	// Test that all cache types are properly initialized
+	types := []CacheType{
+		CacheTypeKubernetes,
+		CacheTypeCommand,
+		CacheTypeHelm,
+		CacheTypeIstio,
 	}
 
-	prometheusCache := GetPrometheusCache()
-	if prometheusCache == nil {
-		t.Error("Expected Prometheus cache to be initialized")
-	}
-
-	commandCache := GetCommandCache()
-	if commandCache == nil {
-		t.Error("Expected Command cache to be initialized")
-	}
-
-	helmCache := GetHelmCache()
-	if helmCache == nil {
-		t.Error("Expected Helm cache to be initialized")
-	}
-
-	istioCache := GetIstioCache()
-	if istioCache == nil {
-		t.Error("Expected Istio cache to be initialized")
-	}
-
-	metadataCache := GetMetadataCache()
-	if metadataCache == nil {
-		t.Error("Expected Metadata cache to be initialized")
+	for _, cacheType := range types {
+		t.Run(cacheType.String(), func(t *testing.T) {
+			cache := GetCacheByType(cacheType)
+			if cache == nil {
+				t.Errorf("Expected cache for type %s to be initialized", cacheType.String())
+			}
+			if cache.Name() != cacheType.String() {
+				t.Errorf("Expected cache name %s, got %s", cacheType.String(), cache.Name())
+			}
+		})
 	}
 }
 
 func TestCacheEntry(t *testing.T) {
 	now := time.Now()
-	entry := &CacheEntry{
+	entry := &CacheEntry[string]{
 		Value:       "test",
 		CreatedAt:   now,
 		ExpiresAt:   now.Add(1 * time.Minute),
@@ -304,7 +308,7 @@ func TestCacheEntry(t *testing.T) {
 }
 
 func TestCachePerformCleanup(t *testing.T) {
-	cache := NewCache(1*time.Minute, 100, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 	defer cache.Close()
 
 	// Add expired item
@@ -330,7 +334,7 @@ func TestCachePerformCleanup(t *testing.T) {
 }
 
 func TestCacheConcurrency(t *testing.T) {
-	cache := NewCache(1*time.Minute, 1000, 10*time.Second)
+	cache := NewCache[string]("test-cache", 1*time.Minute, 1000, 10*time.Second)
 	defer cache.Close()
 
 	// Test concurrent operations
@@ -369,4 +373,116 @@ type testError struct {
 
 func (e *testError) Error() string {
 	return e.message
+}
+
+func TestCacheTypeString(t *testing.T) {
+	tests := []struct {
+		cacheType CacheType
+		expected  string
+	}{
+		{CacheTypeKubernetes, "kubernetes"},
+		{CacheTypeCommand, "command"},
+		{CacheTypeHelm, "helm"},
+		{CacheTypeIstio, "istio"},
+		{CacheType(999), "unknown"}, // Test unknown type
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			result := tt.cacheType.String()
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGetCacheByType(t *testing.T) {
+	// Test all valid cache types
+	types := []CacheType{
+		CacheTypeKubernetes,
+		CacheTypeCommand,
+		CacheTypeHelm,
+		CacheTypeIstio,
+	}
+
+	for _, cacheType := range types {
+		t.Run(cacheType.String(), func(t *testing.T) {
+			cache := GetCacheByType(cacheType)
+			if cache == nil {
+				t.Errorf("Expected cache for type %s, got nil", cacheType.String())
+			}
+			if cache.Name() != cacheType.String() {
+				t.Errorf("Expected cache name %s, got %s", cacheType.String(), cache.Name())
+			}
+		})
+	}
+}
+
+func TestGetCacheByCommand(t *testing.T) {
+	tests := []struct {
+		command      string
+		expectedType CacheType
+	}{
+		{"kubectl", CacheTypeKubernetes},
+		{"helm", CacheTypeHelm},
+		{"istioctl", CacheTypeIstio},
+		{"cilium", CacheTypeCommand},
+		{"argo", CacheTypeCommand},
+		{"unknown-command", CacheTypeCommand}, // Should default to command cache
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			cache := GetCacheByCommand(tt.command)
+			if cache == nil {
+				t.Errorf("Expected cache for command %s, got nil", tt.command)
+			}
+			if cache.Name() != tt.expectedType.String() {
+				t.Errorf("Expected cache name %s for command %s, got %s",
+					tt.expectedType.String(), tt.command, cache.Name())
+			}
+		})
+	}
+}
+
+func TestCacheOTelTracing(t *testing.T) {
+	// This test verifies that OTEL tracing calls don't panic
+	// The actual tracing verification would require setting up an OTEL test environment
+	cache := NewCache[string]("test-tracing", 1*time.Minute, 10, 5*time.Minute)
+	defer cache.Close()
+
+	// Test cache miss with tracing
+	_, found := cache.Get("missing-key")
+	assert.False(t, found)
+
+	// Test cache hit with tracing
+	cache.Set("test-key", "test-value")
+	value, found := cache.Get("test-key")
+	assert.True(t, found)
+	assert.Equal(t, "test-value", value)
+
+	// Test CacheResult with tracing
+	callCount := 0
+	result, err := CacheResult(cache, "result-key", 1*time.Minute, func() (string, error) {
+		callCount++
+		return "computed-value", nil
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "computed-value", result)
+	assert.Equal(t, 1, callCount)
+
+	// Test cache hit on second call
+	result2, err := CacheResult(cache, "result-key", 1*time.Minute, func() (string, error) {
+		callCount++
+		return "computed-value", nil
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "computed-value", result2)
+	assert.Equal(t, 1, callCount) // Should not increment due to cache hit
+
+	// Test cache invalidation with tracing
+	oldSize := cache.Size()
+	InvalidateByType(CacheTypeCommand)
+	assert.True(t, oldSize > 0) // Verify we had items to clear
 }
