@@ -11,6 +11,8 @@ import (
 	"github.com/kagent-dev/tools/internal/errors"
 	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/security"
+	"github.com/kagent-dev/tools/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // CommandBuilder provides a fluent interface for building CLI commands
@@ -328,48 +330,124 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 
 // Execute runs the command
 func (cb *CommandBuilder) Execute(ctx context.Context) (string, error) {
+	log := logger.WithContext(ctx)
+	_, span := telemetry.StartSpan(ctx, "commands.execute",
+		attribute.String("command", cb.command),
+		attribute.StringSlice("args", cb.args),
+		attribute.Bool("cached", cb.cached),
+	)
+	defer span.End()
+
 	command, args, err := cb.Build()
 	if err != nil {
+		telemetry.RecordError(span, err, "Command build failed")
+		log.Error("failed to build command",
+			"command", cb.command,
+			"error", err,
+		)
 		return "", err
 	}
 
+	span.SetAttributes(
+		attribute.String("built_command", command),
+		attribute.StringSlice("built_args", args),
+	)
+
+	log.Debug("executing command",
+		"command", command,
+		"args", args,
+		"cached", cb.cached,
+	)
+
 	// Generate cache key if caching is enabled
 	if cb.cached {
+		telemetry.AddEvent(span, "execution.cached")
 		return cb.executeWithCache(ctx, command, args)
 	}
 
 	// Execute the command
+	telemetry.AddEvent(span, "execution.direct")
 	result, err := cb.executeCommand(ctx, command, args)
 	if err != nil {
+		telemetry.RecordError(span, err, "Command execution failed")
 		return "", err
 	}
+
+	telemetry.RecordSuccess(span, "Command executed successfully")
+	span.SetAttributes(
+		attribute.Int("result_length", len(result)),
+	)
 
 	return result, nil
 }
 
 func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, args []string) (string, error) {
+	log := logger.WithContext(ctx)
+	_, span := telemetry.StartSpan(ctx, "commands.executeWithCache",
+		attribute.String("command", command),
+		attribute.StringSlice("args", args),
+		attribute.Bool("cached", true),
+	)
+	defer span.End()
+
 	cacheKey := cb.cacheKey
 	if cacheKey == "" {
 		cacheKey = cache.CacheKey(append([]string{command}, args...)...)
 	}
 
+	log.Info("executing cached command",
+		"command", command,
+		"args", args,
+		"cache_key", cacheKey,
+		"cache_ttl", cb.cacheTTL.String(),
+	)
+
 	// Try to get from cache first
 	cacheInstance := cache.GetCacheByCommand(command)
 
+	telemetry.AddEvent(span, "cache.lookup",
+		attribute.String("cache_key", cacheKey),
+		attribute.String("cache_ttl", cb.cacheTTL.String()),
+	)
+
 	result, err := cache.CacheResult(cacheInstance, cacheKey, cb.cacheTTL, func() (string, error) {
+		telemetry.AddEvent(span, "cache.miss.executing_command")
+		log.Debug("cache miss, executing command",
+			"command", command,
+			"args", args,
+		)
 		return cb.executeCommand(ctx, command, args)
 	})
+
 	if err != nil {
+		telemetry.RecordError(span, err, "Cached command execution failed")
+		log.Error("cached command execution failed",
+			"command", command,
+			"args", args,
+			"cache_key", cacheKey,
+			"error", err,
+		)
 		return "", err
 	}
+
+	telemetry.RecordSuccess(span, "Cached command executed successfully")
+	log.Info("cached command execution successful",
+		"command", command,
+		"args", args,
+		"cache_key", cacheKey,
+		"result_length", len(result),
+	)
+
+	span.SetAttributes(
+		attribute.String("cache_key", cacheKey),
+		attribute.Int("result_length", len(result)),
+	)
+
 	return result, nil
 }
 
 // executeCommand executes the actual command
 func (cb *CommandBuilder) executeCommand(ctx context.Context, command string, args []string) (string, error) {
-	log := logger.WithContext(ctx)
-	log.Info("Executing command", "command", command, "args", args)
-
 	executor := cmd.GetShellExecutor(ctx)
 	output, err := executor.Exec(ctx, command, args...)
 	if err != nil {
