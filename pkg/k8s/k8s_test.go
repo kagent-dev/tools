@@ -2,11 +2,9 @@ package k8s
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 
-	"github.com/kagent-dev/tools/pkg/utils"
+	"github.com/kagent-dev/tools/internal/cmd"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,10 +36,10 @@ func TestHandleGetAvailableAPIResources(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `[{"name": "pods", "singularName": "pod", "namespaced": true, "kind": "Pod"}]`
 		mock.AddCommandString("kubectl", []string{"api-resources", "-o", "json"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -57,9 +55,9 @@ func TestHandleGetAvailableAPIResources(t *testing.T) {
 	})
 
 	t.Run("kubectl command failure", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("kubectl", []string{"api-resources", "-o", "json"}, "", assert.AnError)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -75,10 +73,10 @@ func TestHandleScaleDeployment(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment scaled`
 		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "5", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -99,8 +97,8 @@ func TestHandleScaleDeployment(t *testing.T) {
 	})
 
 	t.Run("missing name parameter", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -122,18 +120,16 @@ func TestHandleScaleDeployment(t *testing.T) {
 	})
 
 	t.Run("missing replicas parameter uses default", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment scaled`
-		// Default replicas is 1
 		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "1", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
 		req := mcp.CallToolRequest{}
 		req.Params.Arguments = map[string]interface{}{
 			"name": "test-deployment",
-			// Missing replicas parameter - should use default value of 1
 		}
 
 		result, err := k8sTool.handleScaleDeployment(ctx, req)
@@ -156,10 +152,10 @@ func TestHandleGetEvents(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `{"items": [{"metadata": {"name": "test-event"}, "message": "Test event message"}]}`
 		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "--all-namespaces"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -174,10 +170,10 @@ func TestHandleGetEvents(t *testing.T) {
 	})
 
 	t.Run("with namespace", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `{"items": []}`
 		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "-n", "custom-namespace"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -197,8 +193,8 @@ func TestHandlePatchResource(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -219,10 +215,10 @@ func TestHandlePatchResource(t *testing.T) {
 	})
 
 	t.Run("valid parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment patched`
 		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "-p", `{"spec":{"replicas":5}}`, "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -247,8 +243,8 @@ func TestHandleDeleteResource(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -269,17 +265,17 @@ func TestHandleDeleteResource(t *testing.T) {
 	})
 
 	t.Run("valid parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		expectedOutput := `pod "test-pod" deleted`
-		mock.AddCommandString("kubectl", []string{"delete", "pod", "test-pod", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment deleted`
+		mock.AddCommandString("kubectl", []string{"delete", "deployment", "test-deployment", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
 		req := mcp.CallToolRequest{}
 		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "pod",
-			"resource_name": "test-pod",
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
 		}
 
 		result, err := k8sTool.handleDeleteResource(ctx, req)
@@ -296,8 +292,8 @@ func TestHandleCheckServiceConnectivity(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing service_name", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -315,15 +311,15 @@ func TestHandleCheckServiceConnectivity(t *testing.T) {
 	})
 
 	t.Run("valid service_name", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 
 		// Mock the pod creation, wait, and exec commands using partial matchers
 		mock.AddPartialMatcherString("kubectl", []string{"run", "*", "--image=curlimages/curl", "-n", "default", "--restart=Never", "--", "sleep", "3600"}, "pod/curl-test-123 created", nil)
-		mock.AddPartialMatcherString("kubectl", []string{"wait", "--for=condition=ready", "*", "-n", "default", "--timeout=60s"}, "pod/curl-test-123 condition met", nil)
+		mock.AddPartialMatcherString("kubectl", []string{"wait", "--for=condition=ready", "*", "-n", "default", "--timeout=60s", "--timeout", "30s"}, "pod/curl-test-123 condition met", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"exec", "*", "-n", "default", "--", "curl", "-s", "test-service.default.svc.cluster.local:80"}, "Connection successful", nil)
-		mock.AddPartialMatcherString("kubectl", []string{"delete", "pod", "*", "-n", "default", "--ignore-not-found"}, "pod deleted", nil)
+		mock.AddPartialMatcherString("kubectl", []string{"delete", "pod", "*", "-n", "default", "--ignore-not-found", "--timeout", "30s"}, "pod deleted", nil)
 
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -343,8 +339,8 @@ func TestHandleKubectlDescribeTool(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -365,12 +361,12 @@ func TestHandleKubectlDescribeTool(t *testing.T) {
 	})
 
 	t.Run("valid parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `Name:               test-deployment
 Namespace:          default
 Labels:             app=test`
 		mock.AddCommandString("kubectl", []string{"describe", "deployment", "test-deployment", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -395,8 +391,8 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing resource_type", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 		req := mcp.CallToolRequest{}
@@ -411,10 +407,10 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 	})
 
 	t.Run("valid resource_type", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `{"items": [{"metadata": {"name": "pod1"}}]}`
 		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "json"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 		req := mcp.CallToolRequest{}
@@ -430,8 +426,8 @@ func TestHandleKubectlLogsEnhanced(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing pod_name", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 		req := mcp.CallToolRequest{}
@@ -446,11 +442,11 @@ func TestHandleKubectlLogsEnhanced(t *testing.T) {
 	})
 
 	t.Run("valid pod_name", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `log line 1
 log line 2`
 		mock.AddCommandString("kubectl", []string{"logs", "test-pod", "-n", "default", "--tail", "50"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 		req := mcp.CallToolRequest{}
@@ -463,8 +459,9 @@ log line 2`
 }
 
 func TestHandleApplyManifest(t *testing.T) {
+	ctx := context.Background()
 	t.Run("apply manifest from string", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		manifest := `apiVersion: v1
 kind: Pod
 metadata:
@@ -476,8 +473,8 @@ spec:
 
 		expectedOutput := `pod/test-pod created`
 		// Use partial matcher to handle dynamic temp file names
-		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f", "*"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -507,8 +504,8 @@ spec:
 	})
 
 	t.Run("missing manifest parameter", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -530,15 +527,16 @@ spec:
 }
 
 func TestHandleExecCommand(t *testing.T) {
+	ctx := context.Background()
 	t.Run("exec command in pod", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `total 8
 drwxr-xr-x 1 root root 4096 Jan  1 12:00 .
 drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 
 		// The implementation passes the command as a single string after --
 		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls -la"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -566,8 +564,8 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -590,12 +588,13 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 }
 
 func TestHandleRollout(t *testing.T) {
+	ctx := context.Background()
 	t.Run("rollout restart deployment", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/myapp restarted`
 
 		mock.AddCommandString("kubectl", []string{"rollout", "restart", "deployment/myapp", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -624,8 +623,8 @@ func TestHandleRollout(t *testing.T) {
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -773,10 +772,10 @@ func TestHandleAnnotateResource(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment annotated`
-		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1=value1", "key2=value2", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1=value1", "key2=value2", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -798,8 +797,8 @@ func TestHandleAnnotateResource(t *testing.T) {
 	})
 
 	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -825,10 +824,10 @@ func TestHandleLabelResource(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment labeled`
-		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env=prod", "version=1.0", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env=prod", "version=1.0", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -850,8 +849,8 @@ func TestHandleLabelResource(t *testing.T) {
 	})
 
 	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -877,10 +876,10 @@ func TestHandleRemoveAnnotation(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment annotated`
-		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1-", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1-", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -902,8 +901,8 @@ func TestHandleRemoveAnnotation(t *testing.T) {
 	})
 
 	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -929,10 +928,10 @@ func TestHandleRemoveLabel(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment labeled`
-		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env-", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env-", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -954,8 +953,8 @@ func TestHandleRemoveLabel(t *testing.T) {
 	})
 
 	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -981,10 +980,10 @@ func TestHandleCreateResourceFromURL(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment created`
-		mock.AddCommandString("kubectl", []string{"create", "-f", "https://example.com/manifest.yaml", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("kubectl", []string{"create", "-f", "https://example.com/manifest.yaml", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -1004,8 +1003,8 @@ func TestHandleCreateResourceFromURL(t *testing.T) {
 	})
 
 	t.Run("missing url parameter", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -1030,7 +1029,7 @@ func TestHandleGetClusterConfiguration(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
+		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `apiVersion: v1
 clusters:
 - cluster:
@@ -1046,8 +1045,8 @@ kind: Config
 preferences: {}
 users:
 - name: default`
-		mock.AddCommandString("kubectl", []string{"config", "view"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("kubectl", []string{"config", "view", "-o", "json"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
 
@@ -1060,260 +1059,5 @@ users:
 		resultText := getResultText(result)
 		assert.Contains(t, resultText, "current-context")
 		assert.Contains(t, resultText, "clusters")
-	})
-}
-
-// Test the k8s_create_resource handler (inline function in RegisterK8sTools)
-func TestHandleCreateResource(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		yamlContent := `apiVersion: v1
-kind: Pod
-metadata:
-  name: test-pod
-spec:
-  containers:
-  - name: test
-    image: nginx`
-
-		expectedOutput := `pod/test-pod created`
-		// Use partial matcher to handle dynamic temp file names
-		mock.AddPartialMatcherString("kubectl", []string{"create", "-f", "*"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
-
-		// We need to test the inline function from RegisterK8sTools
-		// Let's create a test handler that mimics the inline function
-		testHandler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			yamlContent := mcp.ParseString(request, "yaml_content", "")
-
-			if yamlContent == "" {
-				return mcp.NewToolResultError("yaml_content is required"), nil
-			}
-
-			// Create temporary file
-			tmpFile, err := os.CreateTemp("", "k8s-resource-*.yaml")
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to create temp file: %v", err)), nil
-			}
-			defer os.Remove(tmpFile.Name())
-
-			if _, err := tmpFile.WriteString(yamlContent); err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to write to temp file: %v", err)), nil
-			}
-			tmpFile.Close()
-
-			result, err := utils.RunCommandWithContext(ctx, "kubectl", []string{"create", "-f", tmpFile.Name()})
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Create command failed: %v", err)), nil
-			}
-
-			return mcp.NewToolResultText(result), nil
-		}
-
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"yaml_content": yamlContent,
-		}
-
-		result, err := testHandler(ctx, req)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		// Verify the expected output
-		content := getResultText(result)
-		assert.Contains(t, content, "created")
-
-		// Verify kubectl create was called
-		callLog := mock.GetCallLog()
-		require.Len(t, callLog, 1)
-		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Len(t, callLog[0].Args, 3) // create, -f, <temp-file>
-		assert.Equal(t, "create", callLog[0].Args[0])
-		assert.Equal(t, "-f", callLog[0].Args[1])
-		// Third argument should be the temporary file path
-		assert.Contains(t, callLog[0].Args[2], "k8s-resource-")
-	})
-
-	t.Run("missing yaml_content parameter", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
-
-		// Test handler for missing parameter
-		testHandler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			yamlContent := mcp.ParseString(request, "yaml_content", "")
-
-			if yamlContent == "" {
-				return mcp.NewToolResultError("yaml_content is required"), nil
-			}
-			return mcp.NewToolResultText("should not reach here"), nil
-		}
-
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			// Missing yaml_content parameter
-		}
-
-		result, err := testHandler(ctx, req)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.True(t, result.IsError)
-		assert.Contains(t, getResultText(result), "yaml_content is required")
-
-		// Verify no commands were executed
-		callLog := mock.GetCallLog()
-		assert.Len(t, callLog, 0)
-	})
-}
-
-// Test the k8s_get_resource_yaml handler (inline function in RegisterK8sTools)
-func TestHandleGetResourceYAML(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("success", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		expectedOutput := `apiVersion: v1
-kind: Pod
-metadata:
-  name: test-pod
-  namespace: default
-spec:
-  containers:
-  - name: test
-    image: nginx`
-		mock.AddCommandString("kubectl", []string{"get", "pod", "test-pod", "-o", "yaml", "-n", "default"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
-
-		// Test handler that mimics the inline function
-		testHandler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			resourceType := mcp.ParseString(request, "resource_type", "")
-			resourceName := mcp.ParseString(request, "resource_name", "")
-			namespace := mcp.ParseString(request, "namespace", "")
-
-			if resourceType == "" || resourceName == "" {
-				return mcp.NewToolResultError("resource_type and resource_name are required"), nil
-			}
-
-			args := []string{"get", resourceType, resourceName, "-o", "yaml"}
-			if namespace != "" {
-				args = append(args, "-n", namespace)
-			}
-
-			result, err := utils.RunCommandWithContext(ctx, "kubectl", args)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Get YAML command failed: %v", err)), nil
-			}
-
-			return mcp.NewToolResultText(result), nil
-		}
-
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "pod",
-			"resource_name": "test-pod",
-			"namespace":     "default",
-		}
-
-		result, err := testHandler(ctx, req)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		resultText := getResultText(result)
-		assert.Contains(t, resultText, "test-pod")
-		assert.Contains(t, resultText, "apiVersion")
-
-		// Verify the correct kubectl command was called
-		callLog := mock.GetCallLog()
-		require.Len(t, callLog, 1)
-		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Equal(t, []string{"get", "pod", "test-pod", "-o", "yaml", "-n", "default"}, callLog[0].Args)
-	})
-
-	t.Run("missing parameters", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		ctx := utils.WithShellExecutor(context.Background(), mock)
-
-		testHandler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			resourceType := mcp.ParseString(request, "resource_type", "")
-			resourceName := mcp.ParseString(request, "resource_name", "")
-
-			if resourceType == "" || resourceName == "" {
-				return mcp.NewToolResultError("resource_type and resource_name are required"), nil
-			}
-			return mcp.NewToolResultText("should not reach here"), nil
-		}
-
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "pod",
-			// Missing resource_name
-		}
-
-		result, err := testHandler(ctx, req)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.True(t, result.IsError)
-		assert.Contains(t, getResultText(result), "resource_type and resource_name are required")
-
-		// Verify no commands were executed
-		callLog := mock.GetCallLog()
-		assert.Len(t, callLog, 0)
-	})
-
-	t.Run("without namespace", func(t *testing.T) {
-		mock := utils.NewMockShellExecutor()
-		expectedOutput := `apiVersion: v1
-kind: ClusterRole
-metadata:
-  name: test-cluster-role`
-		mock.AddCommandString("kubectl", []string{"get", "clusterrole", "test-cluster-role", "-o", "yaml"}, expectedOutput, nil)
-		ctx := utils.WithShellExecutor(ctx, mock)
-
-		testHandler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			resourceType := mcp.ParseString(request, "resource_type", "")
-			resourceName := mcp.ParseString(request, "resource_name", "")
-			namespace := mcp.ParseString(request, "namespace", "")
-
-			if resourceType == "" || resourceName == "" {
-				return mcp.NewToolResultError("resource_type and resource_name are required"), nil
-			}
-
-			args := []string{"get", resourceType, resourceName, "-o", "yaml"}
-			if namespace != "" {
-				args = append(args, "-n", namespace)
-			}
-
-			result, err := utils.RunCommandWithContext(ctx, "kubectl", args)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Get YAML command failed: %v", err)), nil
-			}
-
-			return mcp.NewToolResultText(result), nil
-		}
-
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "clusterrole",
-			"resource_name": "test-cluster-role",
-			// No namespace for cluster-scoped resource
-		}
-
-		result, err := testHandler(ctx, req)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		resultText := getResultText(result)
-		assert.Contains(t, resultText, "test-cluster-role")
-		assert.Contains(t, resultText, "ClusterRole")
-
-		// Verify the correct kubectl command was called (without namespace)
-		callLog := mock.GetCallLog()
-		require.Len(t, callLog, 1)
-		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Equal(t, []string{"get", "clusterrole", "test-cluster-role", "-o", "yaml"}, callLog[0].Args)
 	})
 }

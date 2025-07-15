@@ -13,6 +13,10 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
 
+.PHONY: clean
+clean:
+	rm -rf ./bin/kagent-tools-*
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
@@ -23,11 +27,11 @@ vet: ## Run go vet against code.
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run
+	$(GOLANGCI_LINT) run --build-tags=test
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
+	$(GOLANGCI_LINT) run --build-tags=test --fix
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
@@ -43,8 +47,16 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 	go mod tidy
 
 .PHONY: test
-test:
-	go test -v -cover ./...
+test: build lint ## Run all tests with build, lint, and coverage
+	go test -tags=test -v -cover ./pkg/... ./internal/...
+
+.PHONY: test-only
+test-only: ## Run tests only (without build/lint for faster iteration)
+	go test -tags=test -v -cover ./pkg/... ./internal/...
+
+.PHONY: e2e
+e2e: test docker-build
+	go test -tags=test -v -cover ./e2e/...
 
 bin/kagent-tools-linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd
@@ -142,6 +154,12 @@ docker-build-all: fmt buildx-create
 docker-build-all: DOCKER_BUILD_ARGS = --progress=plain --builder $(BUILDX_BUILDER_NAME) --platform linux/amd64,linux/arm64 --output type=tar,dest=/dev/null
 docker-build-all:
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -f Dockerfile ./
+
+.PHONY: kind-update-kagent
+kind-update-kagent: docker-build
+	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME)
+	kind load docker-image --name $(KIND_CLUSTER_NAME) $(TOOLS_IMG)
+	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(TOOLS_IMG)"}]'
 
 ## Tool Binaries
 ## Location to install dependencies t

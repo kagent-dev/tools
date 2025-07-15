@@ -122,7 +122,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
-		assert.Contains(t, getResultText(result), "failed to query Prometheus")
+		assert.Contains(t, getResultText(result), "**Prometheus Error**")
 	})
 
 	t.Run("HTTP 500 error", func(t *testing.T) {
@@ -139,7 +139,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
-		assert.Contains(t, getResultText(result), "Prometheus API error (500)")
+		assert.Contains(t, getResultText(result), "**Prometheus Error**")
 	})
 
 	t.Run("malformed JSON response", func(t *testing.T) {
@@ -283,7 +283,7 @@ func TestHandlePrometheusLabelsQueryTool(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
-		assert.Contains(t, getResultText(result), "failed to query Prometheus")
+		assert.Contains(t, getResultText(result), "**Prometheus Error**")
 	})
 
 	t.Run("custom prometheus URL", func(t *testing.T) {

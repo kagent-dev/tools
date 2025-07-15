@@ -1,99 +1,269 @@
 package cilium
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/kagent-dev/tools/internal/cmd"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// Basic command construction tests for Cilium CLI commands
-// Note: MCP handler tests are in cilium_mcp_test.go
+func TestRegisterCiliumTools(t *testing.T) {
+	s := server.NewMCPServer("test-server", "v0.0.1")
+	RegisterTools(s)
+	// We can't directly check the tools, but we can ensure the call doesn't panic
+}
 
-func TestCiliumCommandConstruction(t *testing.T) {
-	t.Run("basic command construction patterns", func(t *testing.T) {
-		// Test that we can construct basic cilium commands
-		args := []string{"status"}
-		assert.Equal(t, "status", args[0])
+func TestHandleCiliumStatusAndVersion(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"status", "--timeout", "30s"}, "Cilium status: OK", nil)
+	mock.AddCommandString("cilium", []string{"version", "--timeout", "30s"}, "cilium version 1.14.0", nil)
 
-		// Test upgrade command with parameters
-		upgradeArgs := []string{"upgrade"}
-		if clusterName := "test-cluster"; clusterName != "" {
-			upgradeArgs = append(upgradeArgs, "--cluster-name", clusterName)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	result, err := handleCiliumStatusAndVersion(ctx, mcp.CallToolRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+
+	var textContent mcp.TextContent
+	var ok bool
+	for _, content := range result.Content {
+		if textContent, ok = content.(mcp.TextContent); ok {
+			break
 		}
-		if datapathMode := "tunnel"; datapathMode != "" {
-			upgradeArgs = append(upgradeArgs, "--datapath-mode", datapathMode)
+	}
+	require.True(t, ok, "no text content in result")
+
+	assert.Contains(t, textContent.Text, "Cilium status: OK")
+	assert.Contains(t, textContent.Text, "cilium version 1.14.0")
+}
+
+func TestHandleCiliumStatusAndVersionError(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"status", "--timeout", "30s"}, "", errors.New("command failed"))
+	mock.AddCommandString("cilium", []string{"version", "--timeout", "30s"}, "cilium version 1.14.0", nil)
+
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	result, err := handleCiliumStatusAndVersion(ctx, mcp.CallToolRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.True(t, result.IsError)
+	assert.Contains(t, getResultText(result), "Error getting Cilium status")
+}
+
+func TestHandleInstallCilium(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"install", "--timeout", "30s"}, "✓ Cilium was successfully installed!", nil)
+
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	result, err := handleInstallCilium(ctx, mcp.CallToolRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "✓ Cilium was successfully installed!")
+}
+
+func TestHandleUninstallCilium(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"uninstall", "--timeout", "30s"}, "✓ Cilium was successfully uninstalled!", nil)
+
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	result, err := handleUninstallCilium(ctx, mcp.CallToolRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "✓ Cilium was successfully uninstalled!")
+}
+
+func TestHandleUpgradeCilium(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"upgrade", "--timeout", "30s"}, "✓ Cilium was successfully upgraded!", nil)
+
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	result, err := handleUpgradeCilium(ctx, mcp.CallToolRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "✓ Cilium was successfully upgraded!")
+}
+
+func TestHandleConnectToRemoteCluster(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("cilium", []string{"clustermesh", "connect", "--destination-cluster", "my-cluster", "--timeout", "30s"}, "✓ Connected to cluster my-cluster!", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Arguments: map[string]any{
+					"cluster_name": "my-cluster",
+				},
+			},
 		}
 
-		expected := []string{"upgrade", "--cluster-name", "test-cluster", "--datapath-mode", "tunnel"}
-		assert.Equal(t, expected, upgradeArgs)
+		result, err := handleConnectToRemoteCluster(ctx, req)
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Contains(t, getResultText(result), "✓ Connected to cluster my-cluster!")
 	})
 
-	t.Run("install command with parameters", func(t *testing.T) {
-		args := []string{"install"}
-		if clusterName := "test-cluster"; clusterName != "" {
-			args = append(args, "--set", "cluster.name="+clusterName)
+	t.Run("missing cluster_name", func(t *testing.T) {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Arguments: map[string]any{},
+			},
 		}
-		if clusterID := "123"; clusterID != "" {
-			args = append(args, "--set", "cluster.id="+clusterID)
-		}
-		if datapathMode := "tunnel"; datapathMode != "" {
-			args = append(args, "--datapath-mode", datapathMode)
-		}
-
-		expected := []string{"install", "--set", "cluster.name=test-cluster", "--set", "cluster.id=123", "--datapath-mode", "tunnel"}
-		assert.Equal(t, expected, args)
-	})
-
-	t.Run("clustermesh connect command", func(t *testing.T) {
-		clusterName := "remote-cluster"
-		context := "remote-context"
-
-		args := []string{"clustermesh", "connect", "--destination-cluster", clusterName}
-		if context != "" {
-			args = append(args, "--destination-context", context)
-		}
-
-		expected := []string{"clustermesh", "connect", "--destination-cluster", "remote-cluster", "--destination-context", "remote-context"}
-		assert.Equal(t, expected, args)
-	})
-
-	t.Run("bgp commands", func(t *testing.T) {
-		peersArgs := []string{"bgp", "peers"}
-		routesArgs := []string{"bgp", "routes"}
-
-		assert.Equal(t, []string{"bgp", "peers"}, peersArgs)
-		assert.Equal(t, []string{"bgp", "routes"}, routesArgs)
+		result, err := handleConnectToRemoteCluster(ctx, req)
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.Contains(t, getResultText(result), "cluster_name parameter is required")
 	})
 }
 
-func TestCiliumParameterValidation(t *testing.T) {
-	t.Run("cluster name validation", func(t *testing.T) {
-		clusterName := ""
-		if clusterName == "" {
-			assert.True(t, true, "cluster_name parameter should be required for connect operations")
+func TestHandleDisconnectFromRemoteCluster(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("cilium", []string{"clustermesh", "disconnect", "--destination-cluster", "my-cluster", "--timeout", "30s"}, "✓ Disconnected from cluster my-cluster!", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Arguments: map[string]any{
+					"cluster_name": "my-cluster",
+				},
+			},
 		}
 
-		clusterName = "valid-cluster"
-		if clusterName != "" {
-			assert.True(t, true, "valid cluster name should be accepted")
-		}
+		result, err := handleDisconnectRemoteCluster(ctx, req)
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Contains(t, getResultText(result), "✓ Disconnected from cluster my-cluster!")
 	})
 
-	t.Run("boolean parameter handling", func(t *testing.T) {
-		enableStr := "true"
-		enable := enableStr == "true"
-		assert.True(t, enable)
-
-		enableStr = "false"
-		enable = enableStr == "true"
-		assert.False(t, enable)
-
-		// Default value handling
-		enableStr = ""
-		if enableStr == "" {
-			enableStr = "true" // default
+	t.Run("missing cluster_name", func(t *testing.T) {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Arguments: map[string]any{},
+			},
 		}
-		enable = enableStr == "true"
-		assert.True(t, enable)
+		result, err := handleDisconnectRemoteCluster(ctx, req)
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.Contains(t, getResultText(result), "cluster_name parameter is required")
 	})
+}
+
+func TestHandleEnableHubble(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"hubble", "enable", "--timeout", "30s"}, "✓ Hubble was successfully enabled!", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"enable": true,
+			},
+		},
+	}
+
+	result, err := handleToggleHubble(ctx, req)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "✓ Hubble was successfully enabled!")
+}
+
+func TestHandleDisableHubble(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"hubble", "disable", "--timeout", "30s"}, "✓ Hubble was successfully disabled!", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"enable": false,
+			},
+		},
+	}
+	result, err := handleToggleHubble(ctx, req)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "✓ Hubble was successfully disabled!")
+}
+
+func TestHandleListBGPPeers(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"bgp", "peers", "--timeout", "30s"}, "listing BGP peers", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+	result, err := handleListBGPPeers(ctx, mcp.CallToolRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "listing BGP peers")
+}
+
+func TestHandleListBGPRoutes(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("cilium", []string{"bgp", "routes", "--timeout", "30s"}, "listing BGP routes", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+	result, err := handleListBGPRoutes(ctx, mcp.CallToolRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "listing BGP routes")
+}
+
+func TestRunCiliumCliWithContext(t *testing.T) {
+	ctx := context.Background()
+	t.Run("success", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("cilium", []string{"test", "--timeout", "30s"}, "success", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+		result, err := runCiliumCliWithContext(ctx, "test")
+		require.NoError(t, err)
+		assert.Equal(t, "success", result)
+	})
+	t.Run("error", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("cilium", []string{"test", "--timeout", "30s"}, "", fmt.Errorf("test error"))
+		ctx = cmd.WithShellExecutor(ctx, mock)
+		_, err := runCiliumCliWithContext(ctx, "test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "test error")
+	})
+}
+
+func getResultText(r *mcp.CallToolResult) string {
+	if r == nil || len(r.Content) == 0 {
+		return ""
+	}
+	if textContent, ok := r.Content[0].(mcp.TextContent); ok {
+		return strings.TrimSpace(textContent.Text)
+	}
+	return ""
 }

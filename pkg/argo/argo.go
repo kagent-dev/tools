@@ -13,14 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kagent-dev/tools/internal/commands"
+	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 // Argo Rollouts tools
-
-var kubeConfig = ""
 
 func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ns := mcp.ParseString(request, "namespace", "argo-rollouts")
@@ -76,10 +76,11 @@ func handleVerifyKubectlPluginInstall(ctx context.Context, request mcp.CallToolR
 }
 
 func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
-	if kubeConfig != "" {
-		args = append(args, "--kubeconfig", kubeConfig)
-	}
-	return utils.RunCommandWithContext(ctx, "kubectl", args)
+	kubeconfigPath := utils.GetKubeconfig()
+	return commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(kubeconfigPath).
+		Execute(ctx)
 }
 
 func handlePromoteRollout(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -198,9 +199,13 @@ func getSystemArchitecture() (string, error) {
 	}
 }
 
-func getLatestVersion() string {
+func getLatestVersion(ctx context.Context) string {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get("https://api.github.com/repos/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/latest")
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/latest", nil)
+	if err != nil {
+		return "0.5.0" // Default version
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "0.5.0" // Default version
 	}
@@ -220,7 +225,7 @@ func getLatestVersion() string {
 	return "0.5.0"
 }
 
-func configureGatewayPlugin(version, namespace string) GatewayPluginStatus {
+func configureGatewayPlugin(ctx context.Context, version, namespace string) GatewayPluginStatus {
 	arch, err := getSystemArchitecture()
 	if err != nil {
 		return GatewayPluginStatus{
@@ -230,7 +235,7 @@ func configureGatewayPlugin(version, namespace string) GatewayPluginStatus {
 	}
 
 	if version == "" {
-		version = getLatestVersion()
+		version = getLatestVersion(ctx)
 	}
 
 	configMap := fmt.Sprintf(`apiVersion: v1
@@ -263,11 +268,12 @@ data:
 	tmpFile.Close()
 
 	// Apply the ConfigMap
-	_, err = utils.RunCommandWithContext(context.Background(), "kubectl", []string{"apply", "-f", tmpFile.Name()})
+	cmdArgs := []string{"apply", "-f", tmpFile.Name()}
+	output, err := runArgoRolloutCommand(ctx, cmdArgs)
 	if err != nil {
 		return GatewayPluginStatus{
 			Installed:    false,
-			ErrorMessage: fmt.Sprintf("Failed to configure Gateway API plugin: %s", err.Error()),
+			ErrorMessage: fmt.Sprintf("Error applying Gateway API plugin config: %s. Output: %s", err.Error(), output),
 		}
 	}
 
@@ -304,7 +310,7 @@ func handleVerifyGatewayPlugin(ctx context.Context, request mcp.CallToolRequest)
 	}
 
 	// Configure plugin
-	status := configureGatewayPlugin(version, namespace)
+	status := configureGatewayPlugin(ctx, version, namespace)
 	return mcp.NewToolResultText(status.String()), nil
 }
 
@@ -348,48 +354,47 @@ func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(status.String()), nil
 }
 
-func RegisterArgoTools(s *server.MCPServer, kubeconfig string) {
-	kubeConfig = kubeconfig
+func RegisterTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("argo_verify_argo_rollouts_controller_install",
 		mcp.WithDescription("Verify that the Argo Rollouts controller is installed and running"),
 		mcp.WithString("namespace", mcp.Description("The namespace where Argo Rollouts is installed")),
 		mcp.WithString("label", mcp.Description("The label of the Argo Rollouts controller pods")),
-	), handleVerifyArgoRolloutsControllerInstall)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_verify_argo_rollouts_controller_install", handleVerifyArgoRolloutsControllerInstall)))
 
 	s.AddTool(mcp.NewTool("argo_verify_kubectl_plugin_install",
 		mcp.WithDescription("Verify that the kubectl Argo Rollouts plugin is installed"),
-	), handleVerifyKubectlPluginInstall)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_verify_kubectl_plugin_install", handleVerifyKubectlPluginInstall)))
 
 	s.AddTool(mcp.NewTool("argo_promote_rollout",
 		mcp.WithDescription("Promote a paused rollout to the next step"),
 		mcp.WithString("rollout_name", mcp.Description("The name of the rollout to promote"), mcp.Required()),
 		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
 		mcp.WithString("full", mcp.Description("Promote the rollout to the final step")),
-	), handlePromoteRollout)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_promote_rollout", handlePromoteRollout)))
 
 	s.AddTool(mcp.NewTool("argo_pause_rollout",
 		mcp.WithDescription("Pause a rollout"),
 		mcp.WithString("rollout_name", mcp.Description("The name of the rollout to pause"), mcp.Required()),
 		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
-	), handlePauseRollout)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_pause_rollout", handlePauseRollout)))
 
 	s.AddTool(mcp.NewTool("argo_set_rollout_image",
 		mcp.WithDescription("Set the image of a rollout"),
 		mcp.WithString("rollout_name", mcp.Description("The name of the rollout to set the image for"), mcp.Required()),
 		mcp.WithString("container_image", mcp.Description("The container image to set for the rollout"), mcp.Required()),
 		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
-	), handleSetRolloutImage)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_set_rollout_image", handleSetRolloutImage)))
 
 	s.AddTool(mcp.NewTool("argo_verify_gateway_plugin",
 		mcp.WithDescription("Verify the installation status of the Argo Rollouts Gateway API plugin"),
 		mcp.WithString("version", mcp.Description("The version of the plugin to check")),
 		mcp.WithString("namespace", mcp.Description("The namespace for the plugin resources")),
 		mcp.WithString("should_install", mcp.Description("Whether to install the plugin if not found")),
-	), handleVerifyGatewayPlugin)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_verify_gateway_plugin", handleVerifyGatewayPlugin)))
 
 	s.AddTool(mcp.NewTool("argo_check_plugin_logs",
 		mcp.WithDescription("Check the logs of the Argo Rollouts Gateway API plugin"),
 		mcp.WithString("namespace", mcp.Description("The namespace of the plugin resources")),
 		mcp.WithString("timeout", mcp.Description("Timeout for log collection in seconds")),
-	), handleCheckPluginLogs)
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_check_plugin_logs", handleCheckPluginLogs)))
 }

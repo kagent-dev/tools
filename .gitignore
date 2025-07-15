@@ -7,3 +7,7 @@ bin/
 .env.development.local
 .env.test.local
 .env.production.local
+/logs/
+/kagent-tools
+/*.out
+*.html
