@@ -109,7 +109,9 @@ run: docker-build
 	@docker run --rm --net=host -p 8084:8084 -e OPENAI_API_KEY=$(OPENAI_API_KEY) -v $(HOME)/.kube:/home/nonroot/.kube -e KAGENT_TOOLS_PORT=8084 $(TOOLS_IMG) -- --kubeconfig /root/.kube/config
 
 PHONY: retag
-retag: docker-build
+retag: docker-build helm-version
+	@echo "Check Kind cluster $(KIND_CLUSTER_NAME) exists"
+	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME)
 	@echo "Retagging tools image to $(RETAGGED_TOOLS_IMG)"
 	docker tag $(TOOLS_IMG) $(RETAGGED_TOOLS_IMG)
 	kind load docker-image --name $(KIND_CLUSTER_NAME) $(RETAGGED_TOOLS_IMG)
@@ -199,9 +201,7 @@ delete-kind-cluster:
 	kind delete cluster --name $(KIND_CLUSTER_NAME)
 
 .PHONY: kind-update-kagent
-kind-update-kagent: docker-build
-	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME)
-	kind load docker-image --name $(KIND_CLUSTER_NAME) $(TOOLS_IMG)
+kind-update-kagent:  retag
 	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(TOOLS_IMG)"}]'
 
 .PHONY: otel-local

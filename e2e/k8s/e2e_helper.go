@@ -94,6 +94,9 @@ func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	if result.IsError {
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
+	}
 	return result, nil
 }
 
@@ -123,6 +126,9 @@ func (c *MCPClient) helmListReleases() (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	if result.IsError {
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
+	}
 	return result, nil
 }
 
@@ -151,7 +157,7 @@ func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
 		return nil, err
 	}
 	if result.IsError {
-		return nil, fmt.Errorf("istio installation failed: %s", result.Content)
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
 	}
 	return result, nil
 }
@@ -181,6 +187,9 @@ func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
 	result, err := c.client.CallTool(ctx, request)
 	if err != nil {
 		return nil, err
+	}
+	if result.IsError {
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
 	}
 	return result, nil
 }
