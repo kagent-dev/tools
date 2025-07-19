@@ -276,7 +276,7 @@ func InstallKAgentTools(namespace string, releaseName string) {
 		defer cancel()
 
 		output, err := commands.NewCommandBuilder("kubectl").
-			WithArgs("get", "pods", "-n", namespace, "-l", "app.kubernetes.io/name=kagent", "-o", "jsonpath={.items[*].status.phase}").
+			WithArgs("get", "pods", "-n", namespace, "-l", "app.kubernetes.io/name=kagent-tools", "-o", "jsonpath={.items[*].status.phase}").
 			Execute(ctx)
 
 		if err != nil {

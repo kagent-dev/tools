@@ -42,7 +42,7 @@ func NewCommandBuilder(command string) *CommandBuilder {
 		args:        make([]string, 0),
 		labels:      make(map[string]string),
 		annotations: make(map[string]string),
-		timeout:     120 * time.Second,
+		timeout:     30 * time.Second,
 		validate:    true,
 		cacheTTL:    5 * time.Minute,
 	}
@@ -336,7 +336,7 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 		case "argo":
 			// kubectl argo rollouts commands support --timeout
 			if len(cb.args) > 1 && cb.args[1] == "rollouts" {
-				return false
+				return true
 			}
 			return false
 		case "get":
