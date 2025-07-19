@@ -286,13 +286,28 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 			return false
 		}
 
+		// Check if --wait=false is explicitly set in the arguments
+		hasWaitFalse := false
+		for _, arg := range cb.args {
+			if arg == "--wait=false" {
+				hasWaitFalse = true
+				break
+			}
+		}
+
 		// Check the first argument (subcommand)
 		subcommand := cb.args[0]
 		switch subcommand {
 		case "wait":
 			return true
 		case "delete":
-			// kubectl delete supports --timeout when waiting for deletion
+			// kubectl delete supports --timeout by default
+			// It only doesn't support timeout when explicitly using --wait=false for namespace deletion
+			if len(cb.args) > 1 && cb.args[1] == "namespace" && hasWaitFalse {
+				// Special case: kubectl delete namespace with --wait=false doesn't support timeout
+				return false
+			}
+			// For other resources or when not using --wait=false, kubectl delete supports --timeout
 			return true
 		case "rollout":
 			// kubectl rollout status supports --timeout
@@ -307,7 +322,18 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 			// kubectl annotate and label support --timeout
 			return true
 		case "create":
-			// kubectl create supports --timeout
+			// kubectl create supports --timeout for some resources but not all
+			if len(cb.args) > 1 {
+				resourceType := cb.args[1]
+				switch resourceType {
+				case "namespace":
+					// kubectl create namespace does NOT support --timeout
+					return false
+				default:
+					// Most other kubectl create commands support --timeout
+					return true
+				}
+			}
 			return true
 		case "argo":
 			// kubectl argo rollouts commands support --timeout

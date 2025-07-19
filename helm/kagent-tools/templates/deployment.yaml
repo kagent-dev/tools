@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kagent.fullname" . }}
+  namespace: {{ include "kagent.namespace" . }}
+  labels:
+    {{- include "kagent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kagent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "kagent.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "kagent.fullname" . }}
+      containers:
+        - name: tools
+          command:
+            - /tool-server
+          args:
+          - "--port"
+          - "{{ .Values.service.ports.tools.targetPort }}"
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.tools.image.registry }}/{{ .Values.tools.image.repository }}:{{ coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version }}"
+          imagePullPolicy: {{ .Values.tools.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.tools.resources | nindent 12 }}
+          env:
+            - name: KAGENT_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kagent.fullname" . }}-openai
+                  key: OPENAI_API_KEY
+                  optional: true # if the secret is not found, the tool will not be available
+            - name: OTEL_TRACING_ENABLED
+              value: {{ .Values.otel.tracing.enabled | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.tracing.exporter.otlp.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_TIMEOUT
+              value: {{ .Values.otel.tracing.exporter.otlp.timeout | quote }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_INSECURE
+              value: {{ .Values.otel.tracing.exporter.otlp.insecure | quote }}
+          {{- with .Values.tools.env }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http-tools
+              containerPort: {{ .Values.service.ports.tools.targetPort }}
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: http-tools
+            initialDelaySeconds: 15
+            periodSeconds: 15
+

@@ -11,3 +11,4 @@ bin/
 /kagent-tools
 /*.out
 *.html
+/helm/kagent-tools/Chart.yaml

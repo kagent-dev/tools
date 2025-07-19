@@ -1,0 +1,10 @@
+################################ To open kagent UI: ###########################################
+#
+#  This is a Helm chart for Kagent Tools
+#
+#  1. Forward application port by running these commands in the terminal:
+#  kubectl -n {{ include "kagent.namespace" . }} port-forward service/{{ .Release.Name }} {{.Values.service.ports.tools.targetPort}}:{{.Values.service.ports.tools.port}} &
+#
+#  2. Then visit http://127.0.0.1:{{.Values.service.ports.tools.port}}/mcp to use MCP
+#
+###############################################################################################

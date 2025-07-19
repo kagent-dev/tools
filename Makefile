@@ -1,7 +1,13 @@
 DOCKER_REGISTRY ?= ghcr.io
 BASE_IMAGE_REGISTRY ?= cgr.dev
+
 DOCKER_REPO ?= kagent-dev/kagent
+
+HELM_REPO ?= oci://ghcr.io/kagent-dev
+HELM_ACTION=upgrade --install
+
 KIND_CLUSTER_NAME ?= kagent
+KIND_IMAGE_VERSION ?= 1.33.1
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT := $(shell git rev-parse --short HEAD || echo "unknown")
@@ -12,6 +18,7 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
+HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
 clean:
@@ -56,7 +63,8 @@ test-only: ## Run tests only (without build/lint for faster iteration)
 
 .PHONY: e2e
 e2e: test docker-build
-	go test -tags=test -v -cover ./e2e/...
+	go test -v -tags=test -cover ./e2e/cli/ -timeout 1m
+	go test -v -tags=test -cover ./e2e/k8s/ -timeout 1m
 
 bin/kagent-tools-linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd
@@ -155,11 +163,51 @@ docker-build-all: DOCKER_BUILD_ARGS = --progress=plain --builder $(BUILDX_BUILDE
 docker-build-all:
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -f Dockerfile ./
 
+.PHONY: helm-version
+helm-version:
+	VERSION=$(VERSION) envsubst < helm/kagent-tools/Chart-template.yaml > helm/kagent-tools/Chart.yaml
+	mkdir -p $(HELM_DIST_FOLDER)
+	helm package -d $(HELM_DIST_FOLDER) helm/kagent-tools
+
+.PHONY: helm-uninstall
+helm-uninstall:
+	helm uninstall kagent --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
+
+.PHONY: helm-install
+helm-install: helm-version
+	helm $(HELM_ACTION) kagent-tools ./helm/kagent-tools \
+		--kube-context kind-$(KIND_CLUSTER_NAME) \
+		--namespace kagent \
+		--create-namespace \
+		--history-max 2    \
+		--timeout 5m       \
+		-f ./scripts/kind/test-values.yaml \
+		--wait
+
+.PHONY: helm-publish
+helm-publish: helm-version
+	helm push ./$(HELM_DIST_FOLDER)/kagent-tools-$(VERSION).tgz $(HELM_REPO)/kagent-tools/helm
+
+.PHONY: create-kind-cluster
+create-kind-cluster:
+	docker pull kindest/node:v$(KIND_IMAGE_VERSION) || true
+	kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml
+
+.PHONY: delete-kind-cluster
+delete-kind-cluster:
+	kind delete cluster --name $(KIND_CLUSTER_NAME)
+
 .PHONY: kind-update-kagent
 kind-update-kagent: docker-build
 	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME)
 	kind load docker-image --name $(KIND_CLUSTER_NAME) $(TOOLS_IMG)
 	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(TOOLS_IMG)"}]'
+
+.PHONY: otel-local
+otel-local:
+	docker rm -f jaeger-desktop || true
+	docker run -d --name jaeger-desktop --restart=always -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/jaeger:2.7.0
+	open http://localhost:16686/
 
 ## Tool Binaries
 ## Location to install dependencies t

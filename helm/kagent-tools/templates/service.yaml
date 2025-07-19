@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kagent.fullname" . }}
+  namespace: {{ include "kagent.namespace" . }}
+  labels:
+    {{- include "kagent.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.ports.tools.port }}
+      targetPort: {{ .Values.service.ports.tools.targetPort }}
+      {{- if eq .Values.service.type "NodePort" }} # Only used if service.type is NodePort
+      {{- if .Values.service.ports.tools.nodePort }}
+      nodePort: {{ .Values.service.ports.tools.nodePort | default "" }}
+      {{- end }}
+      {{- end }}
+      protocol: TCP
+      name: tools
+  selector:
+    {{- include "kagent.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,14 @@
+service:
+  type: NodePort
+  ports:
+    tools:
+      nodePort: 30884
+
+otel:
+  tracing:
+    enabled: true
+    exporter:
+      otlp:
+        endpoint: http://host.docker.internal:4317
+        timeout: 15
+        insecure: true
