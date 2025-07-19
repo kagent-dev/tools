@@ -189,7 +189,7 @@ func (ts *TestServer) waitForHTTPServer(ctx context.Context, timeout time.Durati
 		case <-ticker.C:
 			resp, err := http.Get(url)
 			if err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
 					return nil
 				}

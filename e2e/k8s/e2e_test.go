@@ -82,7 +82,7 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 	})
 
 	Describe("KAgent Tools K8s Operations", func() {
-		It("should be able to list all resources in the cluster", func() {
+		It("should be able to list namespace in the cluster", func() {
 			log.Info("Testing MCP client connectivity and k8s operations", "namespace", namespace)
 
 			client, err := GetMCPClient()

@@ -1,225 +1,251 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
-	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
+	"github.com/mark3labs/mcp-go/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-// MCPClient represents a client for communicating with the MCP server
+// MCPClient represents a client for communicating with the MCP server using the official mcp-go client
 type MCPClient struct {
-	baseURL    string
-	httpClient *http.Client
-	log        *slog.Logger
+	client *client.Client
+	log    *slog.Logger
 }
 
-// MCPRequest represents a request to the MCP server
-type MCPRequest struct {
-	Jsonrpc string      `json:"jsonrpc"`
-	ID      string      `json:"id"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
-}
-
-// MCPResponse represents a response from the MCP server
-type MCPResponse struct {
-	Jsonrpc string      `json:"jsonrpc"`
-	ID      string      `json:"id"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *MCPError   `json:"error,omitempty"`
-}
-
-// MCPError represents an error response from the MCP server
-type MCPError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-}
-
-// CallToolParams represents parameters for calling a tool
-type CallToolParams struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]interface{} `json:"arguments,omitempty"`
-}
-
-// GetMCPClient creates a new MCP client configured for the e2e test environment
+// GetMCPClient creates a new MCP client configured for the e2e test environment using the official mcp-go client
 func GetMCPClient() (*MCPClient, error) {
-	client := &MCPClient{
-		baseURL: "http://127.0.0.1:30885/mcp", // MCP server responds at /mcp endpoint
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		log: logger.Get(),
-	}
-
-	r, err := client.listTools() // Validate connection by listing tools
-	logger.Get().Info("MCP Client created", "baseURL", client.baseURL, "tools", r)
-
-	return client, err
-}
-
-// callTool makes a tool call to the MCP server
-func (c *MCPClient) callTool(ctx context.Context, toolName string, arguments map[string]interface{}) (*MCPResponse, error) {
-	params := CallToolParams{
-		Name:      toolName,
-		Arguments: arguments,
-	}
-
-	request := MCPRequest{
-		Jsonrpc: "2.0",
-		ID:      fmt.Sprintf("test-%d", time.Now().UnixNano()),
-		Method:  "tools/call",
-		Params:  params,
-	}
-
-	return c.makeHTTPRequest(ctx, request)
-}
-
-// makeHTTPRequest performs an HTTP request to the MCP server
-func (c *MCPClient) makeHTTPRequest(ctx context.Context, req MCPRequest) (*MCPResponse, error) {
-	reqBody, err := json.Marshal(req)
+	// Create HTTP transport for the MCP server
+	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to create HTTP transport: %w", err)
 	}
 
-	c.log.Info("Making MCP request", "method", req.Method, "tool", req.Params)
+	// Create the official MCP client
+	mcpClient := client.NewClient(httpTransport)
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL, bytes.NewBuffer(reqBody))
+	// Start the client
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := mcpClient.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start MCP client: %w", err)
+	}
+
+	// Initialize the client
+	initRequest := mcp.InitializeRequest{}
+	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initRequest.Params.ClientInfo = mcp.Implementation{
+		Name:    "e2e-test-client",
+		Version: "1.0.0",
+	}
+	initRequest.Params.Capabilities = mcp.ClientCapabilities{}
+
+	_, err = mcpClient.Initialize(ctx, initRequest)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		return nil, fmt.Errorf("failed to initialize MCP client: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make HTTP request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Handle different HTTP status codes
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("MCP server not found (404): service may not be running or accessible")
+	mcpHelper := &MCPClient{
+		client: mcpClient,
+		log:    slog.Default(),
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
-	}
+	// Validate connection by listing tools
+	tools, err := mcpHelper.listTools()
+	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885", "tools", len(tools))
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	var mcpResp MCPResponse
-	if err := json.Unmarshal(body, &mcpResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	if mcpResp.Error != nil {
-		return nil, fmt.Errorf("MCP server returned error: %v", mcpResp.Error)
-	}
-
-	return &mcpResp, nil
+	return mcpHelper, err
 }
 
 // k8sListResources calls the k8s_get_resources tool
-func (c *MCPClient) k8sListResources(resourceType string) (*MCPResponse, error) {
+func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	arguments := map[string]interface{}{
-		"resource_type": resourceType,
-		"output":        "json",
+	type K8sArgs struct {
+		ResourceType string `json:"resource_type"`
+		Output       string `json:"output"`
 	}
 
-	return c.callTool(ctx, "k8s_get_resources", arguments)
+	arguments := K8sArgs{
+		ResourceType: resourceType,
+		Output:       "json",
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "k8s_get_resources",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // helmListReleases calls the helm_list_releases tool
-func (c *MCPClient) helmListReleases() (*MCPResponse, error) {
+func (c *MCPClient) helmListReleases() (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	arguments := map[string]interface{}{
-		"all_namespaces": "true",
-		"output":         "json",
+	type HelmArgs struct {
+		AllNamespaces string `json:"all_namespaces"`
+		Output        string `json:"output"`
 	}
 
-	return c.callTool(ctx, "helm_list_releases", arguments)
+	arguments := HelmArgs{
+		AllNamespaces: "true",
+		Output:        "json",
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "helm_list_releases",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // istioInstall calls the istio_install_istio tool
-func (c *MCPClient) istioInstall(profile string) (*MCPResponse, error) {
+func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second) // Istio install can take time
 	defer cancel()
 
-	arguments := map[string]interface{}{
-		"profile": profile,
+	type IstioArgs struct {
+		Profile string `json:"profile"`
 	}
 
-	return c.callTool(ctx, "istio_install_istio", arguments)
+	arguments := IstioArgs{
+		Profile: profile,
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "istio_install_istio",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // argoRolloutsList calls the argo_rollouts_get tool to list rollouts
-func (c *MCPClient) argoRolloutsList(namespace string) (*MCPResponse, error) {
+func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	arguments := map[string]interface{}{
-		"namespace": namespace,
-		"output":    "json",
+	type ArgoArgs struct {
+		Namespace string `json:"namespace"`
+		Output    string `json:"output"`
 	}
 
-	return c.callTool(ctx, "argo_rollouts_get", arguments)
+	arguments := ArgoArgs{
+		Namespace: namespace,
+		Output:    "json",
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "argo_rollouts_get",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // prometheusQuery calls the prometheus_query_tool
-func (c *MCPClient) prometheusQuery(query string) (*MCPResponse, error) {
+func (c *MCPClient) prometheusQuery(query string) (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	arguments := map[string]interface{}{
-		"query":          query,
-		"prometheus_url": "http://localhost:9090",
+	type PrometheusArgs struct {
+		Query         string `json:"query"`
+		PrometheusURL string `json:"prometheus_url"`
 	}
 
-	return c.callTool(ctx, "prometheus_query_tool", arguments)
+	arguments := PrometheusArgs{
+		Query:         query,
+		PrometheusURL: "http://localhost:9090",
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "prometheus_query_tool",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ciliumStatus calls the cilium_status_and_version tool
-func (c *MCPClient) ciliumStatus() (*MCPResponse, error) {
+func (c *MCPClient) ciliumStatus() (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return c.callTool(ctx, "cilium_status_and_version", nil)
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "cilium_status_and_version",
+			Arguments: nil,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // listTools calls the tools/list method to get available tools
-func (c *MCPClient) listTools() (*MCPResponse, error) {
+func (c *MCPClient) listTools() ([]interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	request := MCPRequest{
-		Jsonrpc: "2.0",
-		ID:      fmt.Sprintf("test-%d", time.Now().UnixNano()),
-		Method:  "tools/list",
-		Params:  struct{}{},
+	request := mcp.ListToolsRequest{}
+	result, err := c.client.ListTools(ctx, request)
+	if err != nil {
+		return nil, err
 	}
 
-	return c.makeHTTPRequest(ctx, request)
+	// Convert tools to interface{} slice for compatibility
+	tools := make([]interface{}, len(result.Tools))
+	for i, tool := range result.Tools {
+		tools[i] = tool
+	}
+
+	return tools, nil
 }
 
 // InstallKAgentTools installs KAgent Tools using helm in the specified namespace
@@ -228,7 +254,7 @@ func InstallKAgentTools(namespace string, releaseName string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	log := logger.Get()
+	log := slog.Default()
 	By("Installing KAgent Tools in namespace " + namespace)
 	log.Info("Installing KAgent Tools", "namespace", namespace)
 
@@ -300,7 +326,7 @@ func CreateNamespace(namespace string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	log := logger.Get()
+	log := slog.Default()
 	By("Creating namespace " + namespace)
 	log.Info("Creating namespace", "namespace", namespace)
 
@@ -337,7 +363,7 @@ func DeleteNamespace(namespace string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	log := logger.Get()
+	log := slog.Default()
 	By("Deleting namespace " + namespace)
 	log.Info("Deleting namespace", "namespace", namespace)
 
