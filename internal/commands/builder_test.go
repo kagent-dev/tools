@@ -19,8 +19,8 @@ func TestNewCommandBuilder(t *testing.T) {
 	assert.Empty(t, cb.output)
 	assert.NotNil(t, cb.labels)
 	assert.NotNil(t, cb.annotations)
-	assert.Equal(t, 30*time.Second, cb.timeout)
-	assert.Equal(t, 5*time.Minute, cb.cacheTTL)
+	assert.Equal(t, 60*time.Second, cb.timeout)
+	assert.Equal(t, 1*time.Minute, cb.cacheTTL)
 	assert.True(t, cb.validate)
 	assert.False(t, cb.cached)
 	assert.False(t, cb.dryRun)
@@ -562,8 +562,6 @@ func TestCommandBuilderExecuteWithoutCache(t *testing.T) {
 	assert.Equal(t, "echo", command)
 	assert.Contains(t, args, "hello")
 	assert.Contains(t, args, "world")
-	assert.Contains(t, args, "--timeout")
-	assert.Contains(t, args, "30s")
 }
 
 func TestCommandBuilderExecuteWithCache(t *testing.T) {
@@ -579,7 +577,5 @@ func TestCommandBuilderExecuteWithCache(t *testing.T) {
 	assert.Equal(t, "echo", command)
 	assert.Contains(t, args, "hello")
 	assert.Contains(t, args, "world")
-	assert.Contains(t, args, "--timeout")
-	assert.Contains(t, args, "30s")
 	assert.True(t, cb.cached)
 }

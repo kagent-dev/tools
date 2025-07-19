@@ -21,7 +21,7 @@ func TestHandleIstioProxyStatus(t *testing.T) {
 
 	t.Run("basic proxy status", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"proxy-status", "--timeout", "30s"}, "Proxy status output", nil)
+		mock.AddCommandString("istioctl", []string{"proxy-status"}, "Proxy status output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -34,7 +34,7 @@ func TestHandleIstioProxyStatus(t *testing.T) {
 
 	t.Run("proxy status with namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"proxy-status", "-n", "istio-system", "--timeout", "30s"}, "Proxy status output", nil)
+		mock.AddCommandString("istioctl", []string{"proxy-status", "-n", "istio-system"}, "Proxy status output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -52,7 +52,7 @@ func TestHandleIstioProxyStatus(t *testing.T) {
 
 	t.Run("proxy status with pod name", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"proxy-status", "-n", "default", "test-pod", "--timeout", "30s"}, "Proxy status output", nil)
+		mock.AddCommandString("istioctl", []string{"proxy-status", "-n", "default", "test-pod"}, "Proxy status output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -83,7 +83,7 @@ func TestHandleIstioProxyConfig(t *testing.T) {
 
 	t.Run("proxy config with pod name", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"proxy-config", "all", "test-pod", "--timeout", "30s"}, "Proxy config output", nil)
+		mock.AddCommandString("istioctl", []string{"proxy-config", "all", "test-pod"}, "Proxy config output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -101,7 +101,7 @@ func TestHandleIstioProxyConfig(t *testing.T) {
 
 	t.Run("proxy config with namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"proxy-config", "cluster", "test-pod.default", "--timeout", "30s"}, "Proxy config output", nil)
+		mock.AddCommandString("istioctl", []string{"proxy-config", "cluster", "test-pod.default"}, "Proxy config output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -125,7 +125,7 @@ func TestHandleIstioInstall(t *testing.T) {
 
 	t.Run("install with default profile", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"install", "--set", "profile=default", "-y", "--timeout", "30s"}, "Install completed", nil)
+		mock.AddCommandString("istioctl", []string{"install", "--set", "profile=default", "-y"}, "Install completed", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -138,7 +138,7 @@ func TestHandleIstioInstall(t *testing.T) {
 
 	t.Run("install with custom profile", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"install", "--set", "profile=demo", "-y", "--timeout", "30s"}, "Install completed", nil)
+		mock.AddCommandString("istioctl", []string{"install", "--set", "profile=demo", "-y"}, "Install completed", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -159,7 +159,7 @@ func TestHandleIstioGenerateManifest(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
 
-	mock.AddCommandString("istioctl", []string{"manifest", "generate", "--set", "profile=minimal", "--timeout", "30s"}, "Generated manifest", nil)
+	mock.AddCommandString("istioctl", []string{"manifest", "generate", "--set", "profile=minimal"}, "Generated manifest", nil)
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -180,7 +180,7 @@ func TestHandleIstioAnalyzeClusterConfiguration(t *testing.T) {
 
 	t.Run("analyze all namespaces", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"analyze", "-A", "--timeout", "30s"}, "Analysis output", nil)
+		mock.AddCommandString("istioctl", []string{"analyze", "-A"}, "Analysis output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -198,7 +198,7 @@ func TestHandleIstioAnalyzeClusterConfiguration(t *testing.T) {
 
 	t.Run("analyze specific namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"analyze", "-n", "default", "--timeout", "30s"}, "Analysis output", nil)
+		mock.AddCommandString("istioctl", []string{"analyze", "-n", "default"}, "Analysis output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -220,7 +220,7 @@ func TestHandleIstioVersion(t *testing.T) {
 
 	t.Run("version full", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"version", "--timeout", "30s"}, "Version output", nil)
+		mock.AddCommandString("istioctl", []string{"version"}, "Version output", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -233,7 +233,7 @@ func TestHandleIstioVersion(t *testing.T) {
 
 	t.Run("version short", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"version", "--short", "--timeout", "30s"}, "1.18.0", nil)
+		mock.AddCommandString("istioctl", []string{"version", "--short"}, "1.18.0", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -254,7 +254,7 @@ func TestHandleIstioRemoteClusters(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
 
-	mock.AddCommandString("istioctl", []string{"remote-clusters", "--timeout", "30s"}, "Remote clusters output", nil)
+	mock.AddCommandString("istioctl", []string{"remote-clusters"}, "Remote clusters output", nil)
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -270,7 +270,7 @@ func TestHandleWaypointList(t *testing.T) {
 
 	t.Run("list waypoints in all namespaces", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"waypoint", "list", "-A", "--timeout", "30s"}, "Waypoints list", nil)
+		mock.AddCommandString("istioctl", []string{"waypoint", "list", "-A"}, "Waypoints list", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -288,7 +288,7 @@ func TestHandleWaypointList(t *testing.T) {
 
 	t.Run("list waypoints in a specific namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"waypoint", "list", "-n", "default", "--timeout", "30s"}, "Waypoints list", nil)
+		mock.AddCommandString("istioctl", []string{"waypoint", "list", "-n", "default"}, "Waypoints list", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -310,7 +310,7 @@ func TestHandleWaypointGenerate(t *testing.T) {
 
 	t.Run("generate waypoint with namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"waypoint", "generate", "waypoint", "-n", "default", "--for", "all", "--timeout", "30s"}, "Generated waypoint", nil)
+		mock.AddCommandString("istioctl", []string{"waypoint", "generate", "waypoint", "-n", "default", "--for", "all"}, "Generated waypoint", nil)
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -332,7 +332,7 @@ func TestHandleWaypointGenerate(t *testing.T) {
 func TestRunIstioCtl(t *testing.T) {
 	t.Run("run istioctl with context", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("istioctl", []string{"version", "--timeout", "30s"}, "1.18.0", nil)
+		mock.AddCommandString("istioctl", []string{"version"}, "1.18.0", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		result, err := runIstioCtl(ctx, []string{"version"})

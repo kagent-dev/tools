@@ -26,6 +26,7 @@ type CommandBuilder struct {
 	labels      map[string]string
 	annotations map[string]string
 	timeout     time.Duration
+	useTimeout  bool
 	dryRun      bool
 	force       bool
 	wait        bool
@@ -42,9 +43,10 @@ func NewCommandBuilder(command string) *CommandBuilder {
 		args:        make([]string, 0),
 		labels:      make(map[string]string),
 		annotations: make(map[string]string),
-		timeout:     30 * time.Second,
+		timeout:     60 * time.Second,
+		useTimeout:  false, // Only enable timeout when explicitly requested
 		validate:    true,
-		cacheTTL:    5 * time.Minute,
+		cacheTTL:    1 * time.Minute,
 	}
 }
 
@@ -162,6 +164,7 @@ func (cb *CommandBuilder) WithAnnotation(key, value string) *CommandBuilder {
 
 // WithTimeout sets the command timeout
 func (cb *CommandBuilder) WithTimeout(timeout time.Duration) *CommandBuilder {
+	cb.useTimeout = true
 	cb.timeout = timeout
 	return cb
 }
@@ -250,11 +253,9 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 		}
 	}
 
-	// Add timeout only for commands that support it
-	if cb.timeout > 0 {
-		if cb.supportsTimeout() {
-			args = append(args, "--timeout", cb.timeout.String())
-		}
+	// Add timeout when explicitly requested
+	if cb.timeout > 0 && cb.useTimeout {
+		args = append(args, "--timeout", cb.timeout.String())
 	}
 
 	// Add dry run
@@ -278,78 +279,6 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 	}
 
 	return cb.command, args, nil
-}
-
-// supportsTimeout checks if the command supports the --timeout flag
-func (cb *CommandBuilder) supportsTimeout() bool {
-	// For kubectl, many commands support --timeout
-	if cb.command == "kubectl" {
-		if len(cb.args) == 0 {
-			return false
-		}
-
-		// Check if --wait=false is explicitly set in the arguments
-		hasWaitFalse := false
-		for _, arg := range cb.args {
-			if arg == "--wait=false" {
-				hasWaitFalse = true
-				break
-			}
-		}
-
-		// Check the first argument (subcommand)
-		subcommand := cb.args[0]
-		switch subcommand {
-		case "wait":
-			return true
-		case "delete":
-			// kubectl delete supports --timeout by default
-			// It only doesn't support timeout when explicitly using --wait=false for namespace deletion
-			if len(cb.args) > 1 && cb.args[1] == "namespace" && hasWaitFalse {
-				// Special case: kubectl delete namespace with --wait=false doesn't support timeout
-				return false
-			}
-			// For other resources or when not using --wait=false, kubectl delete supports --timeout
-			return true
-		case "rollout":
-			return false
-		case "apply":
-			// kubectl apply supports --timeout when used with --wait
-			return cb.wait
-		case "annotate", "label":
-			// kubectl annotate and label support --timeout
-			return true
-		case "create":
-			// kubectl create supports --timeout for some resources but not all
-			if len(cb.args) > 1 {
-				resourceType := cb.args[1]
-				switch resourceType {
-				case "namespace":
-					// kubectl create namespace does NOT support --timeout
-					return false
-				default:
-					// Most other kubectl create commands support --timeout
-					return true
-				}
-			}
-			return true
-		case "argo":
-			// kubectl argo rollouts commands support --timeout
-			if len(cb.args) > 1 && cb.args[1] == "rollouts" {
-				return true
-			}
-			return false
-		case "get":
-			// kubectl get supports --timeout for some operations
-			return false // Most get operations don't need timeout, they're read-only
-		default:
-			return false
-		}
-	}
-
-	// For other commands (helm, istioctl, cilium), assume they support timeout
-	// unless we find specific cases where they don't
-	return true
 }
 
 // Execute runs the command

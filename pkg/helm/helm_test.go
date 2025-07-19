@@ -18,106 +18,105 @@ func TestRegisterTools(t *testing.T) {
 
 // Test Helm List Releases
 func TestHandleHelmListReleases(t *testing.T) {
-	t.Run("basic list releases", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		expectedOutput := `NAME    NAMESPACE   REVISION    UPDATED                                 STATUS      CHART           APP VERSION
-app1    default     1           2023-01-01 12:00:00.000000000 +0000 UTC    deployed    myapp-1.0.0     1.0.0
-app2    kube-system 2           2023-01-02 12:00:00.000000000 +0000 UTC    deployed    system-2.0.0    2.0.0`
+	tests := []struct {
+		name           string
+		args           map[string]interface{}
+		expectedArgs   []string
+		expectedOutput string
+		expectError    bool
+	}{
+		{
+			name:         "basic_list_releases",
+			args:         map[string]interface{}{},
+			expectedArgs: []string{"list"},
+			expectedOutput: `NAME    NAMESPACE       REVISION        STATUS          CHART
+app1    default         1               deployed        my-chart-1.0.0
+app2    default         2               deployed        my-chart-2.0.0`,
+			expectError: false,
+		},
+		{
+			name: "list_releases_with_namespace",
+			args: map[string]interface{}{
+				"namespace": "production",
+			},
+			expectedArgs: []string{"list", "-n", "production"},
+			expectedOutput: `NAME    NAMESPACE       REVISION        STATUS          CHART
+prod-app    production      1               deployed        my-chart-1.0.0`,
+			expectError: false,
+		},
+		{
+			name: "list_releases_with_all_namespaces",
+			args: map[string]interface{}{
+				"all_namespaces": "true",
+			},
+			expectedArgs: []string{"list", "-A"},
+			expectedOutput: `NAME    NAMESPACE       REVISION        STATUS          CHART
+app1    default         1               deployed        my-chart-1.0.0
+prod-app    production      1               deployed        my-chart-1.0.0`,
+			expectError: false,
+		},
+		{
+			name: "list_releases_with_multiple_flags",
+			args: map[string]interface{}{
+				"all_namespaces": "true",
+				"all":            "true",
+				"failed":         "true",
+				"output":         "json",
+			},
+			expectedArgs: []string{"list", "-A", "-a", "--failed", "-o", "json"},
+			expectedOutput: `[
+    {
+        "name": "app1",
+        "namespace": "default",
+        "revision": "1",
+        "status": "deployed"
+    }
+]`,
+			expectError: false,
+		},
+	}
 
-		mock.AddCommandString("helm", []string{"list", "--timeout", "30s"}, expectedOutput, nil)
-		ctx := cmd.WithShellExecutor(context.Background(), mock)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := cmd.NewMockShellExecutor()
+			mock.AddCommandString("helm", tt.expectedArgs, tt.expectedOutput, nil)
+			ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		result, err := handleHelmListReleases(ctx, request)
+			request := mcp.CallToolRequest{}
+			request.Params.Arguments = tt.args
 
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.False(t, result.IsError)
+			result, err := handleHelmListReleases(ctx, request)
 
-		// Verify the expected output
-		content := getResultText(result)
-		assert.Contains(t, content, "app1")
-		assert.Contains(t, content, "app2")
+			assert.NoError(t, err)
+			assert.False(t, result.IsError)
 
-		// Verify the correct command was called
-		callLog := mock.GetCallLog()
-		require.Len(t, callLog, 1)
-		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"list", "--timeout", "30s"}, callLog[0].Args)
-	})
+			// Verify the expected output
+			content := getResultText(result)
+			if tt.name == "basic_list_releases" {
+				assert.Contains(t, content, "app1")
+				assert.Contains(t, content, "app2")
+			} else if tt.name == "list_releases_with_namespace" {
+				assert.Contains(t, content, "prod-app")
+				assert.Contains(t, content, "production")
+			} else if tt.name == "list_releases_with_all_namespaces" {
+				assert.Contains(t, content, "app1")
+				assert.Contains(t, content, "prod-app")
+			} else if tt.name == "list_releases_with_multiple_flags" {
+				assert.Contains(t, content, "app1")
+				assert.Contains(t, content, "default")
+			}
 
-	t.Run("list releases with namespace", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("helm", []string{"list", "-n", "production", "--timeout", "30s"}, "production releases", nil)
-		ctx := cmd.WithShellExecutor(context.Background(), mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"namespace": "production",
-		}
-
-		result, err := handleHelmListReleases(ctx, request)
-
-		assert.NoError(t, err)
-		assert.False(t, result.IsError)
-
-		// Verify the correct command was called with namespace
-		callLog := mock.GetCallLog()
-		require.Len(t, callLog, 1)
-		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"list", "-n", "production", "--timeout", "30s"}, callLog[0].Args)
-	})
-
-	t.Run("list releases with all namespaces", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("helm", []string{"list", "-A", "--timeout", "30s"}, "all namespaces releases", nil)
-		ctx := cmd.WithShellExecutor(context.Background(), mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"all_namespaces": "true",
-		}
-
-		result, err := handleHelmListReleases(ctx, request)
-
-		assert.NoError(t, err)
-		assert.False(t, result.IsError)
-
-		// Verify the correct command was called with -A flag
-		callLog := mock.GetCallLog()
-		require.Len(t, callLog, 1)
-		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"list", "-A", "--timeout", "30s"}, callLog[0].Args)
-	})
-
-	t.Run("list releases with multiple flags", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("helm", []string{"list", "-A", "-a", "--failed", "-o", "json", "--timeout", "30s"}, `[{"name":"failed-app","status":"failed"}]`, nil)
-		ctx := cmd.WithShellExecutor(context.Background(), mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"all_namespaces": "true",
-			"all":            "true",
-			"failed":         "true",
-			"output":         "json",
-		}
-
-		result, err := handleHelmListReleases(ctx, request)
-
-		assert.NoError(t, err)
-		assert.False(t, result.IsError)
-
-		// Verify the correct command was called with multiple flags
-		callLog := mock.GetCallLog()
-		require.Len(t, callLog, 1)
-		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"list", "-A", "-a", "--failed", "-o", "json", "--timeout", "30s"}, callLog[0].Args)
-	})
+			// Verify the correct command was called
+			callLog := mock.GetCallLog()
+			require.Len(t, callLog, 1)
+			assert.Equal(t, "helm", callLog[0].Command)
+			assert.Equal(t, tt.expectedArgs, callLog[0].Args)
+		})
+	}
 
 	t.Run("helm command failure", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("helm", []string{"list", "--timeout", "30s"}, "", assert.AnError)
+		mock.AddCommandString("helm", []string{"list"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		request := mcp.CallToolRequest{}
@@ -139,7 +138,7 @@ CHART: myapp-1.0.0
 VALUES:
 replicaCount: 3`
 
-		mock.AddCommandString("helm", []string{"get", "all", "myapp", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("helm", []string{"get", "all", "myapp", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		request := mcp.CallToolRequest{}
@@ -158,12 +157,12 @@ replicaCount: 3`
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"get", "all", "myapp", "-n", "default", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"get", "all", "myapp", "-n", "default"}, callLog[0].Args)
 	})
 
 	t.Run("get release values only", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("helm", []string{"get", "values", "myapp", "-n", "default", "--timeout", "30s"}, "replicaCount: 3", nil)
+		mock.AddCommandString("helm", []string{"get", "values", "myapp", "-n", "default"}, "replicaCount: 3", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		request := mcp.CallToolRequest{}
@@ -182,7 +181,7 @@ replicaCount: 3`
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"get", "values", "myapp", "-n", "default", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"get", "values", "myapp", "-n", "default"}, callLog[0].Args)
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {
@@ -318,7 +317,7 @@ func TestHandleHelmUninstall(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `release "myapp" uninstalled`
 
-		mock.AddCommandString("helm", []string{"uninstall", "myapp", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("helm", []string{"uninstall", "myapp", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		request := mcp.CallToolRequest{}
@@ -330,6 +329,7 @@ func TestHandleHelmUninstall(t *testing.T) {
 		result, err := handleHelmUninstall(ctx, request)
 
 		assert.NoError(t, err)
+		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
 		assert.Contains(t, getResultText(result), "uninstalled")
 
@@ -337,13 +337,14 @@ func TestHandleHelmUninstall(t *testing.T) {
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"uninstall", "myapp", "-n", "default", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"uninstall", "myapp", "-n", "default"}, callLog[0].Args)
 	})
 
 	t.Run("uninstall with options", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		expectedArgs := []string{"uninstall", "myapp", "-n", "production", "--dry-run", "--wait", "--timeout", "30s"}
-		mock.AddCommandString("helm", expectedArgs, "dry run uninstall", nil)
+		expectedOutput := `release "myapp" uninstalled`
+
+		mock.AddCommandString("helm", []string{"uninstall", "myapp", "-n", "production", "--dry-run", "--wait"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		request := mcp.CallToolRequest{}
@@ -363,7 +364,7 @@ func TestHandleHelmUninstall(t *testing.T) {
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, expectedArgs, callLog[0].Args)
+		assert.Equal(t, []string{"uninstall", "myapp", "-n", "production", "--dry-run", "--wait"}, callLog[0].Args)
 	})
 
 	t.Run("missing required parameters for uninstall", func(t *testing.T) {
@@ -403,7 +404,7 @@ func TestHandleHelmRepoAdd(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `"my-repo" has been added to your repositories`
 
-		mock.AddCommandString("helm", []string{"repo", "add", "my-repo", "https://charts.example.com/", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("helm", []string{"repo", "add", "my-repo", "https://charts.example.com/"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		request := mcp.CallToolRequest{}
@@ -422,7 +423,7 @@ func TestHandleHelmRepoAdd(t *testing.T) {
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"repo", "add", "my-repo", "https://charts.example.com/", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"repo", "add", "my-repo", "https://charts.example.com/"}, callLog[0].Args)
 	})
 
 	t.Run("missing required parameters for repo add", func(t *testing.T) {
@@ -451,9 +452,10 @@ func TestHandleHelmRepoUpdate(t *testing.T) {
 	t.Run("basic repo update", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `Hang tight while we grab the latest from your chart repositories...
-...Successfully got an update from the "my-repo" chart repository`
+...Successfully got an update from the "stable" chart repository
+Update Complete. ⎈Happy Helming!⎈`
 
-		mock.AddCommandString("helm", []string{"repo", "update", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("helm", []string{"repo", "update"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		request := mcp.CallToolRequest{}
@@ -467,7 +469,7 @@ func TestHandleHelmRepoUpdate(t *testing.T) {
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "helm", callLog[0].Command)
-		assert.Equal(t, []string{"repo", "update", "--timeout", "30s"}, callLog[0].Args)
+		assert.Equal(t, []string{"repo", "update"}, callLog[0].Args)
 	})
 }
 

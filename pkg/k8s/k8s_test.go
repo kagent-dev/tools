@@ -267,7 +267,7 @@ func TestHandleDeleteResource(t *testing.T) {
 	t.Run("valid parameters", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment deleted`
-		mock.AddCommandString("kubectl", []string{"delete", "deployment", "test-deployment", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"delete", "deployment", "test-deployment", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -315,9 +315,9 @@ func TestHandleCheckServiceConnectivity(t *testing.T) {
 
 		// Mock the pod creation, wait, and exec commands using partial matchers
 		mock.AddPartialMatcherString("kubectl", []string{"run", "*", "--image=curlimages/curl", "-n", "default", "--restart=Never", "--", "sleep", "3600"}, "pod/curl-test-123 created", nil)
-		mock.AddPartialMatcherString("kubectl", []string{"wait", "--for=condition=ready", "*", "-n", "default", "--timeout=60s", "--timeout", "30s"}, "pod/curl-test-123 condition met", nil)
+		mock.AddPartialMatcherString("kubectl", []string{"wait", "--for=condition=ready", "*", "-n", "default", "--timeout=60s"}, "pod/curl-test-123 condition met", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"exec", "*", "-n", "default", "--", "curl", "-s", "test-service.default.svc.cluster.local:80"}, "Connection successful", nil)
-		mock.AddPartialMatcherString("kubectl", []string{"delete", "pod", "*", "-n", "default", "--ignore-not-found", "--timeout", "30s"}, "pod deleted", nil)
+		mock.AddPartialMatcherString("kubectl", []string{"delete", "pod", "*", "-n", "default", "--ignore-not-found"}, "pod deleted", nil)
 
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
@@ -774,7 +774,7 @@ func TestHandleAnnotateResource(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment annotated`
-		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1=value1", "key2=value2", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1=value1", "key2=value2", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -826,7 +826,7 @@ func TestHandleLabelResource(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment labeled`
-		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env=prod", "version=1.0", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env=prod", "version=1.0", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -878,7 +878,7 @@ func TestHandleRemoveAnnotation(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment annotated`
-		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1-", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1-", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -930,7 +930,7 @@ func TestHandleRemoveLabel(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment labeled`
-		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env-", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env-", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -982,7 +982,7 @@ func TestHandleCreateResourceFromURL(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment created`
-		mock.AddCommandString("kubectl", []string{"create", "-f", "https://example.com/manifest.yaml", "-n", "default", "--timeout", "30s"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"create", "-f", "https://example.com/manifest.yaml", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()

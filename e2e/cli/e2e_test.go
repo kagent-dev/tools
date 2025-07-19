@@ -145,13 +145,26 @@ func (ts *TestServer) Stop() error {
 		select {
 		case <-done:
 			// Process exited
-		case <-time.After(5 * time.Second):
+		case <-time.After(8 * time.Second): // Increased timeout
 			// Timeout, force kill
 			_ = ts.cmd.Process.Kill()
+			// Wait a bit more for force kill to complete
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				// Force kill timeout, continue anyway
+			}
 		}
 	}
 
-	close(ts.done)
+	// Signal done and wait for goroutines to exit
+	if ts.done != nil {
+		close(ts.done)
+	}
+
+	// Give goroutines time to exit
+	time.Sleep(100 * time.Millisecond)
+
 	return nil
 }
 
@@ -166,10 +179,16 @@ func (ts *TestServer) GetOutput() string {
 func (ts *TestServer) captureOutput(reader io.Reader, prefix string) {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
-		line := scanner.Text()
-		ts.mu.Lock()
-		ts.output.WriteString(fmt.Sprintf("[%s] %s\n", prefix, line))
-		ts.mu.Unlock()
+		select {
+		case <-ts.done:
+			// Shutdown signal received, exit goroutine
+			return
+		default:
+			line := scanner.Text()
+			ts.mu.Lock()
+			ts.output.WriteString(fmt.Sprintf("[%s] %s\n", prefix, line))
+			ts.mu.Unlock()
+		}
 	}
 }
 
@@ -198,9 +217,30 @@ func (ts *TestServer) waitForHTTPServer(ctx context.Context, timeout time.Durati
 	}
 }
 
+// waitForShutdown waits for the HTTP server to become unavailable
+func (ts *TestServer) waitForShutdown(ctx context.Context, port int) error {
+	url := fmt.Sprintf("http://localhost:%d/health", port)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for server to shutdown")
+		case <-ticker.C:
+			_, err := http.Get(url)
+			if err != nil {
+				// Server is not accessible, shutdown complete
+				return nil
+			}
+		}
+	}
+}
+
 // TestHTTPServerStartup tests basic HTTP server startup and shutdown
 func TestHTTPServerStartup(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	config := TestServerConfig{
 		Port:    8085,
@@ -213,9 +253,6 @@ func TestHTTPServerStartup(t *testing.T) {
 	// Start server
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-
-	// Wait a bit for server to be fully ready
-	time.Sleep(3 * time.Second)
 
 	// Test health endpoint
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
@@ -232,10 +269,12 @@ func TestHTTPServerStartup(t *testing.T) {
 	err = server.Stop()
 	require.NoError(t, err, "Server should stop gracefully")
 
-	// Verify server is stopped
-	time.Sleep(1 * time.Second)
-	_, err = http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
-	assert.Error(t, err, "Server should not be accessible after stop")
+	// Wait for server to fully shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	err = server.waitForShutdown(shutdownCtx, config.Port)
+	require.NoError(t, err, "Server should shut down completely")
 }
 
 // TestHTTPServerWithSpecificTools tests server with specific tools enabled
@@ -384,7 +423,8 @@ func TestStdioServer(t *testing.T) {
 
 // TestServerGracefulShutdown tests graceful shutdown behavior
 func TestServerGracefulShutdown(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	config := TestServerConfig{
 		Port:    8100,
@@ -398,8 +438,11 @@ func TestServerGracefulShutdown(t *testing.T) {
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
 
-	// Wait for server to be ready
-	time.Sleep(3 * time.Second)
+	// Test health endpoint to ensure server is fully ready
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
+	require.NoError(t, err, "Health endpoint should be accessible")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
 
 	// Stop server and measure shutdown time
 	start := time.Now()
@@ -409,17 +452,17 @@ func TestServerGracefulShutdown(t *testing.T) {
 	require.NoError(t, err, "Server should stop gracefully")
 	assert.Less(t, duration, 10*time.Second, "Shutdown should complete within reasonable time")
 
-	// Wait a bit for shutdown logs to be captured
-	time.Sleep(3 * time.Second)
-
 	// Check server output for graceful shutdown
 	output := server.GetOutput()
 	// The main test is that the server started successfully and stopped without error
 	assert.Contains(t, output, "Running KAgent Tools Server", "Server should have started successfully")
 
-	// Try to verify the server is actually stopped by attempting to connect
-	_, err = http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
-	assert.Error(t, err, "Server should not be accessible after stop")
+	// Wait for server to fully shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	err = server.waitForShutdown(shutdownCtx, config.Port)
+	require.NoError(t, err, "Server should shut down completely")
 }
 
 // TestServerWithInvalidTool tests server behavior with invalid tool names
@@ -903,21 +946,19 @@ func TestConcurrentToolExecution(t *testing.T) {
 
 // TestServerErrorHandling tests server's error handling capabilities
 func TestServerErrorHandling(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
 	config := TestServerConfig{
 		Port:    8089,
 		Tools:   []string{"utils"},
 		Stdio:   false,
-		Timeout: 30 * time.Second,
+		Timeout: 10 * time.Second, // Reduced timeout to prevent hanging
 	}
 
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-
-	// Wait for server to be ready
-	time.Sleep(3 * time.Second)
 
 	// Test malformed request
 	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/nonexistent", config.Port), strings.NewReader("invalid json"))
