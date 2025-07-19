@@ -89,7 +89,7 @@ func (ts *TestServer) Start(ctx context.Context, config TestServerConfig) error 
 
 	// Start server process
 	binaryName := getBinaryName()
-	ts.cmd = exec.CommandContext(ctx, fmt.Sprintf("../bin/%s", binaryName), args...)
+	ts.cmd = exec.CommandContext(ctx, fmt.Sprintf("../../bin/%s", binaryName), args...)
 	ts.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
 
 	// Set up output capture
@@ -582,7 +582,7 @@ func TestServerEnvironmentVariables(t *testing.T) {
 func TestServerBuildAndExecution(t *testing.T) {
 	// Check if server binary exists
 	binaryName := getBinaryName()
-	binaryPath := fmt.Sprintf("../bin/%s", binaryName)
+	binaryPath := fmt.Sprintf("../../bin/%s", binaryName)
 	_, err := os.Stat(binaryPath)
 	if os.IsNotExist(err) {
 		t.Skip("Server binary not found, skipping test. Run 'make build' first.")
@@ -639,11 +639,11 @@ func BenchmarkServerStartup(b *testing.B) {
 func init() {
 	// Ensure the binary exists before running tests
 	binaryName := getBinaryName()
-	binaryPath := fmt.Sprintf("../bin/%s", binaryName)
+	binaryPath := fmt.Sprintf("../../bin/%s", binaryName)
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
 		// Try to build the binary
 		cmd := exec.Command("make", "build")
-		cmd.Dir = ".."
+		cmd.Dir = "../.."
 		if err := cmd.Run(); err != nil {
 			panic(fmt.Sprintf("Failed to build server binary: %v", err))
 		}
