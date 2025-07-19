@@ -101,11 +101,13 @@ func (cb *CommandBuilder) WithContext(context string) *CommandBuilder {
 
 // WithKubeconfig sets the kubeconfig file
 func (cb *CommandBuilder) WithKubeconfig(kubeconfig string) *CommandBuilder {
-	if err := security.ValidateFilePath(kubeconfig); err != nil {
-		logger.Get().Error("Invalid kubeconfig path", "kubeconfig", kubeconfig, "error", err)
-		return cb
+	if kubeconfig != "" {
+		if err := security.ValidateFilePath(kubeconfig); err != nil {
+			logger.Get().Error("Invalid kubeconfig path", "kubeconfig", kubeconfig, "error", err)
+			return cb
+		}
+		cb.kubeconfig = kubeconfig
 	}
-	cb.kubeconfig = kubeconfig
 	return cb
 }
 

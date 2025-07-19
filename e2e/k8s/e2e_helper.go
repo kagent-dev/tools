@@ -168,36 +168,7 @@ func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
 
 	request := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name:      "argo_rollouts_get",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-// prometheusQuery calls the prometheus_query_tool
-func (c *MCPClient) prometheusQuery(query string) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	type PrometheusArgs struct {
-		Query         string `json:"query"`
-		PrometheusURL string `json:"prometheus_url"`
-	}
-
-	arguments := PrometheusArgs{
-		Query:         query,
-		PrometheusURL: "http://localhost:9090",
-	}
-
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "prometheus_query_tool",
+			Name:      "argo_rollouts_list",
 			Arguments: arguments,
 		},
 	}

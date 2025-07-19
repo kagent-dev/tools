@@ -149,4 +149,19 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 			log.Info("Successfully tested cilium operations via MCP", "namespace", namespace)
 		})
 	})
+
+	Describe("KAgent Tools Argo Operations", func() {
+		It("should be able to list Argo rollouts in the cluster", func() {
+			log.Info("Testing Argo operations via MCP", "namespace", namespace)
+			client, err := GetMCPClient()
+			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
+
+			// If we get here, MCP is accessible, test cilium operations
+			response, err := client.argoRolloutsList(namespace)
+			Expect(err).ToNot(HaveOccurred(), "Failed to list argo rollouts via MCP: %v", err)
+			Expect(response).ToNot(BeNil())
+
+			log.Info("Successfully tested argo rollouts via MCP", "namespace", namespace)
+		})
+	})
 })
