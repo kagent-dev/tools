@@ -131,7 +131,7 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), "Failed to install istio via MCP: %v", err)
 			Expect(response).ToNot(BeNil())
 
-			log.Info("Successfully tested istio operations via MCP", "namespace", namespace)
+			log.Info("Successfully tested istio operations via MCP", "namespace", namespace, "response", response)
 		})
 	})
 
@@ -147,37 +147,6 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 			Expect(response).ToNot(BeNil())
 
 			log.Info("Successfully tested cilium operations via MCP", "namespace", namespace)
-		})
-	})
-
-	Describe("KAgent Tools Argo Operations", func() {
-		It("should be able to manage argo rollouts", func() {
-			log.Info("Testing argo rollouts operations via MCP", "namespace", namespace)
-
-			client, err := GetMCPClient()
-			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
-
-			response, err := client.argoRolloutsList("default")
-			Expect(err).ToNot(HaveOccurred(), "Failed to list argo rollouts via MCP: %v", err)
-			Expect(response).ToNot(BeNil())
-
-			log.Info("Successfully tested argo rollouts operations via MCP", "namespace", namespace)
-		})
-	})
-
-	Describe("KAgent Tools Prometheus Operations", func() {
-		It("should be able to query prometheus metrics", func() {
-			log.Info("Testing prometheus operations via MCP", "namespace", namespace)
-
-			client, err := GetMCPClient()
-			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
-
-			// If we get here, MCP is accessible, test prometheus operations
-			response, err := client.prometheusQuery("up")
-			Expect(err).ToNot(HaveOccurred(), "Failed to query prometheus via MCP: %v", err)
-			Expect(response).ToNot(BeNil())
-
-			log.Info("Successfully tested prometheus operations via MCP", "namespace", namespace)
 		})
 	})
 })

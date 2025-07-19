@@ -24,7 +24,7 @@ type MCPClient struct {
 // GetMCPClient creates a new MCP client configured for the e2e test environment using the official mcp-go client
 func GetMCPClient() (*MCPClient, error) {
 	// Create HTTP transport for the MCP server
-	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885")
+	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885/mcp")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP transport: %w", err)
 	}
@@ -61,7 +61,7 @@ func GetMCPClient() (*MCPClient, error) {
 
 	// Validate connection by listing tools
 	tools, err := mcpHelper.listTools()
-	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885", "tools", len(tools))
+	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885/mcp", "tools", len(tools))
 
 	return mcpHelper, err
 }
