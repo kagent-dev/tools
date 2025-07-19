@@ -33,7 +33,7 @@ func GetMCPClient() (*MCPClient, error) {
 	mcpClient := client.NewClient(httpTransport)
 
 	// Start the client
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	if err := mcpClient.Start(ctx); err != nil {
@@ -61,8 +61,10 @@ func GetMCPClient() (*MCPClient, error) {
 
 	// Validate connection by listing tools
 	tools, err := mcpHelper.listTools()
+	if len(tools) == 0 {
+		return nil, fmt.Errorf("no tools found in MCP server: %w", err)
+	}
 	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885/mcp", "tools", len(tools))
-
 	return mcpHelper, err
 }
 
@@ -147,6 +149,9 @@ func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
 	result, err := c.client.CallTool(ctx, request)
 	if err != nil {
 		return nil, err
+	}
+	if result.IsError {
+		return nil, fmt.Errorf("istio installation failed: %s", result.Content)
 	}
 	return result, nil
 }
@@ -289,7 +294,7 @@ func InstallKAgentTools(namespace string, releaseName string) {
 const (
 	DefaultReleaseName   = "kagent-tools-e2e"
 	DefaultTestNamespace = "kagent-tools-e2e"
-	DefaultTimeout       = 30 * time.Second // Increased for more realistic timeouts
+	DefaultTimeout       = 60 * time.Second // Increased for more realistic timeouts
 )
 
 // CreateNamespace creates a new Kubernetes namespace

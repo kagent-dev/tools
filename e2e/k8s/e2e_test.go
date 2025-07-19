@@ -31,9 +31,12 @@ They test the following:
 */
 
 var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
+
+	var err error
+	var client *MCPClient
+	var log = logger.Get()
 	var namespace = DefaultTestNamespace
 	var releaseName = DefaultReleaseName
-	var log = logger.Get()
 
 	BeforeAll(func() {
 		log.Info("Starting KAgent Tools E2E tests")
@@ -41,6 +44,9 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 		CreateNamespace(namespace)
 		// Install kagent tools
 		InstallKAgentTools(namespace, releaseName)
+
+		client, err = GetMCPClient()
+		Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
 	})
 
 	AfterAll(func() {
@@ -85,9 +91,6 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 		It("should be able to list namespace in the cluster", func() {
 			log.Info("Testing MCP client connectivity and k8s operations", "namespace", namespace)
 
-			client, err := GetMCPClient()
-			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
-
 			// Test k8s list resources functionality
 			log.Info("Testing k8s list resources via MCP")
 			response, err := client.k8sListResources("namespace")
@@ -102,9 +105,6 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 		It("should be able to list all helm releases", func() {
 			log.Info("Testing helm operations via MCP", "namespace", namespace)
 
-			client, err := GetMCPClient()
-			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
-
 			// Test helm list releases functionality
 			log.Info("Testing helm list releases via MCP")
 			response, err := client.helmListReleases()
@@ -114,7 +114,6 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 				return
 			}
 			Expect(response).ToNot(BeNil())
-
 			log.Info("Successfully tested helm operations via MCP", "namespace", namespace)
 		})
 	})
@@ -122,9 +121,6 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 	Describe("KAgent Tools Istio Operations", func() {
 		It("should be able to install istio in the cluster", func() {
 			log.Info("Testing istio operations via MCP", "namespace", namespace)
-
-			client, err := GetMCPClient()
-			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
 
 			// If we get here, MCP is accessible, test istio operations
 			response, err := client.istioInstall("default")
@@ -138,8 +134,6 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 	Describe("KAgent Tools Cilium Operations", func() {
 		It("should be able to install cilium in the cluster", func() {
 			log.Info("Testing cilium operations via MCP", "namespace", namespace)
-			client, err := GetMCPClient()
-			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
 
 			// If we get here, MCP is accessible, test cilium operations
 			response, err := client.ciliumStatus()
@@ -153,8 +147,6 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 	Describe("KAgent Tools Argo Operations", func() {
 		It("should be able to list Argo rollouts in the cluster", func() {
 			log.Info("Testing Argo operations via MCP", "namespace", namespace)
-			client, err := GetMCPClient()
-			Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
 
 			// If we get here, MCP is accessible, test cilium operations
 			response, err := client.argoRolloutsList(namespace)

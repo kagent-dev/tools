@@ -427,7 +427,7 @@ func TestServerWithInvalidTool(t *testing.T) {
 	ctx := context.Background()
 
 	config := TestServerConfig{
-		Port:    8090,
+		Port:    18190,
 		Tools:   []string{"invalid-tool", "utils"},
 		Stdio:   false,
 		Timeout: 30 * time.Second,
@@ -461,7 +461,7 @@ func TestServerVersionAndBuildInfo(t *testing.T) {
 	ctx := context.Background()
 
 	config := TestServerConfig{
-		Port:    8091,
+		Port:    18191,
 		Stdio:   false,
 		Timeout: 30 * time.Second,
 	}
@@ -500,7 +500,7 @@ func TestConcurrentServerInstances(t *testing.T) {
 			defer wg.Done()
 
 			config := TestServerConfig{
-				Port:    8092 + index,
+				Port:    18092 + index,
 				Tools:   []string{"utils"},
 				Stdio:   false,
 				Timeout: 30 * time.Second,
@@ -555,7 +555,7 @@ func TestServerEnvironmentVariables(t *testing.T) {
 	os.Setenv("OTEL_SERVICE_NAME", "test-kagent-tools")
 
 	config := TestServerConfig{
-		Port:    8095,
+		Port:    18195,
 		Stdio:   false,
 		Timeout: 30 * time.Second,
 	}
@@ -611,7 +611,7 @@ func BenchmarkServerStartup(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		config := TestServerConfig{
-			Port:    8096 + i,
+			Port:    18196 + i,
 			Stdio:   false,
 			Timeout: 30 * time.Second,
 		}
@@ -692,7 +692,7 @@ func TestToolRegistrationValidation(t *testing.T) {
 		{
 			name: "Register all tools implicitly",
 			config: TestServerConfig{
-				Port:    8090,
+				Port:    18190,
 				Tools:   []string{},
 				Timeout: 30 * time.Second,
 			},
@@ -757,7 +757,7 @@ func TestToolExecutionFlow(t *testing.T) {
 	ctx := context.Background()
 
 	config := TestServerConfig{
-		Port:    8091,
+		Port:    18191,
 		Tools:   []string{"utils"},
 		Timeout: 30 * time.Second,
 	}
@@ -795,7 +795,7 @@ func TestServerTelemetry(t *testing.T) {
 	ctx := context.Background()
 
 	config := TestServerConfig{
-		Port:    8092,
+		Port:    18092,
 		Tools:   []string{"utils"},
 		Timeout: 30 * time.Second,
 	}
@@ -939,7 +939,7 @@ func TestServerMetricsEndpoint(t *testing.T) {
 	ctx := context.Background()
 
 	config := TestServerConfig{
-		Port:    8090,
+		Port:    18190,
 		Tools:   []string{"utils"},
 		Stdio:   false,
 		Timeout: 30 * time.Second,
@@ -975,7 +975,7 @@ func TestToolSpecificFunctionality(t *testing.T) {
 	ctx := context.Background()
 
 	config := TestServerConfig{
-		Port:    8091,
+		Port:    18191,
 		Tools:   []string{"utils", "k8s"},
 		Stdio:   false,
 		Timeout: 30 * time.Second,

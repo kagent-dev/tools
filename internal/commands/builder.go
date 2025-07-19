@@ -42,7 +42,7 @@ func NewCommandBuilder(command string) *CommandBuilder {
 		args:        make([]string, 0),
 		labels:      make(map[string]string),
 		annotations: make(map[string]string),
-		timeout:     30 * time.Second,
+		timeout:     120 * time.Second,
 		validate:    true,
 		cacheTTL:    5 * time.Minute,
 	}
@@ -312,10 +312,6 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 			// For other resources or when not using --wait=false, kubectl delete supports --timeout
 			return true
 		case "rollout":
-			// kubectl rollout status supports --timeout
-			if len(cb.args) > 1 && cb.args[1] == "status" {
-				return true
-			}
 			return false
 		case "apply":
 			// kubectl apply supports --timeout when used with --wait
@@ -340,7 +336,7 @@ func (cb *CommandBuilder) supportsTimeout() bool {
 		case "argo":
 			// kubectl argo rollouts commands support --timeout
 			if len(cb.args) > 1 && cb.args[1] == "rollouts" {
-				return true
+				return false
 			}
 			return false
 		case "get":

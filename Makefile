@@ -62,7 +62,7 @@ test-only: ## Run tests only (without build/lint for faster iteration)
 	go test -tags=test -v -cover ./pkg/... ./internal/...
 
 .PHONY: e2e
-e2e: test docker-build
+e2e: test retag
 	go test -v -tags=test -cover ./e2e/cli/ -timeout 1m
 	go test -v -tags=test -cover ./e2e/k8s/ -timeout 1m
 
@@ -182,6 +182,7 @@ helm-install: helm-version
 		--history-max 2    \
 		--timeout 5m       \
 		-f ./scripts/kind/test-values.yaml \
+		--set tools.image.registry=$(RETAGGED_DOCKER_REGISTRY) \
 		--wait
 
 .PHONY: helm-publish

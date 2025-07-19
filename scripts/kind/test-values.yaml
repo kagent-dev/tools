@@ -4,6 +4,10 @@ service:
     tools:
       nodePort: 30884
 
+tools:
+  image:
+    registry: cr.kagent.dev
+
 otel:
   tracing:
     enabled: true
