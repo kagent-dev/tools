@@ -259,6 +259,7 @@ func InstallKAgentTools(namespace string, releaseName string) {
 		WithArgs("--namespace", namespace).
 		WithCache(false). // Don't cache CRD installation
 		Execute(ctx)
+	Expect(err).ToNot(HaveOccurred(), "Failed to install CRDs: %v", err)
 
 	// Install KAgent Tools using helm with unique release name
 	// Use absolute path from project root
