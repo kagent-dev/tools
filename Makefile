@@ -97,7 +97,7 @@ bin/kagent-tools-windows-amd64.exe.sha256: bin/kagent-tools-windows-amd64.exe
 	sha256sum bin/kagent-tools-windows-amd64.exe > bin/kagent-tools-windows-amd64.exe.sha256
 
 .PHONY: build
-build: $(LOCALBIN) bin/kagent-tools-linux-amd64.sha256 bin/kagent-tools-linux-arm64.sha256 bin/kagent-tools-darwin-amd64.sha256 bin/kagent-tools-darwin-arm64.sha256 bin/kagent-tools-windows-amd64.exe.sha256
+build: $(LOCALBIN) clean bin/kagent-tools-linux-amd64.sha256 bin/kagent-tools-linux-arm64.sha256 bin/kagent-tools-darwin-amd64.sha256 bin/kagent-tools-darwin-arm64.sha256 bin/kagent-tools-windows-amd64.exe.sha256
 build:
 	@echo "Build complete. Binaries are available in the bin/ directory."
 	ls -lt bin/kagent-tools-*
@@ -137,7 +137,7 @@ DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUI
 TOOLS_ISTIO_VERSION ?= 1.26.2
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
 TOOLS_KUBECTL_VERSION ?= 1.33.2
-TOOLS_HELM_VERSION ?= 3.18.3
+TOOLS_HELM_VERSION ?= 3.18.4
 TOOLS_CILIUM_VERSION ?= 0.18.5
 
 # build args
@@ -209,6 +209,16 @@ otel-local:
 	docker rm -f jaeger-desktop || true
 	docker run -d --name jaeger-desktop --restart=always -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/jaeger:2.7.0
 	open http://localhost:16686/
+
+.PHONY: govulncheck
+govulncheck:
+	$(call go-install-tool,bin/govulncheck,golang.org/x/vuln/cmd/govulncheck,latest)
+	./bin/govulncheck-latest ./...
+
+.PHONY: report/image-cve
+report/image-cve: docker-build govulncheck
+	echo "Running CVE scan :: CVE -> CSV ... reports/$(SEMVER)/"
+	grype docker:$(TOOLS_IMG) -o template -t reports/cve-report.tmpl --file reports/$(SEMVER)/tools-cve.csv
 
 ## Tool Binaries
 ## Location to install dependencies t

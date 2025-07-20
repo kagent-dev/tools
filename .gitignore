@@ -12,3 +12,4 @@ bin/
 /*.out
 *.html
 /helm/kagent-tools/Chart.yaml
+/reports/tools-cve.csv
