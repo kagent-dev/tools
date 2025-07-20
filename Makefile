@@ -202,7 +202,7 @@ delete-kind-cluster:
 
 .PHONY: kind-update-kagent
 kind-update-kagent:  retag
-	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(TOOLS_IMG)"}]'
+	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(RETAGGED_TOOLS_IMG)"}]'
 
 .PHONY: otel-local
 otel-local:

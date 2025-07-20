@@ -418,8 +418,7 @@ func (cb *CommandBuilder) executeCommand(ctx context.Context, command string, ar
 		default:
 			toolError = errors.NewCommandError(command, err)
 		}
-
-		return "", toolError
+		return string(output), toolError
 	}
 
 	return string(output), nil
