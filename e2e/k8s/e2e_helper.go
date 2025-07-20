@@ -252,6 +252,14 @@ func InstallKAgentTools(namespace string, releaseName string) {
 		WithCache(false).
 		Execute(ctx)
 
+	// install crd scripts/kind/crd-argo.yaml
+	By("Installing CRDs for KAgent Tools")
+	_, err := commands.NewCommandBuilder("kubectl").
+		WithArgs("apply", "-f", "../../scripts/kind/crd-argo.yaml").
+		WithArgs("--namespace", namespace).
+		WithCache(false). // Don't cache CRD installation
+		Execute(ctx)
+
 	// Install KAgent Tools using helm with unique release name
 	// Use absolute path from project root
 	output, err := commands.NewCommandBuilder("helm").
