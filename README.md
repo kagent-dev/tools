@@ -36,7 +36,7 @@ This directory contains the Go implementation of all KAgent tools, migrated from
 
 - **Kubernetes**
 
-`helm upgrade -i kagent-tools --version <version> oci://ghcr.io/kagent-dev/kagent-tools/helm`
+`helm upgrade -i kagent-tools --version <version> oci://ghcr.io/kagent-dev/tools/helm/`
 
 
 ## Architecture
