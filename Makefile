@@ -189,7 +189,7 @@ helm-install: helm-version
 
 .PHONY: helm-publish
 helm-publish: helm-version
-	helm push ./$(HELM_DIST_FOLDER)/kagent-tools-$(VERSION).tgz $(HELM_REPO)/tools/helm
+	helm push $(HELM_DIST_FOLDER)/kagent-tools-$(VERSION).tgz $(HELM_REPO)/tools/helm
 
 .PHONY: create-kind-cluster
 create-kind-cluster:
