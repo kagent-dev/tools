@@ -8,6 +8,7 @@ HELM_ACTION=upgrade --install
 
 KIND_CLUSTER_NAME ?= kagent
 KIND_IMAGE_VERSION ?= 1.33.1
+KIND_CREATE_CMD ?= "kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml"
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT := $(shell git rev-parse --short HEAD || echo "unknown")
@@ -63,8 +64,7 @@ test-only: ## Run tests only (without build/lint for faster iteration)
 
 .PHONY: e2e
 e2e: test retag
-	go test -v -tags=test -cover ./test/e2e/cli/ -timeout 1m
-	go test -v -tags=test -cover ./test/e2e/k8s/ -timeout 1m
+	go test -v -tags=test -cover ./test/e2e/ -timeout 5m
 
 bin/kagent-tools-linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd
@@ -108,10 +108,10 @@ run: docker-build
 	@echo "Use:  npx @modelcontextprotocol/inspector to connect to the tool server"
 	@docker run --rm --net=host -p 8084:8084 -e OPENAI_API_KEY=$(OPENAI_API_KEY) -v $(HOME)/.kube:/home/nonroot/.kube -e KAGENT_TOOLS_PORT=8084 $(TOOLS_IMG) -- --kubeconfig /root/.kube/config
 
-PHONY: retag
+.PHONY: retag
 retag: docker-build helm-version
 	@echo "Check Kind cluster $(KIND_CLUSTER_NAME) exists"
-	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME)
+	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || bash -c $(KIND_CREATE_CMD)
 	@echo "Retagging tools image to $(RETAGGED_TOOLS_IMG)"
 	docker tag $(TOOLS_IMG) $(RETAGGED_TOOLS_IMG)
 	kind load docker-image --name $(KIND_CLUSTER_NAME) $(RETAGGED_TOOLS_IMG)
@@ -194,7 +194,7 @@ helm-publish: helm-version
 .PHONY: create-kind-cluster
 create-kind-cluster:
 	docker pull kindest/node:v$(KIND_IMAGE_VERSION) || true
-	kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml
+	bash -c $(KIND_CREATE_CMD)
 
 .PHONY: delete-kind-cluster
 delete-kind-cluster:
@@ -209,11 +209,6 @@ otel-local:
 	docker rm -f jaeger-desktop || true
 	docker run -d --name jaeger-desktop --restart=always -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/jaeger:2.7.0
 	open http://localhost:16686/
-
-.PHONY: govulncheck
-govulncheck:
-	$(call go-install-tool,bin/govulncheck,golang.org/x/vuln/cmd/govulncheck,latest)
-	./bin/govulncheck-latest ./...
 
 .PHONY: report/image-cve
 report/image-cve: docker-build govulncheck

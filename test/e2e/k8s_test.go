@@ -3,19 +3,11 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"testing"
-
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-// TestE2EK8s is the main test runner for Kubernetes E2E tests
-func TestE2EK8s(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "KAgent Tools Kubernetes E2E Suite")
-}
 
 /*
 K8s E2E Tests

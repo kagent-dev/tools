@@ -148,7 +148,9 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcp)
 		}()
 	} else {
-		sseServer := server.NewStreamableHTTPServer(mcp)
+		sseServer := server.NewStreamableHTTPServer(mcp,
+			server.WithHeartbeatInterval(30*time.Second),
+		)
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()
