@@ -102,10 +102,6 @@ func ValidateContainerImage(image string) error {
 
 // ValidateFilePath validates a file path for security
 func ValidateFilePath(path string) error {
-	if path == "" {
-		return ValidationError{Field: "path", Message: "cannot be empty"}
-	}
-
 	if len(path) > 4096 {
 		return ValidationError{Field: "path", Message: "path too long"}
 	}

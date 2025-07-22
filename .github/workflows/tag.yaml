@@ -50,6 +50,7 @@ jobs:
           export VERSION=$(echo "$GITHUB_REF" | cut -c12-)
         fi
         make docker-build
+        make helm-publish
   release:
     # Only run release after images and helm chart are pushed
     # In the future we can take the chart from the helm action,

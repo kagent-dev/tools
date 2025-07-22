@@ -1,7 +1,14 @@
 DOCKER_REGISTRY ?= ghcr.io
 BASE_IMAGE_REGISTRY ?= cgr.dev
+
 DOCKER_REPO ?= kagent-dev/kagent
+
+HELM_REPO ?= oci://ghcr.io/kagent-dev
+HELM_ACTION=upgrade --install
+
 KIND_CLUSTER_NAME ?= kagent
+KIND_IMAGE_VERSION ?= 1.33.1
+KIND_CREATE_CMD ?= "kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml"
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT := $(shell git rev-parse --short HEAD || echo "unknown")
@@ -12,6 +19,7 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
+HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
 clean:
@@ -55,8 +63,8 @@ test-only: ## Run tests only (without build/lint for faster iteration)
 	go test -tags=test -v -cover ./pkg/... ./internal/...
 
 .PHONY: e2e
-e2e: test docker-build
-	go test -tags=test -v -cover ./e2e/...
+e2e: test retag
+	go test -v -tags=test -cover ./test/e2e/ -timeout 5m
 
 bin/kagent-tools-linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd
@@ -89,7 +97,7 @@ bin/kagent-tools-windows-amd64.exe.sha256: bin/kagent-tools-windows-amd64.exe
 	sha256sum bin/kagent-tools-windows-amd64.exe > bin/kagent-tools-windows-amd64.exe.sha256
 
 .PHONY: build
-build: $(LOCALBIN) bin/kagent-tools-linux-amd64.sha256 bin/kagent-tools-linux-arm64.sha256 bin/kagent-tools-darwin-amd64.sha256 bin/kagent-tools-darwin-arm64.sha256 bin/kagent-tools-windows-amd64.exe.sha256
+build: $(LOCALBIN) clean bin/kagent-tools-linux-amd64.sha256 bin/kagent-tools-linux-arm64.sha256 bin/kagent-tools-darwin-amd64.sha256 bin/kagent-tools-darwin-arm64.sha256 bin/kagent-tools-windows-amd64.exe.sha256
 build:
 	@echo "Build complete. Binaries are available in the bin/ directory."
 	ls -lt bin/kagent-tools-*
@@ -100,8 +108,10 @@ run: docker-build
 	@echo "Use:  npx @modelcontextprotocol/inspector to connect to the tool server"
 	@docker run --rm --net=host -p 8084:8084 -e OPENAI_API_KEY=$(OPENAI_API_KEY) -v $(HOME)/.kube:/home/nonroot/.kube -e KAGENT_TOOLS_PORT=8084 $(TOOLS_IMG) -- --kubeconfig /root/.kube/config
 
-PHONY: retag
-retag: docker-build
+.PHONY: retag
+retag: docker-build helm-version
+	@echo "Check Kind cluster $(KIND_CLUSTER_NAME) exists"
+	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || bash -c $(KIND_CREATE_CMD)
 	@echo "Retagging tools image to $(RETAGGED_TOOLS_IMG)"
 	docker tag $(TOOLS_IMG) $(RETAGGED_TOOLS_IMG)
 	kind load docker-image --name $(KIND_CLUSTER_NAME) $(RETAGGED_TOOLS_IMG)
@@ -127,7 +137,7 @@ DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUI
 TOOLS_ISTIO_VERSION ?= 1.26.2
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
 TOOLS_KUBECTL_VERSION ?= 1.33.2
-TOOLS_HELM_VERSION ?= 3.18.3
+TOOLS_HELM_VERSION ?= 3.18.4
 TOOLS_CILIUM_VERSION ?= 0.18.5
 
 # build args
@@ -155,11 +165,55 @@ docker-build-all: DOCKER_BUILD_ARGS = --progress=plain --builder $(BUILDX_BUILDE
 docker-build-all:
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -f Dockerfile ./
 
+.PHONY: helm-version
+helm-version:
+	VERSION=$(VERSION) envsubst < helm/kagent-tools/Chart-template.yaml > helm/kagent-tools/Chart.yaml
+	mkdir -p $(HELM_DIST_FOLDER)
+	helm package -d $(HELM_DIST_FOLDER) helm/kagent-tools
+
+.PHONY: helm-uninstall
+helm-uninstall:
+	helm uninstall kagent --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
+
+.PHONY: helm-install
+helm-install: helm-version
+	helm $(HELM_ACTION) kagent-tools ./helm/kagent-tools \
+		--kube-context kind-$(KIND_CLUSTER_NAME) \
+		--namespace kagent \
+		--create-namespace \
+		--history-max 2    \
+		--timeout 5m       \
+		-f ./scripts/kind/test-values.yaml \
+		--set tools.image.registry=$(RETAGGED_DOCKER_REGISTRY) \
+		--wait
+
+.PHONY: helm-publish
+helm-publish: helm-version
+	helm push ./$(HELM_DIST_FOLDER)/kagent-tools-$(VERSION).tgz $(HELM_REPO)/tools/helm
+
+.PHONY: create-kind-cluster
+create-kind-cluster:
+	docker pull kindest/node:v$(KIND_IMAGE_VERSION) || true
+	bash -c $(KIND_CREATE_CMD)
+
+.PHONY: delete-kind-cluster
+delete-kind-cluster:
+	kind delete cluster --name $(KIND_CLUSTER_NAME)
+
 .PHONY: kind-update-kagent
-kind-update-kagent: docker-build
-	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME)
-	kind load docker-image --name $(KIND_CLUSTER_NAME) $(TOOLS_IMG)
-	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(TOOLS_IMG)"}]'
+kind-update-kagent:  retag
+	kubectl patch --namespace kagent deployment/kagent --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/3/image", "value": "$(RETAGGED_TOOLS_IMG)"}]'
+
+.PHONY: otel-local
+otel-local:
+	docker rm -f jaeger-desktop || true
+	docker run -d --name jaeger-desktop --restart=always -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/jaeger:2.7.0
+	open http://localhost:16686/
+
+.PHONY: report/image-cve
+report/image-cve: docker-build govulncheck
+	echo "Running CVE scan :: CVE -> CSV ... reports/$(SEMVER)/"
+	grype docker:$(TOOLS_IMG) -o template -t reports/cve-report.tmpl --file reports/$(SEMVER)/tools-cve.csv
 
 ## Tool Binaries
 ## Location to install dependencies t

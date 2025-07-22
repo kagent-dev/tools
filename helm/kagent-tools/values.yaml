@@ -1,0 +1,61 @@
+# Default values for kagent
+replicaCount: 1
+
+global:
+  tag: ""
+
+tools:
+  loglevel: "debug"
+  image:
+    registry: ghcr.io
+    repository: kagent-dev/kagent/tools
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  prometheus:
+    url: "prometheus.kagent.svc.cluster.local:9090"
+    username: ""
+    password: ""
+  grafana: # kubectl port-forward svc/grafana 3000:3000
+    url: "http://grafana.kagent.svc.cluster.local:3000"
+    apiKey: ""
+
+service:
+  type: ClusterIP
+  ports:
+    tools:
+      port: 8084
+      targetPort: 8084
+      nodePort:  # Only used if service.type is NodePort
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+otel:
+  tracing:
+    enabled: false
+    exporter:
+      otlp:
+        endpoint: http://host.docker.internal:4317
+        timeout: 15
+        insecure: true

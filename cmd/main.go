@@ -33,10 +33,11 @@ import (
 )
 
 var (
-	port       int
-	stdio      bool
-	tools      []string
-	kubeconfig *string
+	port        int
+	stdio       bool
+	tools       []string
+	kubeconfig  *string
+	showVersion bool
 
 	// These variables should be set during build time using -ldflags
 	Name      = "kagent-tools-server"
@@ -55,6 +56,7 @@ func init() {
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8084, "Port to run the server on")
 	rootCmd.Flags().BoolVar(&stdio, "stdio", false, "Use stdio for communication instead of HTTP")
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
 	kubeconfig = rootCmd.Flags().String("kubeconfig", "", "kubeconfig file path (optional, defaults to in-cluster config)")
 
 	// if found .env file, load it
@@ -70,7 +72,23 @@ func main() {
 	}
 }
 
+// printVersion displays version information in a formatted way
+func printVersion() {
+	fmt.Printf("%s\n", Name)
+	fmt.Printf("Version:    %s\n", Version)
+	fmt.Printf("Git Commit: %s\n", GitCommit)
+	fmt.Printf("Build Date: %s\n", BuildDate)
+	fmt.Printf("Go Version: %s\n", runtime.Version())
+	fmt.Printf("OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
+}
+
 func run(cmd *cobra.Command, args []string) {
+	// Handle version flag early, before any initialization
+	if showVersion {
+		printVersion()
+		return
+	}
+
 	logger.Init()
 	defer logger.Sync()
 
@@ -130,7 +148,9 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcp)
 		}()
 	} else {
-		sseServer := server.NewStreamableHTTPServer(mcp)
+		sseServer := server.NewStreamableHTTPServer(mcp,
+			server.WithHeartbeatInterval(30*time.Second),
+		)
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()

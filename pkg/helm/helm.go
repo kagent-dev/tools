@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/errors"
@@ -88,10 +89,18 @@ func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*
 
 func runHelmCommand(ctx context.Context, args []string) (string, error) {
 	kubeconfigPath := utils.GetKubeconfig()
-	result, err := commands.NewCommandBuilder("helm").
+
+	// Add timeout for helm upgrade commands
+	cmdBuilder := commands.NewCommandBuilder("helm").
 		WithArgs(args...).
-		WithKubeconfig(kubeconfigPath).
-		Execute(ctx)
+		WithKubeconfig(kubeconfigPath)
+
+	// Only add timeout for upgrade commands
+	if len(args) > 0 && args[0] == "upgrade" {
+		cmdBuilder = cmdBuilder.WithTimeout(30 * time.Second)
+	}
+
+	result, err := cmdBuilder.Execute(ctx)
 
 	if err != nil {
 		if toolErr, ok := err.(*errors.ToolError); ok {

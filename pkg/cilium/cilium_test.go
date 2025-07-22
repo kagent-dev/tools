@@ -23,8 +23,8 @@ func TestRegisterCiliumTools(t *testing.T) {
 func TestHandleCiliumStatusAndVersion(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"status", "--timeout", "30s"}, "Cilium status: OK", nil)
-	mock.AddCommandString("cilium", []string{"version", "--timeout", "30s"}, "cilium version 1.14.0", nil)
+	mock.AddCommandString("cilium", []string{"status"}, "Cilium status: OK", nil)
+	mock.AddCommandString("cilium", []string{"version"}, "cilium version 1.14.0", nil)
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -49,8 +49,8 @@ func TestHandleCiliumStatusAndVersion(t *testing.T) {
 func TestHandleCiliumStatusAndVersionError(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"status", "--timeout", "30s"}, "", errors.New("command failed"))
-	mock.AddCommandString("cilium", []string{"version", "--timeout", "30s"}, "cilium version 1.14.0", nil)
+	mock.AddCommandString("cilium", []string{"status"}, "", errors.New("command failed"))
+	mock.AddCommandString("cilium", []string{"version"}, "cilium version 1.14.0", nil)
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -64,7 +64,7 @@ func TestHandleCiliumStatusAndVersionError(t *testing.T) {
 func TestHandleInstallCilium(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"install", "--timeout", "30s"}, "✓ Cilium was successfully installed!", nil)
+	mock.AddCommandString("cilium", []string{"install"}, "✓ Cilium was successfully installed!", nil)
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -78,7 +78,7 @@ func TestHandleInstallCilium(t *testing.T) {
 func TestHandleUninstallCilium(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"uninstall", "--timeout", "30s"}, "✓ Cilium was successfully uninstalled!", nil)
+	mock.AddCommandString("cilium", []string{"uninstall"}, "✓ Cilium was successfully uninstalled!", nil)
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -92,7 +92,7 @@ func TestHandleUninstallCilium(t *testing.T) {
 func TestHandleUpgradeCilium(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"upgrade", "--timeout", "30s"}, "✓ Cilium was successfully upgraded!", nil)
+	mock.AddCommandString("cilium", []string{"upgrade"}, "✓ Cilium was successfully upgraded!", nil)
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
@@ -108,7 +108,7 @@ func TestHandleConnectToRemoteCluster(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("cilium", []string{"clustermesh", "connect", "--destination-cluster", "my-cluster", "--timeout", "30s"}, "✓ Connected to cluster my-cluster!", nil)
+		mock.AddCommandString("cilium", []string{"clustermesh", "connect", "--destination-cluster", "my-cluster"}, "✓ Connected to cluster my-cluster!", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
 		req := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
@@ -144,7 +144,7 @@ func TestHandleDisconnectFromRemoteCluster(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("cilium", []string{"clustermesh", "disconnect", "--destination-cluster", "my-cluster", "--timeout", "30s"}, "✓ Disconnected from cluster my-cluster!", nil)
+		mock.AddCommandString("cilium", []string{"clustermesh", "disconnect", "--destination-cluster", "my-cluster"}, "✓ Disconnected from cluster my-cluster!", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
 		req := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
@@ -178,7 +178,7 @@ func TestHandleDisconnectFromRemoteCluster(t *testing.T) {
 func TestHandleEnableHubble(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"hubble", "enable", "--timeout", "30s"}, "✓ Hubble was successfully enabled!", nil)
+	mock.AddCommandString("cilium", []string{"hubble", "enable"}, "✓ Hubble was successfully enabled!", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
@@ -198,7 +198,7 @@ func TestHandleEnableHubble(t *testing.T) {
 func TestHandleDisableHubble(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"hubble", "disable", "--timeout", "30s"}, "✓ Hubble was successfully disabled!", nil)
+	mock.AddCommandString("cilium", []string{"hubble", "disable"}, "✓ Hubble was successfully disabled!", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
@@ -217,7 +217,7 @@ func TestHandleDisableHubble(t *testing.T) {
 func TestHandleListBGPPeers(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"bgp", "peers", "--timeout", "30s"}, "listing BGP peers", nil)
+	mock.AddCommandString("cilium", []string{"bgp", "peers"}, "listing BGP peers", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 	result, err := handleListBGPPeers(ctx, mcp.CallToolRequest{})
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestHandleListBGPPeers(t *testing.T) {
 func TestHandleListBGPRoutes(t *testing.T) {
 	ctx := context.Background()
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("cilium", []string{"bgp", "routes", "--timeout", "30s"}, "listing BGP routes", nil)
+	mock.AddCommandString("cilium", []string{"bgp", "routes"}, "listing BGP routes", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 	result, err := handleListBGPRoutes(ctx, mcp.CallToolRequest{})
 	require.NoError(t, err)
@@ -242,7 +242,7 @@ func TestRunCiliumCliWithContext(t *testing.T) {
 	ctx := context.Background()
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("cilium", []string{"test", "--timeout", "30s"}, "success", nil)
+		mock.AddCommandString("cilium", []string{"test"}, "success", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
 		result, err := runCiliumCliWithContext(ctx, "test")
 		require.NoError(t, err)
@@ -250,7 +250,7 @@ func TestRunCiliumCliWithContext(t *testing.T) {
 	})
 	t.Run("error", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("cilium", []string{"test", "--timeout", "30s"}, "", fmt.Errorf("test error"))
+		mock.AddCommandString("cilium", []string{"test"}, "", fmt.Errorf("test error"))
 		ctx = cmd.WithShellExecutor(ctx, mock)
 		_, err := runCiliumCliWithContext(ctx, "test")
 		require.Error(t, err)

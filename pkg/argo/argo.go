@@ -354,6 +354,27 @@ func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(status.String()), nil
 }
 
+func handleListRollouts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ns := mcp.ParseString(request, "namespace", "argo-rollouts")
+	tt := mcp.ParseString(request, "type", "rollouts")
+
+	cmd := []string{"argo", "rollouts", "list", tt}
+	if ns != "" {
+		cmd = append(cmd, "-n", ns)
+	}
+
+	output, err := runArgoRolloutCommand(ctx, cmd)
+	if err != nil {
+		return mcp.NewToolResultError("Error listing rollouts: " + err.Error()), nil
+	}
+
+	if strings.HasPrefix(output, "Error") {
+		return mcp.NewToolResultText(output), nil
+	}
+
+	return mcp.NewToolResultText(output), nil
+}
+
 func RegisterTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("argo_verify_argo_rollouts_controller_install",
 		mcp.WithDescription("Verify that the Argo Rollouts controller is installed and running"),
@@ -364,6 +385,12 @@ func RegisterTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("argo_verify_kubectl_plugin_install",
 		mcp.WithDescription("Verify that the kubectl Argo Rollouts plugin is installed"),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_verify_kubectl_plugin_install", handleVerifyKubectlPluginInstall)))
+
+	s.AddTool(mcp.NewTool("argo_rollouts_list",
+		mcp.WithDescription("List rollouts or experiments"),
+		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
+		mcp.WithString("type", mcp.Description("What to list: rollouts or experiments"), mcp.DefaultString("rollouts")),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_rollouts_list", handleListRollouts)))
 
 	s.AddTool(mcp.NewTool("argo_promote_rollout",
 		mcp.WithDescription("Promote a paused rollout to the next step"),

@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -236,7 +237,7 @@ func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request mc
 	}
 
 	// Wait for pod to be ready
-	_, err = k.runKubectlCommand(ctx, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace, "--timeout=60s")
+	_, err = k.runKubectlCommandWithTimeout(ctx, 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to wait for curl pod: %v", err)), nil
 	}
@@ -532,6 +533,21 @@ func (k *K8sTool) runKubectlCommand(ctx context.Context, args ...string) (*mcp.C
 	output, err := commands.NewCommandBuilder("kubectl").
 		WithArgs(args...).
 		WithKubeconfig(k.kubeconfig).
+		Execute(ctx)
+
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(output), nil
+}
+
+// runKubectlCommandWithTimeout is a helper function to execute kubectl commands with a timeout
+func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, timeout time.Duration, args ...string) (*mcp.CallToolResult, error) {
+	output, err := commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(k.kubeconfig).
+		WithTimeout(timeout).
 		Execute(ctx)
 
 	if err != nil {

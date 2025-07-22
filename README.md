@@ -24,6 +24,21 @@
 
 This directory contains the Go implementation of all KAgent tools, migrated from the original Python implementation. The tools are designed to work with the Model Context Protocol (MCP) server and provide comprehensive Kubernetes, cloud-native, and observability functionality.
 
+## Installation
+
+- **Bash:**
+
+`curl -sL https://github.com/kagent-dev/tools/blob/main/scripts/install.sh | bash`
+
+- **Docker:**
+
+`docker run -it --rm  ghcr.io/kagent-dev/kagent/tools:<version>`
+
+- **Kubernetes**
+
+`helm upgrade -i kagent-tools --version <version> oci://ghcr.io/kagent-dev/tools/helm/`
+
+
 ## Architecture
 
 The Go tools are implemented as a single MCP server that exposes all available tools through the MCP protocol. 
