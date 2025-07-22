@@ -63,8 +63,8 @@ test-only: ## Run tests only (without build/lint for faster iteration)
 
 .PHONY: e2e
 e2e: test retag
-	go test -v -tags=test -cover ./e2e/cli/ -timeout 1m
-	go test -v -tags=test -cover ./e2e/k8s/ -timeout 1m
+	go test -v -tags=test -cover ./test/e2e/cli/ -timeout 1m
+	go test -v -tags=test -cover ./test/e2e/k8s/ -timeout 1m
 
 bin/kagent-tools-linux-amd64:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd
