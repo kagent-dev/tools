@@ -28,16 +28,26 @@ This directory contains the Go implementation of all KAgent tools, migrated from
 
 - **Bash:**
 
-`curl -sL https://github.com/kagent-dev/tools/blob/main/scripts/install.sh | bash`
+```bash
+curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/install.sh | bash
+```
 
 - **Docker:**
 
-`docker run -it --rm  ghcr.io/kagent-dev/kagent/tools:<version>`
+```bash
+docker run -it --rm -p 8084:8084 ghcr.io/kagent-dev/kagent/tools:0.0.10
+```
 
 - **Kubernetes**
 
-`helm upgrade -i kagent-tools --version <version> oci://ghcr.io/kagent-dev/tools/helm/`
+```bash
+helm upgrade -i -n kagent --create-namespace kagent-tools oci://ghcr.io/kagent-dev/tools/helm/kagent-tools --version 0.0.10
+helm ls -A
+```
 
+## Quickstart Guide
+
+For a quickstart guide on how to run KAgent tools using AgentGateway, please refer to the [Quickstart Guide](docs/quickstart.md).
 
 ## Architecture
 
