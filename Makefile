@@ -7,8 +7,8 @@ HELM_REPO ?= oci://ghcr.io/kagent-dev
 HELM_ACTION=upgrade --install
 
 KIND_CLUSTER_NAME ?= kagent
-KIND_IMAGE_VERSION ?= 1.33.1
-KIND_CREATE_CMD ?= "kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml"
+KIND_IMAGE_VERSION ?= 1.33.2
+KIND_CREATE_CMD ?= "kind get clusters | grep  $(KIND_CLUSTER_NAME) || kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml"
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT := $(shell git rev-parse --short HEAD || echo "unknown")
@@ -19,7 +19,10 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
-PATH := $HOME/local/bin:/opt/homebrew/bin/:$(LOCALBIN):$(PATH)
+HOME_BIN ?= ~/.local/bin/
+BREW_BIN ?= /opt/homebrew/bin/
+PATH := $(HOME_BIN):$(LOCALBIN):$(PATH):$(BREW_BIN)
+
 HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
@@ -195,7 +198,7 @@ helm-publish: helm-version
 
 .PHONY: create-kind-cluster
 create-kind-cluster:
-	docker pull kindest/node:v$(KIND_IMAGE_VERSION) || true
+	docker image inspect kindest/node:v$(KIND_IMAGE_VERSION) 2>&1 > /dev/null || docker pull kindest/node:v$(KIND_IMAGE_VERSION) || true
 	bash -c $(KIND_CREATE_CMD)
 
 .PHONY: delete-kind-cluster
@@ -214,10 +217,10 @@ otel-local:
 
 .PHONY: tools-install
 tools-install: clean
-	mkdir -p $HOME/.local/bin
+	mkdir -p $(HOME_BIN)
 	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools ./cmd
-	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd
-	$HOME/.local/bin/kagent-tools --version
+	go build -ldflags "$(LDFLAGS)" -o $(HOME_BIN)/kagent-tools ./cmd
+	$(HOME_BIN)/kagent-tools --version
 
 .PHONY: run-agentgateway
 run-agentgateway: tools-install
