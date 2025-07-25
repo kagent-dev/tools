@@ -11,9 +11,9 @@ To learn more about agentgateway, see [AgentGateway](https://agentgateway.dev/do
 
 ### Running KAgent Tools using AgentGateway
 
-1. Download the agentgateway binary and install it.
-2. Download KAgent tools binary and install it.
-3. Download a basic configuration file for your agentgateway.
+1. Download tools binary and install it.
+2. Download tools configuration file for agentgateway.
+3. Download the agentgateway binary and install it.
 4. Run the agentgateway with the configuration file.
 5. open http://localhost:15000/ui
 
@@ -21,7 +21,6 @@ To learn more about agentgateway, see [AgentGateway](https://agentgateway.dev/do
 curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/install.sh | bash
 curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/agentgateway-config-tools.yaml
 curl -sL https://raw.githubusercontent.com/agentgateway/agentgateway/refs/heads/main/common/scripts/get-agentproxy | bash
-curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/install.sh | bash
 
 export PATH=$PATH:$HOME/.local/bin/
 agentgateway -f agentgateway-config-tools.yaml
