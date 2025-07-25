@@ -64,7 +64,8 @@ func TestGet(t *testing.T) {
 }
 
 func TestInit(t *testing.T) {
-	assert.NotPanics(t, Init)
+	assert.NotPanics(t, func() { Init(false) })
+	assert.NotPanics(t, func() { Init(true) })
 }
 
 func TestSync(t *testing.T) {

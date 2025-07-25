@@ -10,23 +10,39 @@ import (
 
 var globalLogger *slog.Logger
 
-func Init() {
+// Init initializes the global logger
+// If useStderr is true, logs will be written to stderr (for stdio mode)
+// If useStderr is false, logs will be written to stdout (for HTTP mode)
+func Init(useStderr bool) {
 	opts := &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}
 
+	// Choose output destination based on mode
+	output := os.Stdout
+	if useStderr {
+		output = os.Stderr
+	}
+
 	if os.Getenv("KAGENT_LOG_FORMAT") == "json" {
-		globalLogger = slog.New(slog.NewJSONHandler(os.Stdout, opts))
+		globalLogger = slog.New(slog.NewJSONHandler(output, opts))
 	} else {
-		globalLogger = slog.New(slog.NewTextHandler(os.Stdout, opts))
+		globalLogger = slog.New(slog.NewTextHandler(output, opts))
 	}
 
 	slog.SetDefault(globalLogger)
 }
 
+// InitWithEnv initializes the logger using environment variables
+// This is a convenience function that defaults to stdout unless KAGENT_USE_STDERR is set
+func InitWithEnv() {
+	useStderr := os.Getenv("KAGENT_USE_STDERR") == "true"
+	Init(useStderr)
+}
+
 func Get() *slog.Logger {
 	if globalLogger == nil {
-		Init()
+		InitWithEnv()
 	}
 	return globalLogger
 }

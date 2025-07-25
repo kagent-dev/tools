@@ -19,11 +19,13 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
+PATH := $HOME/local/bin:/opt/homebrew/bin/:$(LOCALBIN):$(PATH)
 HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
 clean:
 	rm -rf ./bin/kagent-tools-*
+	rm -rf $(HOME)/.local/bin/kagent-tools-*
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -209,6 +211,19 @@ otel-local:
 	docker rm -f jaeger-desktop || true
 	docker run -d --name jaeger-desktop --restart=always -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/jaeger:2.7.0
 	open http://localhost:16686/
+
+.PHONY: tools-install
+tools-install: clean
+	mkdir -p $HOME/.local/bin
+	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools ./cmd
+	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd
+	$HOME/.local/bin/kagent-tools --version
+
+.PHONY: run-agentgateway
+run-agentgateway: tools-install
+	open http://localhost:15000/ui
+	cd scripts \
+	&& agentgateway -f agentgateway-config-tools.yaml
 
 .PHONY: report/image-cve
 report/image-cve: docker-build govulncheck

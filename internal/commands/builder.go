@@ -15,6 +15,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+const (
+	// DefaultTimeout is the default timeout for command execution
+	DefaultTimeout = 2 * time.Minute
+	// DefaultCacheTTL is the default cache TTL
+	DefaultCacheTTL = 1 * time.Minute
+)
+
 // CommandBuilder provides a fluent interface for building CLI commands
 type CommandBuilder struct {
 	command     string
@@ -43,10 +50,10 @@ func NewCommandBuilder(command string) *CommandBuilder {
 		args:        make([]string, 0),
 		labels:      make(map[string]string),
 		annotations: make(map[string]string),
-		timeout:     60 * time.Second,
+		timeout:     DefaultTimeout,
 		useTimeout:  false, // Only enable timeout when explicitly requested
 		validate:    true,
-		cacheTTL:    1 * time.Minute,
+		cacheTTL:    DefaultCacheTTL,
 	}
 }
 

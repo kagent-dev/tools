@@ -89,7 +89,7 @@ func run(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	logger.Init()
+	logger.Init(stdio)
 	defer logger.Sync()
 
 	// Setup context with cancellation for graceful shutdown

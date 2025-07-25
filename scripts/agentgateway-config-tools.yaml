@@ -1,0 +1,23 @@
+binds:
+- port: 30805
+  listeners:
+  - routes:
+    - backends:
+      - mcp:
+          name: default
+          targets:
+          - name: kagent-tools
+            stdio:
+              cmd: kagent-tools
+              args:
+              - --stdio
+              - --kubeconfig
+              - ~/.kube/config
+      policies:
+        cors:
+          allowOrigins:
+          - '*'
+          allowHeaders:
+          - mcp-protocol-version
+          - content-type
+          - cache-control
