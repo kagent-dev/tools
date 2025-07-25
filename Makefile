@@ -19,7 +19,7 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
-PATH := $HOME/local/bin:$(LOCALBIN):$(PATH)
+PATH := $HOME/local/bin:/opt/homebrew/bin/:$(LOCALBIN):$(PATH)
 HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
