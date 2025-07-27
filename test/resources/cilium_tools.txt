@@ -1,0 +1,235 @@
+# Cilium Tools Test Data - Format: MCP_INPUT|EXPECTED_CLI_COMMAND
+
+# cilium_status_and_version
+{"tool": "cilium_status_and_version", "arguments": {}}|cilium status && cilium version
+
+# cilium_upgrade_cilium
+{"tool": "cilium_upgrade_cilium", "arguments": {"cluster_name": "production-cluster"}}|cilium upgrade --cluster-name production-cluster
+{"tool": "cilium_upgrade_cilium", "arguments": {"cluster_name": "test-cluster", "datapath_mode": "tunnel"}}|cilium upgrade --cluster-name test-cluster --datapath-mode tunnel
+
+# cilium_install_cilium
+{"tool": "cilium_install_cilium", "arguments": {"cluster_name": "new-cluster", "cluster_id": "1"}}|cilium install --cluster-name new-cluster --cluster-id 1
+{"tool": "cilium_install_cilium", "arguments": {"cluster_name": "aws-cluster", "cluster_id": "2", "datapath_mode": "aws-eni"}}|cilium install --cluster-name aws-cluster --cluster-id 2 --datapath-mode aws-eni
+
+# cilium_uninstall_cilium
+{"tool": "cilium_uninstall_cilium", "arguments": {}}|cilium uninstall
+
+# cilium_connect_to_remote_cluster
+{"tool": "cilium_connect_to_remote_cluster", "arguments": {"cluster_name": "remote-cluster"}}|cilium clustermesh connect --destination-cluster remote-cluster
+{"tool": "cilium_connect_to_remote_cluster", "arguments": {"cluster_name": "remote-cluster", "context": "remote-context"}}|cilium clustermesh connect --destination-cluster remote-cluster --destination-context remote-context
+
+# cilium_disconnect_remote_cluster
+{"tool": "cilium_disconnect_remote_cluster", "arguments": {"cluster_name": "remote-cluster"}}|cilium clustermesh disconnect --destination-cluster remote-cluster
+
+# cilium_list_bgp_peers
+{"tool": "cilium_list_bgp_peers", "arguments": {}}|cilium bgp peers
+
+# cilium_list_bgp_routes
+{"tool": "cilium_list_bgp_routes", "arguments": {}}|cilium bgp routes
+
+# cilium_show_cluster_mesh_status
+{"tool": "cilium_show_cluster_mesh_status", "arguments": {}}|cilium clustermesh status
+
+# cilium_show_features_status
+{"tool": "cilium_show_features_status", "arguments": {}}|cilium features status
+
+# cilium_toggle_hubble
+{"tool": "cilium_toggle_hubble", "arguments": {"enable": "true"}}|cilium hubble enable
+{"tool": "cilium_toggle_hubble", "arguments": {"enable": "false"}}|cilium hubble disable
+
+# cilium_toggle_cluster_mesh
+{"tool": "cilium_toggle_cluster_mesh", "arguments": {"enable": "true"}}|cilium clustermesh enable
+{"tool": "cilium_toggle_cluster_mesh", "arguments": {"enable": "false"}}|cilium clustermesh disable
+
+# cilium_get_daemon_status
+{"tool": "cilium_get_daemon_status", "arguments": {}}|cilium-dbg status
+{"tool": "cilium_get_daemon_status", "arguments": {"show_all_addresses": "true", "brief": "true"}}|cilium-dbg status --all-addresses --brief
+{"tool": "cilium_get_daemon_status", "arguments": {"node_name": "worker-1", "show_health": "true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg status --health
+
+# cilium_get_endpoints_list
+{"tool": "cilium_get_endpoints_list", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint list
+{"tool": "cilium_get_endpoints_list", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint list
+
+# cilium_get_endpoint_details
+{"tool": "cilium_get_endpoint_details", "arguments": {"endpoint_id": "1234"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint get 1234 -o json
+{"tool": "cilium_get_endpoint_details", "arguments": {"endpoint_id": "1234", "output_format": "json"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint get 1234 -o json
+{"tool": "cilium_get_endpoint_details", "arguments": {"labels": "k8s:app=nginx", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint get -l k8s:app=nginx -o json
+
+# cilium_show_configuration_options
+{"tool": "cilium_show_configuration_options", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint config
+{"tool": "cilium_show_configuration_options", "arguments": {"list_all": "true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint config --all
+{"tool": "cilium_show_configuration_options", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint config
+
+# cilium_toggle_configuration_option
+{"tool": "cilium_toggle_configuration_option", "arguments": {"option": "debug", "value": "true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint config debug=enable
+{"tool": "cilium_toggle_configuration_option", "arguments": {"option": "enable-ipv6", "value": "false", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint config enable-ipv6=disable
+
+# cilium_list_services
+{"tool": "cilium_list_services", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service list
+{"tool": "cilium_list_services", "arguments": {"show_cluster_mesh_affinity": "true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service list --clustermesh-affinity
+{"tool": "cilium_list_services", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service list
+
+# cilium_get_service_information
+{"tool": "cilium_get_service_information", "arguments": {"service_id": "123"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service get 123
+{"tool": "cilium_get_service_information", "arguments": {"service_id": "456", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service get 456
+
+# cilium_update_service
+{"tool": "cilium_update_service", "arguments": {"backends": "10.0.0.1:80,10.0.0.2:80", "frontend": "10.0.1.1:80", "id": "123"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service update 123 --backends 10.0.0.1:80,10.0.0.2:80 --frontend 10.0.1.1:80 --protocol TCP --states active
+{"tool": "cilium_update_service", "arguments": {"backends": "10.0.0.1:80", "frontend": "10.0.1.1:80", "id": "456", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service update 456 --backends 10.0.0.1:80 --frontend 10.0.1.1:80 --protocol TCP --states active
+
+# cilium_delete_service
+{"tool": "cilium_delete_service", "arguments": {"service_id": "123"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service delete 123
+{"tool": "cilium_delete_service", "arguments": {"all": "true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service delete --all
+{"tool": "cilium_delete_service", "arguments": {"service_id": "456", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg service delete 456
+
+# cilium_get_endpoint_logs
+{"tool": "cilium_get_endpoint_logs", "arguments": {"endpoint_id": "1234"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint logs 1234
+{"tool": "cilium_get_endpoint_logs", "arguments": {"endpoint_id": "1234", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint logs 1234
+
+# cilium_get_endpoint_health
+{"tool": "cilium_get_endpoint_health", "arguments": {"endpoint_id": "1234"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint health 1234
+{"tool": "cilium_get_endpoint_health", "arguments": {"endpoint_id": "1234", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint health 1234
+
+# cilium_manage_endpoint_labels
+{"tool": "cilium_manage_endpoint_labels", "arguments": {"endpoint_id": "1234", "labels": "env=prod app=nginx", "action": "add"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint labels 1234 --add env=prod app=nginx
+{"tool": "cilium_manage_endpoint_labels", "arguments": {"endpoint_id": "1234", "labels": "old-label", "action": "delete", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint labels 1234 --delete old-label
+
+# cilium_manage_endpoint_config
+{"tool": "cilium_manage_endpoint_config", "arguments": {"endpoint_id": "1234", "config": "DropNotification=false TraceNotification=true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint config 1234 DropNotification=false TraceNotification=true
+{"tool": "cilium_manage_endpoint_config", "arguments": {"endpoint_id": "1234", "config": "Debug=true", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint config 1234 Debug=true
+
+# cilium_disconnect_endpoint
+{"tool": "cilium_disconnect_endpoint", "arguments": {"endpoint_id": "1234"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint disconnect 1234
+{"tool": "cilium_disconnect_endpoint", "arguments": {"endpoint_id": "1234", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg endpoint disconnect 1234
+
+# cilium_list_identities
+{"tool": "cilium_list_identities", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg identity list
+{"tool": "cilium_list_identities", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg identity list
+
+# cilium_get_identity_details
+{"tool": "cilium_get_identity_details", "arguments": {"identity_id": "12345"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg identity get 12345
+{"tool": "cilium_get_identity_details", "arguments": {"identity_id": "12345", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg identity get 12345
+
+# cilium_request_debugging_information
+{"tool": "cilium_request_debugging_information", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg debuginfo
+{"tool": "cilium_request_debugging_information", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg debuginfo
+
+# cilium_display_encryption_state
+{"tool": "cilium_display_encryption_state", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg encrypt status
+{"tool": "cilium_display_encryption_state", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg encrypt status
+
+# cilium_flush_ipsec_state
+{"tool": "cilium_flush_ipsec_state", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg encrypt flush -f
+{"tool": "cilium_flush_ipsec_state", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg encrypt flush -f
+
+# cilium_list_envoy_config
+{"tool": "cilium_list_envoy_config", "arguments": {"resource_name": "clusters"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg envoy admin clusters
+{"tool": "cilium_list_envoy_config", "arguments": {"resource_name": "listeners", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg envoy admin listeners
+
+# cilium_fqdn_cache
+{"tool": "cilium_fqdn_cache", "arguments": {"command": "list"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg fqdn cache list
+{"tool": "cilium_fqdn_cache", "arguments": {"command": "clean", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg fqdn cache clean
+
+# cilium_show_dns_names
+{"tool": "cilium_show_dns_names", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg dns names
+{"tool": "cilium_show_dns_names", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg dns names
+
+# cilium_list_ip_addresses
+{"tool": "cilium_list_ip_addresses", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg ip list
+{"tool": "cilium_list_ip_addresses", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg ip list
+
+# cilium_show_ip_cache_information
+{"tool": "cilium_show_ip_cache_information", "arguments": {"cidr": "10.0.0.0/24"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg ip get 10.0.0.0/24
+{"tool": "cilium_show_ip_cache_information", "arguments": {"labels": "env=prod", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg ip get --labels env=prod
+
+# cilium_delete_key_from_kv_store
+{"tool": "cilium_delete_key_from_kv_store", "arguments": {"key": "cilium/state/nodes/v1/default/worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg kvstore delete cilium/state/nodes/v1/default/worker-1
+{"tool": "cilium_delete_key_from_kv_store", "arguments": {"key": "test-key", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg kvstore delete test-key
+
+# cilium_get_kv_store_key
+{"tool": "cilium_get_kv_store_key", "arguments": {"key": "cilium/state/nodes/v1/default/worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg kvstore get cilium/state/nodes/v1/default/worker-1
+{"tool": "cilium_get_kv_store_key", "arguments": {"key": "test-key", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg kvstore get test-key
+
+# cilium_set_kv_store_key
+{"tool": "cilium_set_kv_store_key", "arguments": {"key": "test-key", "value": "test-value"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg kvstore set test-key=test-value
+{"tool": "cilium_set_kv_store_key", "arguments": {"key": "config-key", "value": "config-value", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg kvstore set config-key=config-value
+
+# cilium_show_load_information
+{"tool": "cilium_show_load_information", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg loadinfo
+{"tool": "cilium_show_load_information", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg loadinfo
+
+# cilium_list_local_redirect_policies
+{"tool": "cilium_list_local_redirect_policies", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg lrp list
+{"tool": "cilium_list_local_redirect_policies", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg lrp list
+
+# cilium_list_bpf_map_events
+{"tool": "cilium_list_bpf_map_events", "arguments": {"map_name": "cilium_calls"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg bpf map events cilium_calls
+{"tool": "cilium_list_bpf_map_events", "arguments": {"map_name": "cilium_policy", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg bpf map events cilium_policy
+
+# cilium_get_bpf_map
+{"tool": "cilium_get_bpf_map", "arguments": {"map_name": "cilium_calls"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg bpf map get cilium_calls
+{"tool": "cilium_get_bpf_map", "arguments": {"map_name": "cilium_policy", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg bpf map get cilium_policy
+
+# cilium_list_bpf_maps
+{"tool": "cilium_list_bpf_maps", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg bpf map list
+{"tool": "cilium_list_bpf_maps", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg bpf map list
+
+# cilium_list_metrics
+{"tool": "cilium_list_metrics", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg metrics list
+{"tool": "cilium_list_metrics", "arguments": {"match_pattern": "cilium_*"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg metrics list --pattern cilium_*
+{"tool": "cilium_list_metrics", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg metrics list
+
+# cilium_list_cluster_nodes
+{"tool": "cilium_list_cluster_nodes", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg nodes list
+{"tool": "cilium_list_cluster_nodes", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg nodes list
+
+# cilium_list_node_ids
+{"tool": "cilium_list_node_ids", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg nodeid list
+{"tool": "cilium_list_node_ids", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg nodeid list
+
+# cilium_display_policy_node_information
+{"tool": "cilium_display_policy_node_information", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy get
+{"tool": "cilium_display_policy_node_information", "arguments": {"labels": "env=prod"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy get env=prod
+{"tool": "cilium_display_policy_node_information", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy get
+
+# cilium_delete_policy_rules
+{"tool": "cilium_delete_policy_rules", "arguments": {"labels": "env=test"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy delete env=test
+{"tool": "cilium_delete_policy_rules", "arguments": {"all": "true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy delete --all
+{"tool": "cilium_delete_policy_rules", "arguments": {"labels": "app=nginx", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy delete app=nginx
+
+# cilium_display_selectors
+{"tool": "cilium_display_selectors", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy selectors
+{"tool": "cilium_display_selectors", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg policy selectors
+
+# cilium_list_xdp_cidr_filters
+{"tool": "cilium_list_xdp_cidr_filters", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg prefilter list
+{"tool": "cilium_list_xdp_cidr_filters", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg prefilter list
+
+# cilium_update_xdp_cidr_filters
+{"tool": "cilium_update_xdp_cidr_filters", "arguments": {"cidr_prefixes": "10.0.0.0/8,192.168.0.0/16"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg prefilter update --cidr 10.0.0.0/8,192.168.0.0/16
+{"tool": "cilium_update_xdp_cidr_filters", "arguments": {"cidr_prefixes": "172.16.0.0/12", "revision": "123", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg prefilter update --cidr 172.16.0.0/12 --revision 123
+
+# cilium_delete_xdp_cidr_filters
+{"tool": "cilium_delete_xdp_cidr_filters", "arguments": {"cidr_prefixes": "10.0.0.0/8"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg prefilter delete --cidr 10.0.0.0/8
+{"tool": "cilium_delete_xdp_cidr_filters", "arguments": {"cidr_prefixes": "192.168.0.0/16", "revision": "124", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg prefilter delete --cidr 192.168.0.0/16 --revision 124
+
+# cilium_validate_cilium_network_policies
+{"tool": "cilium_validate_cilium_network_policies", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg preflight validate-cnp
+{"tool": "cilium_validate_cilium_network_policies", "arguments": {"enable_k8s": "true"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg preflight validate-cnp --enable-k8s
+{"tool": "cilium_validate_cilium_network_policies", "arguments": {"enable_k8s_api_discovery": "true", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg preflight validate-cnp --enable-k8s-api-discovery
+
+# cilium_list_pcap_recorders
+{"tool": "cilium_list_pcap_recorders", "arguments": {}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder list
+{"tool": "cilium_list_pcap_recorders", "arguments": {"node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder list
+
+# cilium_get_pcap_recorder
+{"tool": "cilium_get_pcap_recorder", "arguments": {"recorder_id": "123"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder get 123
+{"tool": "cilium_get_pcap_recorder", "arguments": {"recorder_id": "456", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder get 456
+
+# cilium_delete_pcap_recorder
+{"tool": "cilium_delete_pcap_recorder", "arguments": {"recorder_id": "123"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder delete 123
+{"tool": "cilium_delete_pcap_recorder", "arguments": {"recorder_id": "456", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder delete 456
+
+# cilium_update_pcap_recorder
+{"tool": "cilium_update_pcap_recorder", "arguments": {"recorder_id": "123", "filters": "tcp and port 80"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder update 123 --filters tcp and port 80 --caplen 0 --id 0
+{"tool": "cilium_update_pcap_recorder", "arguments": {"recorder_id": "456", "filters": "icmp", "caplen": "1500", "id": "789", "node_name": "worker-1"}}|kubectl exec -it cilium-pod -n kube-system -- cilium-dbg recorder update 456 --filters icmp --caplen 1500 --id 789 

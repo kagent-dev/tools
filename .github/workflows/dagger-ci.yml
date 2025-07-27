@@ -1,0 +1,182 @@
+name: Dagger CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'release/*' ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  ci:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      git-commit: ${{ steps.version.outputs.git-commit }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for git describe
+
+      - name: Calculate version
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="${{ github.ref_name }}-$(git rev-parse --short HEAD)"
+          fi
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "git-commit=$GIT_COMMIT" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+          echo "Git Commit: $GIT_COMMIT"
+
+      - name: Setup Dagger
+        uses: dagger/dagger-for-github@v6
+        with:
+          version: "latest"
+          verb: call
+          args: ci --source=. --version="${{ steps.version.outputs.version }}" --git-commit="${{ steps.version.outputs.git-commit }}"
+
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: ci
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Dagger
+        uses: dagger/dagger-for-github@v6
+        with:
+          version: "latest"
+
+      - name: Build Docker Image
+        run: |
+          dagger call build-docker \
+            --source=. \
+            --version="${{ needs.ci.outputs.version }}" \
+            --git-commit="${{ needs.ci.outputs.git-commit }}" \
+            --platform="linux/amd64"
+
+  publish:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: [ci, build-docker]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Dagger
+        uses: dagger/dagger-for-github@v6
+        with:
+          version: "latest"
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Docker Image
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dagger call publish \
+            --source=. \
+            --version="${{ needs.ci.outputs.version }}" \
+            --git-commit="${{ needs.ci.outputs.git-commit }}" \
+            --registry="${{ env.REGISTRY }}" \
+            --registry-token=env:REGISTRY_TOKEN
+
+  e2e:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: [ci, build-docker]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Dagger
+        uses: dagger/dagger-for-github@v6
+        with:
+          version: "latest"
+
+      - name: Run E2E Tests
+        run: |
+          dagger call e2e --source=.
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [ci, publish]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Dagger
+        uses: dagger/dagger-for-github@v6
+        with:
+          version: "latest"
+
+      - name: Build Release Artifacts
+        run: |
+          dagger call build \
+            --source=. \
+            --version="${{ needs.ci.outputs.version }}" \
+            --git-commit="${{ needs.ci.outputs.git-commit }}" \
+            export --path=./release-artifacts
+
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          for file in kagent-tools-*; do
+            sha256sum "$file" > "$file.sha256"
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## Kagent Tools ${{ github.ref_name }}
+            
+            ### Docker Image
+            ```bash
+            docker pull ${{ env.REGISTRY }}/${{ github.repository }}/tools:${{ needs.ci.outputs.version }}
+            ```
+            
+            ### Binaries
+            Download the appropriate binary for your platform below.
+            
+            ### Changes
+            See the [changelog](./CHANGELOG.md) for details.
+          files: |
+            release-artifacts/kagent-tools-*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true 

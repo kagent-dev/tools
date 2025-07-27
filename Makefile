@@ -233,6 +233,55 @@ report/image-cve: docker-build govulncheck
 	echo "Running CVE scan :: CVE -> CSV ... reports/$(SEMVER)/"
 	grype docker:$(TOOLS_IMG) -o template -t reports/cve-report.tmpl --file reports/$(SEMVER)/tools-cve.csv
 
+# Dagger targets
+.PHONY: dagger-test
+dagger-test: ## Run tests using Dagger
+	./scripts/dagger-dev.sh test
+
+.PHONY: dagger-lint  
+dagger-lint: ## Run linter using Dagger
+	./scripts/dagger-dev.sh lint
+
+.PHONY: dagger-format
+dagger-format: ## Format code using Dagger
+	./scripts/dagger-dev.sh format
+
+.PHONY: dagger-build
+dagger-build: ## Build binaries using Dagger
+	./scripts/dagger-dev.sh build
+
+.PHONY: dagger-build-docker
+dagger-build-docker: ## Build Docker image using Dagger
+	./scripts/dagger-dev.sh build-docker
+
+.PHONY: dagger-ci
+dagger-ci: ## Run full CI pipeline using Dagger
+	./scripts/dagger-dev.sh ci
+
+.PHONY: dagger-e2e
+dagger-e2e: ## Run E2E tests using Dagger
+	./scripts/dagger-dev.sh e2e
+
+.PHONY: dagger-release
+dagger-release: ## Create release using Dagger
+	./scripts/dagger-dev.sh release
+
+.PHONY: dagger-dev
+dagger-dev: ## Run development workflow using Dagger
+	./scripts/dagger-dev.sh dev
+
+.PHONY: dagger-quick
+dagger-quick: ## Run quick checks using Dagger
+	./scripts/dagger-dev.sh quick
+
+.PHONY: dagger-clean
+dagger-clean: ## Clean Dagger artifacts
+	./scripts/dagger-dev.sh clean
+
+.PHONY: dagger-help
+dagger-help: ## Show Dagger help
+	./scripts/dagger-dev.sh help
+
 ## Tool Binaries
 ## Location to install dependencies t
 

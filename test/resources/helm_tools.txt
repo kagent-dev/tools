@@ -1,0 +1,52 @@
+# Helm Tools Test Data - Format: MCP_INPUT|EXPECTED_CLI_COMMAND
+
+# helm_list_releases
+{"tool": "helm_list_releases", "arguments": {}}|helm list
+{"tool": "helm_list_releases", "arguments": {"namespace": "default"}}|helm list -n default
+{"tool": "helm_list_releases", "arguments": {"all_namespaces": "true"}}|helm list --all-namespaces
+{"tool": "helm_list_releases", "arguments": {"all": "true"}}|helm list --all
+{"tool": "helm_list_releases", "arguments": {"uninstalled": "true"}}|helm list --uninstalled
+{"tool": "helm_list_releases", "arguments": {"uninstalling": "true"}}|helm list --uninstalling
+{"tool": "helm_list_releases", "arguments": {"failed": "true"}}|helm list --failed
+{"tool": "helm_list_releases", "arguments": {"deployed": "true"}}|helm list --deployed
+{"tool": "helm_list_releases", "arguments": {"pending": "true"}}|helm list --pending
+{"tool": "helm_list_releases", "arguments": {"filter": "nginx.*"}}|helm list --filter nginx.*
+{"tool": "helm_list_releases", "arguments": {"output": "json"}}|helm list -o json
+{"tool": "helm_list_releases", "arguments": {"output": "yaml"}}|helm list -o yaml
+{"tool": "helm_list_releases", "arguments": {"namespace": "monitoring", "output": "table"}}|helm list -n monitoring -o table
+{"tool": "helm_list_releases", "arguments": {"all_namespaces": "true", "failed": "true", "output": "json"}}|helm list --all-namespaces --failed -o json
+
+# helm_get_release
+{"tool": "helm_get_release", "arguments": {"name": "nginx-ingress", "namespace": "default"}}|helm get all nginx-ingress -n default
+{"tool": "helm_get_release", "arguments": {"name": "prometheus", "namespace": "monitoring", "resource": "values"}}|helm get values prometheus -n monitoring
+{"tool": "helm_get_release", "arguments": {"name": "grafana", "namespace": "monitoring", "resource": "manifest"}}|helm get manifest grafana -n monitoring
+{"tool": "helm_get_release", "arguments": {"name": "cert-manager", "namespace": "cert-manager", "resource": "hooks"}}|helm get hooks cert-manager -n cert-manager
+{"tool": "helm_get_release", "arguments": {"name": "istio-base", "namespace": "istio-system", "resource": "notes"}}|helm get notes istio-base -n istio-system
+
+# helm_upgrade
+{"tool": "helm_upgrade", "arguments": {"name": "nginx", "chart": "nginx"}}|helm upgrade nginx nginx
+{"tool": "helm_upgrade", "arguments": {"name": "nginx", "chart": "nginx", "namespace": "default"}}|helm upgrade nginx nginx -n default
+{"tool": "helm_upgrade", "arguments": {"name": "prometheus", "chart": "prometheus-community/prometheus", "namespace": "monitoring", "version": "15.0.0"}}|helm upgrade prometheus prometheus-community/prometheus -n monitoring --version 15.0.0
+{"tool": "helm_upgrade", "arguments": {"name": "grafana", "chart": "grafana/grafana", "namespace": "monitoring", "values": "/path/to/values.yaml"}}|helm upgrade grafana grafana/grafana -n monitoring -f /path/to/values.yaml
+{"tool": "helm_upgrade", "arguments": {"name": "nginx", "chart": "nginx", "set": "replicaCount=3,image.tag=1.20"}}|helm upgrade nginx nginx --set replicaCount=3,image.tag=1.20
+{"tool": "helm_upgrade", "arguments": {"name": "nginx", "chart": "nginx", "install": "true"}}|helm upgrade nginx nginx --install
+{"tool": "helm_upgrade", "arguments": {"name": "nginx", "chart": "nginx", "dry_run": "true"}}|helm upgrade nginx nginx --dry-run
+{"tool": "helm_upgrade", "arguments": {"name": "nginx", "chart": "nginx", "wait": "true"}}|helm upgrade nginx nginx --wait
+{"tool": "helm_upgrade", "arguments": {"name": "nginx", "chart": "nginx", "namespace": "default", "install": "true", "wait": "true"}}|helm upgrade nginx nginx -n default --install --wait
+
+# helm_uninstall
+{"tool": "helm_uninstall", "arguments": {"name": "nginx", "namespace": "default"}}|helm uninstall nginx -n default
+{"tool": "helm_uninstall", "arguments": {"name": "prometheus", "namespace": "monitoring"}}|helm uninstall prometheus -n monitoring
+{"tool": "helm_uninstall", "arguments": {"name": "nginx", "namespace": "default", "dry_run": "true"}}|helm uninstall nginx -n default --dry-run
+{"tool": "helm_uninstall", "arguments": {"name": "nginx", "namespace": "default", "wait": "true"}}|helm uninstall nginx -n default --wait
+{"tool": "helm_uninstall", "arguments": {"name": "grafana", "namespace": "monitoring", "dry_run": "true", "wait": "true"}}|helm uninstall grafana -n monitoring --dry-run --wait
+
+# helm_repo_add
+{"tool": "helm_repo_add", "arguments": {"name": "bitnami", "url": "https://charts.bitnami.com/bitnami"}}|helm repo add bitnami https://charts.bitnami.com/bitnami
+{"tool": "helm_repo_add", "arguments": {"name": "prometheus-community", "url": "https://prometheus-community.github.io/helm-charts"}}|helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+{"tool": "helm_repo_add", "arguments": {"name": "grafana", "url": "https://grafana.github.io/helm-charts"}}|helm repo add grafana https://grafana.github.io/helm-charts
+{"tool": "helm_repo_add", "arguments": {"name": "istio", "url": "https://istio-release.storage.googleapis.com/charts"}}|helm repo add istio https://istio-release.storage.googleapis.com/charts
+{"tool": "helm_repo_add", "arguments": {"name": "jetstack", "url": "https://charts.jetstack.io"}}|helm repo add jetstack https://charts.jetstack.io
+
+# helm_repo_update
+{"tool": "helm_repo_update", "arguments": {}}|helm repo update 

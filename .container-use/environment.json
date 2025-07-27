@@ -1,0 +1,4 @@
+{
+  "workdir": "/workdir",
+  "base_image": "cgr.dev/chainguard/wolfi-base:latest"
+}

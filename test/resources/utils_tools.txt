@@ -1,0 +1,14 @@
+# Utils Tools Test Data - Format: MCP_INPUT|EXPECTED_CLI_COMMAND
+
+# shell
+{"tool": "shell", "arguments": {"command": "ls -la"}}|ls -la
+{"tool": "shell", "arguments": {"command": "pwd"}}|pwd
+{"tool": "shell", "arguments": {"command": "echo 'Hello World'"}}|echo 'Hello World'
+{"tool": "shell", "arguments": {"command": "docker ps"}}|docker ps
+{"tool": "shell", "arguments": {"command": "systemctl status kubelet"}}|systemctl status kubelet
+{"tool": "shell", "arguments": {"command": "df -h"}}|df -h
+{"tool": "shell", "arguments": {"command": "free -m"}}|free -m
+{"tool": "shell", "arguments": {"command": "top -n 1"}}|top -n 1
+
+# datetime_get_current_time
+{"tool": "datetime_get_current_time", "arguments": {}}|Current time in ISO 8601 format 

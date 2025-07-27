@@ -1,0 +1,53 @@
+# Istio Tools Test Data - Format: MCP_INPUT|EXPECTED_CLI_COMMAND
+
+# istio_proxy_status
+{"tool": "istio_proxy_status", "arguments": {}}|istioctl proxy-status
+{"tool": "istio_proxy_status", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs"}}|istioctl proxy-status productpage-v1-6b746f74dc-9stvs
+{"tool": "istio_proxy_status", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs", "namespace": "bookinfo"}}|istioctl proxy-status productpage-v1-6b746f74dc-9stvs.bookinfo
+
+# istio_proxy_config
+{"tool": "istio_proxy_config", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs"}}|istioctl proxy-config all productpage-v1-6b746f74dc-9stvs
+{"tool": "istio_proxy_config", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs", "namespace": "bookinfo"}}|istioctl proxy-config all productpage-v1-6b746f74dc-9stvs.bookinfo
+{"tool": "istio_proxy_config", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs", "config_type": "cluster"}}|istioctl proxy-config cluster productpage-v1-6b746f74dc-9stvs
+{"tool": "istio_proxy_config", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs", "namespace": "bookinfo", "config_type": "listener"}}|istioctl proxy-config listener productpage-v1-6b746f74dc-9stvs.bookinfo
+{"tool": "istio_proxy_config", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs", "config_type": "route"}}|istioctl proxy-config route productpage-v1-6b746f74dc-9stvs
+{"tool": "istio_proxy_config", "arguments": {"pod_name": "productpage-v1-6b746f74dc-9stvs", "config_type": "bootstrap"}}|istioctl proxy-config bootstrap productpage-v1-6b746f74dc-9stvs
+
+# istio_install_istio
+{"tool": "istio_install_istio", "arguments": {}}|istioctl install --set values.defaultRevision=default
+{"tool": "istio_install_istio", "arguments": {"profile": "demo"}}|istioctl install --set values.defaultRevision=default --set values.pilot.env.EXTERNAL_ISTIOD=false --set values.global.meshID=mesh1 --set values.global.multiCluster.clusterName=cluster1 --set values.global.network=network1 --set values.pilot.env.ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION=true
+{"tool": "istio_install_istio", "arguments": {"profile": "minimal"}}|istioctl install --set values.defaultRevision=default --set values.pilot.env.EXTERNAL_ISTIOD=false --set values.global.meshID=mesh1 --set values.global.multiCluster.clusterName=cluster1 --set values.global.network=network1
+{"tool": "istio_install_istio", "arguments": {"profile": "ambient"}}|istioctl install --set values.defaultRevision=default --set values.pilot.env.EXTERNAL_ISTIOD=false --set values.global.meshID=mesh1 --set values.global.multiCluster.clusterName=cluster1 --set values.global.network=network1 --set values.cni.ambient.enabled=true
+
+# istio_generate_manifest
+{"tool": "istio_generate_manifest", "arguments": {}}|istioctl manifest generate
+{"tool": "istio_generate_manifest", "arguments": {"profile": "demo"}}|istioctl manifest generate --set values.defaultRevision=default --set values.pilot.env.EXTERNAL_ISTIOD=false --set values.global.meshID=mesh1 --set values.global.multiCluster.clusterName=cluster1 --set values.global.network=network1 --set values.pilot.env.ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION=true
+{"tool": "istio_generate_manifest", "arguments": {"profile": "minimal"}}|istioctl manifest generate --set values.defaultRevision=default --set values.pilot.env.EXTERNAL_ISTIOD=false --set values.global.meshID=mesh1 --set values.global.multiCluster.clusterName=cluster1 --set values.global.network=network1
+{"tool": "istio_generate_manifest", "arguments": {"profile": "ambient"}}|istioctl manifest generate --set values.defaultRevision=default --set values.pilot.env.EXTERNAL_ISTIOD=false --set values.global.meshID=mesh1 --set values.global.multiCluster.clusterName=cluster1 --set values.global.network=network1 --set values.cni.ambient.enabled=true
+
+# istio_analyze_cluster_configuration
+{"tool": "istio_analyze_cluster_configuration", "arguments": {}}|istioctl analyze
+
+# istio_version
+{"tool": "istio_version", "arguments": {}}|istioctl version
+
+# istio_remote_clusters
+{"tool": "istio_remote_clusters", "arguments": {}}|istioctl remote-clusters
+
+# istio_list_waypoints
+{"tool": "istio_list_waypoints", "arguments": {}}|kubectl get gateways.gateway.networking.k8s.io -l gateway.istio.io/managed=istio.io/waypoint
+
+# istio_generate_waypoint
+{"tool": "istio_generate_waypoint", "arguments": {}}|istioctl waypoint generate
+
+# istio_apply_waypoint
+{"tool": "istio_apply_waypoint", "arguments": {}}|istioctl waypoint apply
+
+# istio_delete_waypoint
+{"tool": "istio_delete_waypoint", "arguments": {}}|istioctl waypoint delete
+
+# istio_waypoint_status
+{"tool": "istio_waypoint_status", "arguments": {}}|istioctl waypoint status
+
+# istio_ztunnel_config
+{"tool": "istio_ztunnel_config", "arguments": {}}|istioctl ztunnel-config 

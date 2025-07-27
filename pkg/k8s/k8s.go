@@ -292,7 +292,7 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolReq
 
 // Get available API resources
 func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, "api-resources", "-o", "json")
+	return k.runKubectlCommand(ctx, "api-resources")
 }
 
 // Kubectl describe tool

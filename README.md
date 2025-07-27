@@ -1,4 +1,4 @@
-<div align="center">
+<div>
   <div>
     <a href="https://github.com/kagent-dev/tools/releases">
       <img src="https://img.shields.io/github/v/release/kagent-dev/tools?style=flat&label=Latest%20version" alt="Release">
@@ -262,6 +262,66 @@ Potential areas for future improvement:
 5. **Configuration Management**: Enhanced configuration management and validation
 6. **Parallel Execution**: Support for parallel execution of related operations
 
+## Development
+
+### Dagger Build Pipeline
+
+This project uses [Dagger](https://dagger.io) for a portable, language-agnostic CI/CD pipeline that runs locally or in any CI environment.
+
+#### Quick Start with Dagger
+
+```bash
+# Install Dagger CLI
+brew install dagger/tap/dagger  # macOS
+# OR
+curl -L https://dl.dagger.io/dagger/install.sh | sh  # Linux/Windows
+
+# Run development workflow
+./scripts/dagger-dev.sh dev
+
+# Or individual commands
+./scripts/dagger-dev.sh test        # Run tests
+./scripts/dagger-dev.sh lint        # Run linter
+./scripts/dagger-dev.sh build       # Build binaries
+./scripts/dagger-dev.sh build-docker # Build Docker image
+```
+
+#### Available Dagger Functions
+
+- **`test`**: Run Go tests with coverage
+- **`lint`**: Static code analysis with golangci-lint
+- **`format`**: Code formatting with go fmt
+- **`build`**: Multi-platform binary builds (Linux, macOS, Windows)
+- **`build-docker`**: Container image building with all required tools
+- **`ci`**: Complete CI pipeline (format, lint, test, build)
+- **`e2e`**: End-to-end test execution
+- **`publish`**: Docker image publishing to registries
+- **`release`**: Complete release pipeline
+
+#### Makefile Integration
+
+The Dagger pipeline is integrated with the existing Makefile:
+
+```bash
+make dagger-test        # Run tests with Dagger
+make dagger-build       # Build with Dagger
+make dagger-ci          # Full CI pipeline
+make dagger-dev         # Development workflow
+```
+
+For detailed documentation, see [docs/dagger-build.md](docs/dagger-build.md).
+
+### Traditional Build
+
+You can also use the traditional Make-based build system:
+
+```bash
+make test               # Run tests
+make build              # Build binaries
+make docker-build       # Build Docker image
+make lint               # Run linter
+```
+
 ## Contributing
 
 When adding new tools or modifying existing ones:
@@ -271,3 +331,4 @@ When adding new tools or modifying existing ones:
 4. Update this README with new tool documentation
 5. Add appropriate tests
 6. Ensure backward compatibility with existing tools
+7. Test with both traditional Make and Dagger build systems

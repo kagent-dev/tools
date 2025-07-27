@@ -1,0 +1,87 @@
+# K8s Tools Test Data - Format: MCP_INPUT|EXPECTED_CLI_COMMAND
+
+# k8s_get_resources
+{"tool": "k8s_get_resources", "arguments": {"resource_type": "pods"}}|kubectl get pods
+{"tool": "k8s_get_resources", "arguments": {"resource_type": "pods", "namespace": "kube-system"}}|kubectl get pods -n kube-system
+{"tool": "k8s_get_resources", "arguments": {"resource_type": "deployments", "resource_name": "nginx", "namespace": "default"}}|kubectl get deployments nginx -n default
+{"tool": "k8s_get_resources", "arguments": {"resource_type": "services", "all_namespaces": "true"}}|kubectl get services --all-namespaces
+{"tool": "k8s_get_resources", "arguments": {"resource_type": "pods", "output": "json"}}|kubectl get pods -o json
+
+# k8s_get_pod_logs
+{"tool": "k8s_get_pod_logs", "arguments": {"pod_name": "nginx-pod"}}|kubectl logs nginx-pod
+{"tool": "k8s_get_pod_logs", "arguments": {"pod_name": "nginx-pod", "namespace": "default"}}|kubectl logs nginx-pod -n default
+{"tool": "k8s_get_pod_logs", "arguments": {"pod_name": "nginx-pod", "container": "nginx", "namespace": "default"}}|kubectl logs nginx-pod -c nginx -n default
+
+# k8s_scale
+{"tool": "k8s_scale", "arguments": {"name": "nginx-deployment", "replicas": 3}}|kubectl scale deployment nginx-deployment --replicas=3
+{"tool": "k8s_scale", "arguments": {"name": "nginx-deployment", "namespace": "default", "replicas": 5}}|kubectl scale deployment nginx-deployment --replicas=5 -n default
+
+# k8s_patch_resource
+{"tool": "k8s_patch_resource", "arguments": {"resource_type": "deployment", "resource_name": "nginx", "patch": "{\"spec\":{\"replicas\":3}}"}}|kubectl patch deployment nginx --patch '{"spec":{"replicas":3}}'
+{"tool": "k8s_patch_resource", "arguments": {"resource_type": "service", "resource_name": "nginx-svc", "patch": "{\"spec\":{\"type\":\"NodePort\"}}", "namespace": "default"}}|kubectl patch service nginx-svc --patch '{"spec":{"type":"NodePort"}}' -n default
+
+# k8s_apply_manifest
+{"tool": "k8s_apply_manifest", "arguments": {"manifest": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: test-pod"}}|kubectl apply -f -
+
+# k8s_delete_resource
+{"tool": "k8s_delete_resource", "arguments": {"resource_type": "pod", "resource_name": "test-pod"}}|kubectl delete pod test-pod
+{"tool": "k8s_delete_resource", "arguments": {"resource_type": "deployment", "resource_name": "nginx", "namespace": "default"}}|kubectl delete deployment nginx -n default
+
+# k8s_check_service_connectivity
+{"tool": "k8s_check_service_connectivity", "arguments": {"service_name": "nginx-service"}}|kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- curl nginx-service
+{"tool": "k8s_check_service_connectivity", "arguments": {"service_name": "nginx-service.default.svc.cluster.local:80", "namespace": "test"}}|kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -n test -- curl nginx-service.default.svc.cluster.local:80
+
+# k8s_get_events
+{"tool": "k8s_get_events", "arguments": {}}|kubectl get events
+{"tool": "k8s_get_events", "arguments": {"namespace": "kube-system"}}|kubectl get events -n kube-system
+
+# k8s_execute_command
+{"tool": "k8s_execute_command", "arguments": {"pod_name": "nginx-pod", "command": "ls -la"}}|kubectl exec nginx-pod -- ls -la
+{"tool": "k8s_execute_command", "arguments": {"pod_name": "nginx-pod", "namespace": "default", "container": "nginx", "command": "cat /etc/nginx/nginx.conf"}}|kubectl exec nginx-pod -n default -c nginx -- cat /etc/nginx/nginx.conf
+
+# k8s_get_available_api_resources
+# Note: kubectl api-resources does not support -o json output format
+{"tool": "k8s_get_available_api_resources", "arguments": {}}|kubectl api-resources
+
+# k8s_get_cluster_configuration
+{"tool": "k8s_get_cluster_configuration", "arguments": {}}|kubectl config view -o json
+
+# k8s_rollout
+{"tool": "k8s_rollout", "arguments": {"action": "status", "resource_type": "deployment", "resource_name": "nginx"}}|kubectl rollout status deployment nginx
+{"tool": "k8s_rollout", "arguments": {"action": "restart", "resource_type": "deployment", "resource_name": "nginx", "namespace": "default"}}|kubectl rollout restart deployment nginx -n default
+
+# k8s_label_resource
+{"tool": "k8s_label_resource", "arguments": {"resource_type": "pod", "resource_name": "nginx-pod", "labels": "environment=production app=nginx"}}|kubectl label pod nginx-pod environment=production app=nginx
+{"tool": "k8s_label_resource", "arguments": {"resource_type": "deployment", "resource_name": "nginx", "labels": "version=v1.0", "namespace": "default"}}|kubectl label deployment nginx version=v1.0 -n default
+
+# k8s_annotate_resource
+{"tool": "k8s_annotate_resource", "arguments": {"resource_type": "service", "resource_name": "nginx-svc", "annotations": "description='Main nginx service'"}}|kubectl annotate service nginx-svc description='Main nginx service'
+{"tool": "k8s_annotate_resource", "arguments": {"resource_type": "pod", "resource_name": "test-pod", "annotations": "owner=team-a", "namespace": "default"}}|kubectl annotate pod test-pod owner=team-a -n default
+
+# k8s_remove_annotation
+{"tool": "k8s_remove_annotation", "arguments": {"resource_type": "pod", "resource_name": "test-pod", "annotation_key": "description"}}|kubectl annotate pod test-pod description-
+{"tool": "k8s_remove_annotation", "arguments": {"resource_type": "service", "resource_name": "nginx-svc", "annotation_key": "owner", "namespace": "default"}}|kubectl annotate service nginx-svc owner- -n default
+
+# k8s_remove_label
+{"tool": "k8s_remove_label", "arguments": {"resource_type": "deployment", "resource_name": "nginx", "label_key": "version"}}|kubectl label deployment nginx version-
+{"tool": "k8s_remove_label", "arguments": {"resource_type": "pod", "resource_name": "test-pod", "label_key": "environment", "namespace": "default"}}|kubectl label pod test-pod environment- -n default
+
+# k8s_create_resource
+{"tool": "k8s_create_resource", "arguments": {"yaml_content": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test-config"}}|kubectl create -f -
+
+# k8s_create_resource_from_url
+{"tool": "k8s_create_resource_from_url", "arguments": {"url": "https://raw.githubusercontent.com/kubernetes/examples/master/guestbook/all-in-one/guestbook-all-in-one.yaml"}}|kubectl create -f https://raw.githubusercontent.com/kubernetes/examples/master/guestbook/all-in-one/guestbook-all-in-one.yaml
+{"tool": "k8s_create_resource_from_url", "arguments": {"url": "https://k8s.io/examples/application/deployment.yaml", "namespace": "default"}}|kubectl create -f https://k8s.io/examples/application/deployment.yaml -n default
+
+# k8s_get_resource_yaml
+{"tool": "k8s_get_resource_yaml", "arguments": {"resource_type": "deployment", "resource_name": "nginx"}}|kubectl get deployment nginx -o yaml
+{"tool": "k8s_get_resource_yaml", "arguments": {"resource_type": "service", "resource_name": "kubernetes", "namespace": "default"}}|kubectl get service kubernetes -o yaml -n default
+
+# k8s_describe_resource
+{"tool": "k8s_describe_resource", "arguments": {"resource_type": "pod", "resource_name": "nginx-pod"}}|kubectl describe pod nginx-pod
+{"tool": "k8s_describe_resource", "arguments": {"resource_type": "node", "resource_name": "worker-node-1"}}|kubectl describe node worker-node-1
+{"tool": "k8s_describe_resource", "arguments": {"resource_type": "deployment", "resource_name": "nginx", "namespace": "default"}}|kubectl describe deployment nginx -n default
+
+# k8s_generate_resource
+{"tool": "k8s_generate_resource", "arguments": {"resource_description": "Create a deployment with nginx image and 3 replicas", "resource_type": "deployment"}}|Generated deployment YAML with nginx image and 3 replicas
+{"tool": "k8s_generate_resource", "arguments": {"resource_description": "Create a service to expose port 80", "resource_type": "service"}}|Generated service YAML exposing port 80 

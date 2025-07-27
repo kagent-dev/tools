@@ -1,0 +1,26 @@
+# Prometheus Tools Test Data - Format: MCP_INPUT|EXPECTED_CLI_COMMAND
+
+# prometheus_query_tool
+{"tool": "prometheus_query_tool", "arguments": {"query": "up"}}|curl -s 'http://localhost:9090/api/v1/query?query=up'
+{"tool": "prometheus_query_tool", "arguments": {"query": "cpu_usage_percent", "prometheus_url": "http://prometheus.monitoring.svc.cluster.local:9090"}}|curl -s 'http://prometheus.monitoring.svc.cluster.local:9090/api/v1/query?query=cpu_usage_percent'
+{"tool": "prometheus_query_tool", "arguments": {"query": "rate(http_requests_total[5m])"}}|curl -s 'http://localhost:9090/api/v1/query?query=rate(http_requests_total[5m])'
+{"tool": "prometheus_query_tool", "arguments": {"query": "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100"}}|curl -s 'http://localhost:9090/api/v1/query?query=node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100'
+
+# prometheus_query_range_tool  
+{"tool": "prometheus_query_range_tool", "arguments": {"query": "up", "start": "2023-01-01T00:00:00Z", "end": "2023-01-01T01:00:00Z"}}|curl -s 'http://localhost:9090/api/v1/query_range?query=up&start=2023-01-01T00:00:00Z&end=2023-01-01T01:00:00Z&step=15s'
+{"tool": "prometheus_query_range_tool", "arguments": {"query": "cpu_usage_percent", "start": "1640995200", "end": "1640998800", "step": "30s"}}|curl -s 'http://localhost:9090/api/v1/query_range?query=cpu_usage_percent&start=1640995200&end=1640998800&step=30s'
+{"tool": "prometheus_query_range_tool", "arguments": {"query": "rate(http_requests_total[5m])", "prometheus_url": "http://prometheus.example.com:9090"}}|curl -s 'http://prometheus.example.com:9090/api/v1/query_range?query=rate(http_requests_total[5m])&step=15s'
+
+# prometheus_label_names_tool
+{"tool": "prometheus_label_names_tool", "arguments": {}}|curl -s 'http://localhost:9090/api/v1/label/__name__/values'
+{"tool": "prometheus_label_names_tool", "arguments": {"prometheus_url": "http://prometheus.monitoring.svc.cluster.local:9090"}}|curl -s 'http://prometheus.monitoring.svc.cluster.local:9090/api/v1/label/__name__/values'
+
+# prometheus_targets_tool
+{"tool": "prometheus_targets_tool", "arguments": {}}|curl -s 'http://localhost:9090/api/v1/targets'
+{"tool": "prometheus_targets_tool", "arguments": {"prometheus_url": "http://prometheus.monitoring.svc.cluster.local:9090"}}|curl -s 'http://prometheus.monitoring.svc.cluster.local:9090/api/v1/targets'
+
+# prometheus_promql_tool
+{"tool": "prometheus_promql_tool", "arguments": {"query_description": "Show CPU usage percentage for all nodes"}}|Generated PromQL: avg by (instance) (100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100))
+{"tool": "prometheus_promql_tool", "arguments": {"query_description": "Show memory usage for containers in a specific namespace"}}|Generated PromQL: container_memory_usage_bytes{namespace=\"specific-namespace\"}
+{"tool": "prometheus_promql_tool", "arguments": {"query_description": "Show HTTP request rate for the last 5 minutes"}}|Generated PromQL: rate(http_requests_total[5m])
+{"tool": "prometheus_promql_tool", "arguments": {"query_description": "Show disk usage percentage by device"}}|Generated PromQL: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 

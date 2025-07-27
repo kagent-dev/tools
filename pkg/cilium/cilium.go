@@ -341,14 +341,6 @@ func RegisterTools(s *server.MCPServer) {
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_service", handleDeleteService)))
 
 	// Debug tools (previously in RegisterCiliumDbgTools)
-	s.AddTool(mcp.NewTool("cilium_get_endpoint_details",
-		mcp.WithDescription("List the details of an endpoint in the cluster"),
-		mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to get details for")),
-		mcp.WithString("labels", mcp.Description("The labels of the endpoint to get details for")),
-		mcp.WithString("output_format", mcp.Description("The output format of the endpoint details (json, yaml, jsonpath)")),
-		mcp.WithString("node_name", mcp.Description("The name of the node to get the endpoint details for")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_get_endpoint_details", handleGetEndpointDetails)))
-
 	s.AddTool(mcp.NewTool("cilium_get_endpoint_logs",
 		mcp.WithDescription("Get the logs of an endpoint in the cluster"),
 		mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to get logs for"), mcp.Required()),

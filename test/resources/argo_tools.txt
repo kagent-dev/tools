@@ -1,0 +1,40 @@
+# Argo Tools Test Data - Format: MCP_INPUT|EXPECTED_CLI_COMMAND
+
+# argo_verify_argo_rollouts_controller_install
+{"tool": "argo_verify_argo_rollouts_controller_install", "arguments": {}}|kubectl get pods -n argo-rollouts -l app.kubernetes.io/name=argo-rollouts
+{"tool": "argo_verify_argo_rollouts_controller_install", "arguments": {"namespace": "argo-rollouts"}}|kubectl get pods -n argo-rollouts -l app.kubernetes.io/name=argo-rollouts
+{"tool": "argo_verify_argo_rollouts_controller_install", "arguments": {"namespace": "argo-system", "label": "app=argo-rollouts-controller"}}|kubectl get pods -n argo-system -l app=argo-rollouts-controller
+
+# argo_verify_kubectl_plugin_install
+{"tool": "argo_verify_kubectl_plugin_install", "arguments": {}}|kubectl argo rollouts version
+
+# argo_rollouts_list
+{"tool": "argo_rollouts_list", "arguments": {}}|argo rollouts list rollouts
+{"tool": "argo_rollouts_list", "arguments": {"namespace": "default"}}|argo rollouts list rollouts -n default
+{"tool": "argo_rollouts_list", "arguments": {"type": "rollouts", "namespace": "production"}}|argo rollouts list rollouts -n production
+{"tool": "argo_rollouts_list", "arguments": {"type": "experiments", "namespace": "staging"}}|argo rollouts list experiments -n staging
+
+# argo_promote_rollout
+{"tool": "argo_promote_rollout", "arguments": {"rollout_name": "rollouts-demo"}}|argo rollouts promote rollouts-demo
+{"tool": "argo_promote_rollout", "arguments": {"rollout_name": "rollouts-demo", "namespace": "default"}}|argo rollouts promote rollouts-demo -n default
+{"tool": "argo_promote_rollout", "arguments": {"rollout_name": "rollouts-demo", "full": "true"}}|argo rollouts promote rollouts-demo --full
+{"tool": "argo_promote_rollout", "arguments": {"rollout_name": "rollouts-demo", "namespace": "production", "full": "true"}}|argo rollouts promote rollouts-demo -n production --full
+
+# argo_pause_rollout
+{"tool": "argo_pause_rollout", "arguments": {"rollout_name": "rollouts-demo"}}|argo rollouts pause rollouts-demo
+{"tool": "argo_pause_rollout", "arguments": {"rollout_name": "rollouts-demo", "namespace": "default"}}|argo rollouts pause rollouts-demo -n default
+
+# argo_set_rollout_image
+{"tool": "argo_set_rollout_image", "arguments": {"rollout_name": "rollouts-demo", "container_image": "nginx:1.20"}}|argo rollouts set image rollouts-demo nginx=nginx:1.20
+{"tool": "argo_set_rollout_image", "arguments": {"rollout_name": "rollouts-demo", "container_image": "nginx:1.21", "namespace": "default"}}|argo rollouts set image rollouts-demo nginx=nginx:1.21 -n default
+{"tool": "argo_set_rollout_image", "arguments": {"rollout_name": "guestbook", "container_image": "argoproj/rollouts-demo:yellow"}}|argo rollouts set image guestbook guestbook=argoproj/rollouts-demo:yellow
+
+# argo_verify_gateway_plugin
+{"tool": "argo_verify_gateway_plugin", "arguments": {}}|kubectl get crd gateways.gateway.networking.k8s.io
+{"tool": "argo_verify_gateway_plugin", "arguments": {"version": "v1.0.0"}}|kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.metadata.labels.version}'
+{"tool": "argo_verify_gateway_plugin", "arguments": {"namespace": "argo-rollouts", "should_install": "true"}}|kubectl apply -f https://github.com/argoproj/argo-rollouts/releases/latest/download/gateway-api-install.yaml
+
+# argo_check_plugin_logs
+{"tool": "argo_check_plugin_logs", "arguments": {}}|kubectl logs -l app.kubernetes.io/name=argo-rollouts -n argo-rollouts
+{"tool": "argo_check_plugin_logs", "arguments": {"namespace": "argo-rollouts"}}|kubectl logs -l app.kubernetes.io/name=argo-rollouts -n argo-rollouts
+{"tool": "argo_check_plugin_logs", "arguments": {"namespace": "argo-rollouts", "timeout": "30"}}|kubectl logs -l app.kubernetes.io/name=argo-rollouts -n argo-rollouts --tail=100 --since=30s 
