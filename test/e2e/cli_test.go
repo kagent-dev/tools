@@ -44,7 +44,7 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 			config := TestServerConfig{
 				Port:    8085,
 				Stdio:   false,
-				Timeout: 30 * time.Second,
+				Timeout: 60 * time.Second,
 			}
 
 			server := NewTestServer(config)

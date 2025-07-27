@@ -445,7 +445,7 @@ func GetPods(namespace string, labels map[string]string) *CommandBuilder {
 		builder = builder.WithLabels(labels)
 	}
 
-	return builder.WithCache(true).WithOutput("json")
+	return builder.WithCache(true)
 }
 
 // GetServices creates a command to get services
@@ -460,7 +460,7 @@ func GetServices(namespace string, labels map[string]string) *CommandBuilder {
 		builder = builder.WithLabels(labels)
 	}
 
-	return builder.WithCache(true).WithOutput("json")
+	return builder.WithCache(true)
 }
 
 // GetDeployments creates a command to get deployments
@@ -475,7 +475,7 @@ func GetDeployments(namespace string, labels map[string]string) *CommandBuilder 
 		builder = builder.WithLabels(labels)
 	}
 
-	return builder.WithCache(true).WithOutput("json")
+	return builder.WithCache(true)
 }
 
 // DescribeResource creates a command to describe a resource
