@@ -249,8 +249,8 @@ func InstallKAgentTools(namespace string, releaseName string) {
 
 // GetMCPClient creates a new MCP client configured for the e2e test environment using the official mcp-go client
 func GetMCPClient() (*MCPClient, error) {
-	// Create HTTP transport for the MCP server
-	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885/mcp", transport.WithHTTPTimeout(15*time.Second))
+	// Create HTTP transport for the MCP server with timeout long enough for operations like Istio installation
+	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885/mcp", transport.WithHTTPTimeout(180*time.Second))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP transport: %w", err)
 	}
