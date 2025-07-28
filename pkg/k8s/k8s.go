@@ -58,7 +58,7 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request mcp.Call
 	resourceName := mcp.ParseString(request, "resource_name", "")
 	namespace := mcp.ParseString(request, "namespace", "")
 	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
-	output := mcp.ParseString(request, "output", "json")
+	output := mcp.ParseString(request, "output", "wide")
 
 	if resourceType == "" {
 		return mcp.NewToolResultError("resource_type parameter is required"), nil
@@ -292,7 +292,7 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolReq
 
 // Get available API resources
 func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, "api-resources", "-o", "json")
+	return k.runKubectlCommand(ctx, "api-resources")
 }
 
 // Kubectl describe tool
@@ -567,7 +567,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string) {
 		mcp.WithString("resource_name", mcp.Description("Name of specific resource (optional)")),
 		mcp.WithString("namespace", mcp.Description("Namespace to query (optional)")),
 		mcp.WithString("all_namespaces", mcp.Description("Query all namespaces (true/false)")),
-		mcp.WithString("output", mcp.Description("Output format (json, yaml, wide, etc.)")),
+		mcp.WithString("output", mcp.Description("Output format (json, yaml, wide)"), mcp.DefaultString("wide")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_get_resources", k8sTool.handleKubectlGetEnhanced)))
 
 	s.AddTool(mcp.NewTool("k8s_get_pod_logs",

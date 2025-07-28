@@ -37,8 +37,10 @@ func TestHandleGetAvailableAPIResources(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		expectedOutput := `[{"name": "pods", "singularName": "pod", "namespaced": true, "kind": "Pod"}]`
-		mock.AddCommandString("kubectl", []string{"api-resources", "-o", "json"}, expectedOutput, nil)
+		expectedOutput := `NAME                              SHORTNAMES   APIVERSION                             NAMESPACED   KIND
+pods                              po           v1                                     true         Pod
+services                          svc          v1                                     true         Service`
+		mock.AddCommandString("kubectl", []string{"api-resources"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -56,7 +58,7 @@ func TestHandleGetAvailableAPIResources(t *testing.T) {
 
 	t.Run("kubectl command failure", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("kubectl", []string{"api-resources", "-o", "json"}, "", assert.AnError)
+		mock.AddCommandString("kubectl", []string{"api-resources"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -408,8 +410,8 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 
 	t.Run("valid resource_type", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		expectedOutput := `{"items": [{"metadata": {"name": "pod1"}}]}`
-		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "json"}, expectedOutput, nil)
+		expectedOutput := `NAME   READY   STATUS    RESTARTS   AGE`
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()

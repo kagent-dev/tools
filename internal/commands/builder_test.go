@@ -253,7 +253,7 @@ func TestGetPods(t *testing.T) {
 	assert.Equal(t, namespace, cb.namespace)
 	assert.Equal(t, labels, cb.labels)
 	assert.True(t, cb.cached)
-	assert.Equal(t, "json", cb.output)
+	assert.Empty(t, cb.output) // No default output format
 }
 
 func TestGetServices(t *testing.T) {
@@ -268,7 +268,7 @@ func TestGetServices(t *testing.T) {
 	assert.Equal(t, namespace, cb.namespace)
 	assert.Equal(t, labels, cb.labels)
 	assert.True(t, cb.cached)
-	assert.Equal(t, "json", cb.output)
+	assert.Empty(t, cb.output) // No default output format
 }
 
 func TestGetDeployments(t *testing.T) {
@@ -283,7 +283,7 @@ func TestGetDeployments(t *testing.T) {
 	assert.Equal(t, namespace, cb.namespace)
 	assert.Equal(t, labels, cb.labels)
 	assert.True(t, cb.cached)
-	assert.Equal(t, "json", cb.output)
+	assert.Empty(t, cb.output) // No default output format
 }
 
 func TestDescribeResource(t *testing.T) {
