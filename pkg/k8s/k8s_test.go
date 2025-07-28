@@ -410,8 +410,8 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 
 	t.Run("valid resource_type", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		expectedOutput := `{"items": [{"metadata": {"name": "pod1"}}]}`
-		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "json"}, expectedOutput, nil)
+		expectedOutput := `NAME   READY   STATUS    RESTARTS   AGE`
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
