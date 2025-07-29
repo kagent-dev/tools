@@ -19,7 +19,7 @@ LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
-PATH := $HOME/local/bin:/opt/homebrew/bin/:$(LOCALBIN):$(PATH)
+PATH := $(HOME)/local/bin:/opt/homebrew/bin/:$(LOCALBIN):$(PATH)
 HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
@@ -214,10 +214,10 @@ otel-local:
 
 .PHONY: tools-install
 tools-install: clean
-	mkdir -p $HOME/.local/bin
+	mkdir -p $(HOME)/.local/bin
 	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools ./cmd
 	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd
-	$HOME/.local/bin/kagent-tools --version
+	$(HOME)/.local/bin/kagent-tools --version
 
 .PHONY: run-agentgateway
 run-agentgateway: tools-install
