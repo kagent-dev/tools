@@ -7,12 +7,17 @@ HELM_REPO ?= oci://ghcr.io/kagent-dev
 HELM_ACTION=upgrade --install
 
 KIND_CLUSTER_NAME ?= kagent
-KIND_IMAGE_VERSION ?= 1.33.1
+KIND_IMAGE_VERSION ?= 1.33.2
 KIND_CREATE_CMD ?= "kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml"
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
 GIT_COMMIT := $(shell git rev-parse --short HEAD || echo "unknown")
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/-dirty//' | grep v || echo "v0.0.0-$(GIT_COMMIT)")
+
+# Go version from go/go.mod
+AWK ?= $(shell command -v gawk || command -v awk)
+TOOLS_GO_VERSION ?= $(shell $(AWK) '/^go / { print $$2 }' go.mod)
+GOTOOLCHAIN=go$(TOOLS_GO_VERSION)
 
 # Version information for the build
 LDFLAGS := -X github.com/kagent-dev/tools/internal/version.Version=$(VERSION) -X github.com/kagent-dev/tools/internal/version.GitCommit=$(GIT_COMMIT) -X github.com/kagent-dev/tools/internal/version.BuildDate=$(BUILD_DATE)
