@@ -23,6 +23,32 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity: 
+      {{- with .Values.affinity }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+      {{- range . }}
+        - {{ toYaml . | nindent 10 | trim  }}
+          {{- if not (hasKey . "labelSelector") }}
+          labelSelector:
+            matchLabels:
+              {{- include "kagent.selectorLabels" $ | nindent 14 }}
+          {{- end }}
+      {{- end }}
+      {{- end }}
+
+
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "kagent.fullname" . }}
