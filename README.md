@@ -35,13 +35,13 @@ curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scri
 - **Docker:**
 
 ```bash
-docker run -it --rm -p 8084:8084 ghcr.io/kagent-dev/kagent/tools:0.0.11
+docker run -it --rm -p 8084:8084 ghcr.io/kagent-dev/kagent/tools:0.0.12
 ```
 
 - **Kubernetes**
 
 ```bash
-helm upgrade -i -n kagent --create-namespace kagent-tools oci://ghcr.io/kagent-dev/tools/helm/kagent-tools --version 0.0.11
+helm upgrade -i -n kagent --create-namespace kagent-tools oci://ghcr.io/kagent-dev/tools/helm/kagent-tools --version 0.0.12
 helm ls -A
 ```
 
