@@ -1,5 +1,5 @@
 ARG TOOLS_GO_VERSION
-FROM mcr.microsoft.com/devcontainers/go:1-${TOOLS_GO_VERSION}-bookworm
+FROM mcr.microsoft.com/devcontainers/go:dev-${TOOLS_GO_VERSION}-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates           \
