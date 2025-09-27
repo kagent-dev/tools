@@ -140,13 +140,13 @@ func (ts *ComprehensiveTestServer) Stop() error {
 
 	// Close pipes
 	if ts.stdin != nil {
-		ts.stdin.Close()
+		_ = ts.stdin.Close()
 	}
 	if ts.stdout != nil {
-		ts.stdout.Close()
+		_ = ts.stdout.Close()
 	}
 	if ts.stderr != nil {
-		ts.stderr.Close()
+		_ = ts.stderr.Close()
 	}
 
 	if ts.cmd != nil && ts.cmd.Process != nil {
@@ -341,7 +341,7 @@ func (c *ComprehensiveMCPClient) SendJSONRPCRequest(ctx context.Context, method 
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -377,14 +377,14 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 
 				// Test metrics
 				resp, err = http.Get(fmt.Sprintf("http://localhost:%d/metrics", config.Port))
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
 				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				assert.Contains(t, string(body), "go_memstats_alloc_bytes")
 
 				// Verify tool registration
@@ -402,7 +402,7 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 
 				// Verify all tools are registered
 				output := server.GetOutput()
@@ -421,7 +421,7 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 
 				// Verify server started with all tools
 				output := server.GetOutput()
@@ -448,7 +448,7 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 
 				// Check for error about invalid tool
 				output := server.GetOutput()
@@ -472,7 +472,7 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 			server := NewComprehensiveTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully for %s", tc.name)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to be ready
 			time.Sleep(5 * time.Second)
@@ -556,7 +556,7 @@ func TestComprehensiveStdioTransport(t *testing.T) {
 			server := NewComprehensiveTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully for %s", tc.name)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Run test-specific checks
 			tc.testFunc(t, server)
@@ -584,7 +584,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			server := NewComprehensiveTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully for %s", tool)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to be ready
 			time.Sleep(3 * time.Second)
@@ -593,7 +593,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible for %s", tool)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Verify tool registration
 			output := server.GetOutput()
@@ -605,7 +605,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			resp, err = http.Get(fmt.Sprintf("http://localhost:%d/mcp", config.Port))
 			require.NoError(t, err, "MCP endpoint should be accessible")
 			assert.Equal(t, http.StatusNotImplemented, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// TODO: Once HTTP transport is implemented, test actual tool calls:
 			// client := NewComprehensiveMCPClient(fmt.Sprintf("http://localhost:%d", config.Port))
@@ -639,7 +639,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			server := NewComprehensiveTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully for %s stdio", tool)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to initialize
 			time.Sleep(3 * time.Second)
@@ -673,7 +673,7 @@ func TestComprehensiveConcurrency(t *testing.T) {
 		server := NewComprehensiveTestServer(config)
 		err := server.Start(ctx, config)
 		require.NoError(t, err, "Server should start successfully")
-		defer server.Stop()
+		defer func() { _ = server.Stop() }()
 
 		// Wait for server to be ready
 		time.Sleep(3 * time.Second)
@@ -704,7 +704,7 @@ func TestComprehensiveConcurrency(t *testing.T) {
 					results[id] = err
 					return
 				}
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				// Accept both OK and NotImplemented status codes
 				if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotImplemented {
@@ -752,7 +752,7 @@ func TestComprehensiveConcurrency(t *testing.T) {
 					results[id] = err
 					return
 				}
-				defer server.Stop()
+				defer func() { _ = server.Stop() }()
 
 				// Wait for server to be ready
 				time.Sleep(3 * time.Second)
@@ -763,7 +763,7 @@ func TestComprehensiveConcurrency(t *testing.T) {
 					results[id] = err
 					return
 				}
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				if resp.StatusCode != http.StatusOK {
 					results[id] = fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -829,7 +829,7 @@ func TestComprehensivePerformance(t *testing.T) {
 				startupTime := time.Since(start)
 
 				require.NoError(t, err, "Server should start successfully for %s", tc.name)
-				defer server.Stop()
+				defer func() { _ = server.Stop() }()
 
 				// Verify startup time is reasonable
 				assert.Less(t, startupTime, tc.maxTime, "Startup time should be reasonable for %s", tc.name)
@@ -838,7 +838,7 @@ func TestComprehensivePerformance(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 				require.NoError(t, err, "Health endpoint should be accessible")
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			})
 		}
 	})
@@ -854,7 +854,7 @@ func TestComprehensivePerformance(t *testing.T) {
 		server := NewComprehensiveTestServer(config)
 		err := server.Start(ctx, config)
 		require.NoError(t, err, "Server should start successfully")
-		defer server.Stop()
+		defer func() { _ = server.Stop() }()
 
 		// Wait for server to be ready
 		time.Sleep(3 * time.Second)
@@ -875,7 +875,7 @@ func TestComprehensivePerformance(t *testing.T) {
 
 					require.NoError(t, err, "Request should succeed")
 					assert.Equal(t, http.StatusOK, resp.StatusCode)
-					resp.Body.Close()
+					_ = resp.Body.Close()
 
 					totalTime += responseTime
 
@@ -915,7 +915,7 @@ func TestComprehensiveRobustness(t *testing.T) {
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 		require.NoError(t, err, "Health endpoint should be accessible")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		resp.Body.Close()
+		closeBody(resp.Body)
 
 		// Measure shutdown time
 		start := time.Now()
@@ -961,7 +961,7 @@ func TestComprehensiveRobustness(t *testing.T) {
 				server := NewComprehensiveTestServer(tc.config)
 				err := server.Start(ctx, tc.config)
 				require.NoError(t, err, "Server should start even with invalid configuration")
-				defer server.Stop()
+				defer func() { _ = server.Stop() }()
 
 				// Wait for server to be ready
 				time.Sleep(3 * time.Second)
@@ -970,7 +970,7 @@ func TestComprehensiveRobustness(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", tc.config.Port))
 				require.NoError(t, err, "Health endpoint should be accessible")
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				resp.Body.Close()
+				closeBody(resp.Body)
 
 				// Check for appropriate error messages
 				output := server.GetOutput()
@@ -1002,7 +1002,7 @@ func TestComprehensiveRobustness(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible iteration %d", i)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			closeBody(resp.Body)
 
 			// Stop server
 			err = server.Stop()
@@ -1030,7 +1030,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		server := NewComprehensiveTestServer(config)
 		err := server.Start(ctx, config)
 		require.NoError(t, err, "Server should start successfully")
-		defer server.Stop()
+		defer func() { _ = server.Stop() }()
 
 		// Wait for server to be ready
 		time.Sleep(5 * time.Second)
@@ -1053,7 +1053,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 		require.NoError(t, err, "Health endpoint should be accessible")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		resp.Body.Close()
+		closeBody(resp.Body)
 
 		// Test MCP endpoint (should return not implemented until HTTP transport is complete)
 		resp, err = http.Get(fmt.Sprintf("http://localhost:%d/mcp", config.Port))
@@ -1062,7 +1062,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		resp.Body.Close()
+		closeBody(resp.Body)
 		assert.Contains(t, string(body), "MCP HTTP transport not yet implemented with new SDK")
 	})
 
@@ -1080,7 +1080,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		server := NewComprehensiveTestServer(config)
 		err := server.Start(ctx, config)
 		require.NoError(t, err, "Server should start successfully with all tools")
-		defer server.Stop()
+		defer func() { _ = server.Stop() }()
 
 		// Wait for server to be ready
 		time.Sleep(8 * time.Second)
@@ -1089,7 +1089,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 		require.NoError(t, err, "Health endpoint should be accessible")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		resp.Body.Close()
+		closeBody(resp.Body)
 
 		// Verify all tool categories are registered
 		output := server.GetOutput()
@@ -1122,7 +1122,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		server := NewComprehensiveTestServer(config)
 		err := server.Start(ctx, config)
 		require.NoError(t, err, "Server should start successfully")
-		defer server.Stop()
+		defer func() { _ = server.Stop() }()
 
 		// Wait for server to be ready
 		time.Sleep(3 * time.Second)
@@ -1133,7 +1133,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d%s", config.Port, endpoint))
 			require.NoError(t, err, "Endpoint %s should be accessible", endpoint)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 
 		// Verify command-line interface compatibility

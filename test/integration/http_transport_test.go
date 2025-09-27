@@ -270,7 +270,7 @@ func (c *HTTPMCPClient) sendJSONRPCRequest(ctx context.Context, method string, p
 	if err != nil {
 		return fmt.Errorf("failed to make request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -321,7 +321,7 @@ func TestHTTPTransportBasic(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -333,7 +333,7 @@ func TestHTTPTransportBasic(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	assert.Equal(t, "OK", string(body))
 
 	// Test metrics endpoint
@@ -343,7 +343,7 @@ func TestHTTPTransportBasic(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	metricsContent := string(body)
 	assert.Contains(t, metricsContent, "go_")
@@ -371,7 +371,7 @@ func TestHTTPTransportMCPEndpoint(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -383,7 +383,7 @@ func TestHTTPTransportMCPEndpoint(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	assert.Contains(t, string(body), "MCP HTTP transport not yet implemented")
 
 	// TODO: Once HTTP transport is implemented, test actual MCP communication:
@@ -432,7 +432,7 @@ func TestHTTPTransportConcurrentRequests(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -460,7 +460,7 @@ func TestHTTPTransportConcurrentRequests(t *testing.T) {
 				results[id] = err
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				results[id] = fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -497,7 +497,7 @@ func TestHTTPTransportLargeResponses(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -509,7 +509,7 @@ func TestHTTPTransportLargeResponses(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	metricsContent := string(body)
 	assert.Greater(t, len(metricsContent), 100, "Metrics response should be reasonably large")
@@ -533,7 +533,7 @@ func TestHTTPTransportErrorHandling(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -542,7 +542,7 @@ func TestHTTPTransportErrorHandling(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/nonexistent", config.Port))
 	require.NoError(t, err, "Request should complete")
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Test malformed POST request
 	malformedJSON := "{invalid json"
@@ -555,7 +555,7 @@ func TestHTTPTransportErrorHandling(t *testing.T) {
 	require.NoError(t, err)
 	// Should return not implemented for now, but once implemented should handle malformed JSON gracefully
 	assert.True(t, resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusBadRequest)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // TestHTTPTransportMultipleTools tests HTTP transport with multiple tool categories
@@ -574,7 +574,7 @@ func TestHTTPTransportMultipleTools(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(5 * time.Second)
@@ -583,7 +583,7 @@ func TestHTTPTransportMultipleTools(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Verify server output contains all tool registrations
 	output := server.GetOutput()
@@ -618,7 +618,7 @@ func TestHTTPTransportGracefulShutdown(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Stop server and measure shutdown time
 	start := time.Now()
@@ -648,7 +648,7 @@ func TestHTTPTransportInvalidTools(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start even with invalid tools")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -657,7 +657,7 @@ func TestHTTPTransportInvalidTools(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Check server output for error about invalid tool
 	output := server.GetOutput()
@@ -709,7 +709,7 @@ users:
 	server := NewHTTPTestServer(config)
 	err = server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -718,7 +718,7 @@ users:
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Check server output for kubeconfig setting
 	output := server.GetOutput()
@@ -740,7 +740,7 @@ func TestHTTPTransportContentTypes(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -749,14 +749,14 @@ func TestHTTPTransportContentTypes(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Test metrics endpoint content type
 	resp, err = http.Get(fmt.Sprintf("http://localhost:%d/metrics", config.Port))
 	require.NoError(t, err, "Metrics endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "text/plain", resp.Header.Get("Content-Type"))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Test MCP endpoint with JSON content type
 	jsonData := `{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}`
@@ -769,5 +769,5 @@ func TestHTTPTransportContentTypes(t *testing.T) {
 	require.NoError(t, err)
 	// Should return not implemented for now
 	assert.Equal(t, http.StatusNotImplemented, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }

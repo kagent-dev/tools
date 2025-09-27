@@ -27,16 +27,16 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 		ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
 
 		// Set OTEL environment variables for testing
-		os.Setenv("OTEL_SERVICE_NAME", "kagent-tools-e2e-test")
-		os.Setenv("LOG_LEVEL", "debug")
+		_ = os.Setenv("OTEL_SERVICE_NAME", "kagent-tools-e2e-test")
+		_ = os.Setenv("LOG_LEVEL", "debug")
 	})
 
 	AfterEach(func() {
 		if cancel != nil {
 			cancel()
 		}
-		os.Unsetenv("OTEL_SERVICE_NAME")
-		os.Unsetenv("LOG_LEVEL")
+		_ = os.Unsetenv("OTEL_SERVICE_NAME")
+		_ = os.Unsetenv("LOG_LEVEL")
 	})
 
 	Describe("HTTP Server Tests", func() {
@@ -57,7 +57,7 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			closeBody(resp.Body)
 
 			// Check server output
 			output := server.GetOutput()
@@ -230,7 +230,7 @@ users:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Stop server and measure shutdown time
 			start := time.Now()
@@ -276,7 +276,7 @@ users:
 					resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 					Expect(err).NotTo(HaveOccurred(), "Concurrent request %d should succeed", id)
 					Expect(resp.StatusCode).To(Equal(http.StatusOK))
-					resp.Body.Close()
+					_ = resp.Body.Close()
 				}(i)
 			}
 
@@ -308,7 +308,7 @@ users:
 			// Read and verify metrics content
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			metricsContent := string(body)
 			Expect(metricsContent).To(ContainSubstring("go_"))
@@ -369,7 +369,7 @@ users:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -400,7 +400,7 @@ users:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -429,7 +429,7 @@ users:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -458,7 +458,7 @@ users:
 			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -474,13 +474,13 @@ users:
 				for _, env := range originalEnv {
 					parts := strings.SplitN(env, "=", 2)
 					if len(parts) == 2 {
-						os.Setenv(parts[0], parts[1])
+						_ = os.Setenv(parts[0], parts[1])
 					}
 				}
 			}()
 
-			os.Setenv("LOG_LEVEL", "info")
-			os.Setenv("OTEL_SERVICE_NAME", "test-kagent-tools")
+			_ = os.Setenv("LOG_LEVEL", "info")
+			_ = os.Setenv("OTEL_SERVICE_NAME", "test-kagent-tools")
 
 			config := TestServerConfig{
 				Port:    18195,
@@ -565,7 +565,7 @@ users:
 					resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 					Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible for server %d", index)
 					if resp != nil {
-						resp.Body.Close()
+						_ = resp.Body.Close()
 					}
 				}(i)
 			}
@@ -605,7 +605,7 @@ users:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Check server output for successful startup
 			output = server.GetOutput()

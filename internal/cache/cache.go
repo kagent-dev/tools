@@ -331,7 +331,7 @@ func (c *Cache[T]) performCleanup() {
 // evictLRU removes the least recently used item
 func (c *Cache[T]) evictLRU() {
 	var oldestKey string
-	var oldestTime time.Time = time.Now()
+	oldestTime := time.Now()
 
 	for key, entry := range c.data {
 		if entry.AccessedAt.Before(oldestTime) {

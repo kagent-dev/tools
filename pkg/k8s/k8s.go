@@ -138,7 +138,7 @@ func (k *K8sTool) handleApplyManifest(ctx context.Context, request *mcp.CallTool
 
 	// Write manifest content to temporary file
 	if _, err := tmpFile.WriteString(manifest); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return newToolResultError(fmt.Sprintf("Failed to write to temp file: %v", err)), nil
 	}
 

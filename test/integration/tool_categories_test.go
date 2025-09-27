@@ -130,7 +130,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			server := NewHTTPTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully for %s", tc.Name)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to be ready
 			time.Sleep(5 * time.Second)
@@ -139,7 +139,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible for %s", tc.Name)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Verify server output contains expected log entries
 			output := server.GetOutput()
@@ -154,7 +154,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			metricsContent := string(body)
 			assert.Contains(t, metricsContent, "go_")
@@ -182,7 +182,7 @@ func TestToolCategoryCompatibility(t *testing.T) {
 			server := NewHTTPTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully for %s", tool)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to be ready
 			time.Sleep(3 * time.Second)
@@ -191,7 +191,7 @@ func TestToolCategoryCompatibility(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible for %s", tool)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Verify tool registration in output
 			output := server.GetOutput()
@@ -253,7 +253,7 @@ func TestToolCategoryErrorHandling(t *testing.T) {
 			server := NewHTTPTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start even with invalid tools for %s", tc.name)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to be ready
 			time.Sleep(3 * time.Second)
@@ -262,7 +262,7 @@ func TestToolCategoryErrorHandling(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible for %s", tc.name)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Check server output
 			output := server.GetOutput()
@@ -330,7 +330,7 @@ func TestToolCategoryPerformance(t *testing.T) {
 			startupTime := time.Since(start)
 
 			require.NoError(t, err, "Server should start successfully for %s", tc.name)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Verify startup time is reasonable
 			assert.Less(t, startupTime, tc.maxTime, "Startup time should be reasonable for %s", tc.name)
@@ -342,7 +342,7 @@ func TestToolCategoryPerformance(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible for %s", tc.name)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Verify all expected tools are registered
 			output := server.GetOutput()
@@ -366,7 +366,7 @@ func TestToolCategoryMemoryUsage(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(5 * time.Second)
@@ -376,7 +376,7 @@ func TestToolCategoryMemoryUsage(t *testing.T) {
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 		require.NoError(t, err, "Health endpoint should be accessible")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Also test metrics endpoint
 		resp, err = http.Get(fmt.Sprintf("http://localhost:%d/metrics", config.Port))
@@ -385,7 +385,7 @@ func TestToolCategoryMemoryUsage(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Verify metrics contain memory information
 		metricsContent := string(body)
@@ -422,7 +422,7 @@ func TestToolCategorySDKIntegration(t *testing.T) {
 	server := NewHTTPTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(5 * time.Second)
@@ -431,7 +431,7 @@ func TestToolCategorySDKIntegration(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Verify server output shows new SDK usage
 	output := server.GetOutput()
@@ -454,7 +454,7 @@ func TestToolCategorySDKIntegration(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	assert.Contains(t, string(body), "MCP HTTP transport not yet implemented with new SDK")
 }
 
@@ -507,7 +507,7 @@ func TestToolCategoryRobustness(t *testing.T) {
 			server := NewHTTPTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully for %s", tc.name)
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to be ready
 			time.Sleep(3 * time.Second)
@@ -516,7 +516,7 @@ func TestToolCategoryRobustness(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible for %s", tc.name)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Verify server started successfully
 			output := server.GetOutput()

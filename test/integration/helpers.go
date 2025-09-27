@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"io"
 	"runtime"
 )
 
@@ -19,5 +20,12 @@ func getBinaryName() string {
 			return "linux-arm64"
 		}
 		return "linux-amd64"
+	}
+}
+
+// closeBody closes the response body while ignoring the returned error.
+func closeBody(b io.ReadCloser) {
+	if b != nil {
+		_ = b.Close()
 	}
 }

@@ -83,13 +83,13 @@ func (s *StdioTestServer) Stop() error {
 
 	// Close pipes
 	if s.stdin != nil {
-		s.stdin.Close()
+		_ = s.stdin.Close()
 	}
 	if s.stdout != nil {
-		s.stdout.Close()
+		_ = s.stdout.Close()
 	}
 	if s.stderr != nil {
-		s.stderr.Close()
+		_ = s.stderr.Close()
 	}
 
 	if s.cmd != nil && s.cmd.Process != nil {
@@ -207,7 +207,7 @@ func TestStdioTransportBasic(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"utils"})
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
@@ -256,7 +256,7 @@ func TestStdioTransportToolListing(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"utils", "k8s"})
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
@@ -302,7 +302,7 @@ func TestStdioTransportToolCall(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"utils"})
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
@@ -349,7 +349,7 @@ func TestStdioTransportErrorHandling(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"utils"})
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
@@ -389,7 +389,7 @@ func TestStdioTransportMultipleTools(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, allTools)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(3 * time.Second)
@@ -433,7 +433,7 @@ func TestStdioTransportInvalidTools(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"invalid-tool", "utils"})
 	require.NoError(t, err, "Server should start even with invalid tools")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
@@ -457,7 +457,7 @@ func TestStdioTransportConcurrentMessages(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"utils"})
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
@@ -505,7 +505,7 @@ func TestStdioTransportLargeMessages(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"utils"})
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
@@ -546,7 +546,7 @@ func TestStdioTransportMalformedJSON(t *testing.T) {
 	server := NewStdioTestServer()
 	err := server.Start(ctx, []string{"utils"})
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)

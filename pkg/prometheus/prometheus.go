@@ -93,7 +93,7 @@ func handlePrometheusQueryTool(ctx context.Context, request *mcp.CallToolRequest
 			IsError: true,
 		}, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -244,7 +244,7 @@ func handlePrometheusRangeQueryTool(ctx context.Context, request *mcp.CallToolRe
 			IsError: true,
 		}, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -322,7 +322,7 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request *mcp.CallToolR
 			IsError: true,
 		}, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -400,7 +400,7 @@ func handlePrometheusTargetsQueryTool(ctx context.Context, request *mcp.CallTool
 			IsError: true,
 		}, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

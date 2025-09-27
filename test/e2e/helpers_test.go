@@ -55,6 +55,13 @@ func NewTestServer(config TestServerConfig) *TestServer {
 	}
 }
 
+// closeBody closes the response body while ignoring the returned error.
+func closeBody(b io.ReadCloser) {
+	if b != nil {
+		_ = b.Close()
+	}
+}
+
 // Start starts the test server
 func (ts *TestServer) Start(ctx context.Context, config TestServerConfig) error {
 	ts.mu.Lock()
@@ -165,7 +172,6 @@ func (ts *TestServer) Stop() error {
 // TODO: Update to use new SDK client when available
 type MCPClient struct {
 	// client *client.Client // TODO: Replace with new SDK client
-	log *slog.Logger
 }
 
 // InstallKAgentTools installs KAgent Tools using helm in the specified namespace
@@ -254,9 +260,6 @@ func GetMCPClient() (*MCPClient, error) {
 
 // listTools calls the tools/list method to get available tools
 // TODO: Implement with new SDK client
-func (c *MCPClient) listTools() ([]interface{}, error) {
-	return nil, fmt.Errorf("listTools not yet implemented with new SDK")
-}
 
 // k8sListResources calls the k8s_get_resources tool
 // TODO: Implement with new SDK client

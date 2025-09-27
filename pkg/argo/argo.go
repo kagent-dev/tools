@@ -309,7 +309,7 @@ func getLatestVersion(ctx context.Context) string {
 	if err != nil {
 		return "0.5.0" // Default version
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -357,7 +357,7 @@ data:
 			ErrorMessage: fmt.Sprintf("Failed to create temp file: %s", err.Error()),
 		}
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.WriteString(configMap); err != nil {
 		return GatewayPluginStatus{
@@ -365,7 +365,7 @@ data:
 			ErrorMessage: fmt.Sprintf("Failed to write config map: %s", err.Error()),
 		}
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Apply the ConfigMap
 	cmdArgs := []string{"apply", "-f", tmpFile.Name()}

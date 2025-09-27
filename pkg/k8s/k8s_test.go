@@ -9,17 +9,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tmc/langchaingo/llms"
 )
 
 // Helper function to create a test K8sTool
 func newTestK8sTool() *K8sTool {
 	return NewK8sTool(nil)
-}
-
-// Helper function to create a test K8sTool with mock LLM
-func newTestK8sToolWithLLM(llm llms.Model) *K8sTool {
-	return NewK8sTool(llm)
 }
 
 // Helper function to extract text content from MCP result

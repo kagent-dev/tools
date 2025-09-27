@@ -248,7 +248,7 @@ func (c *MCPTestClient) CallTool(ctx context.Context, toolName string, arguments
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -312,7 +312,7 @@ func (c *MCPTestClient) ListTools(ctx context.Context) ([]*mcp.Tool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -365,7 +365,7 @@ func TestMCPIntegrationHTTP(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -374,7 +374,7 @@ func TestMCPIntegrationHTTP(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Test metrics endpoint
 	resp, err = http.Get(fmt.Sprintf("http://localhost:%d/metrics", config.Port))
@@ -383,7 +383,7 @@ func TestMCPIntegrationHTTP(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	metricsContent := string(body)
 	assert.Contains(t, metricsContent, "go_")
@@ -394,7 +394,7 @@ func TestMCPIntegrationHTTP(t *testing.T) {
 	resp, err = http.Get(fmt.Sprintf("http://localhost:%d/mcp", config.Port))
 	require.NoError(t, err, "MCP endpoint should be accessible")
 	assert.Equal(t, http.StatusNotImplemented, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Verify server output contains expected tool registrations
 	output := server.GetOutput()
@@ -416,7 +416,7 @@ func TestMCPIntegrationStdio(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -475,7 +475,7 @@ func TestToolRegistration(t *testing.T) {
 			server := NewTestServer(config)
 			err := server.Start(ctx, config)
 			require.NoError(t, err, "Server should start successfully")
-			defer server.Stop()
+			defer func() { _ = server.Stop() }()
 
 			// Wait for server to be ready
 			time.Sleep(3 * time.Second)
@@ -484,7 +484,7 @@ func TestToolRegistration(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible")
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Verify server output contains expected tool registrations
 			output := server.GetOutput()
@@ -524,7 +524,7 @@ func TestServerGracefulShutdown(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Stop server and measure shutdown time
 	start := time.Now()
@@ -555,7 +555,7 @@ func TestConcurrentRequests(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -574,7 +574,7 @@ func TestConcurrentRequests(t *testing.T) {
 				results[id] = err
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				results[id] = fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 			}
@@ -604,7 +604,7 @@ func TestErrorHandling(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start even with invalid tools")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -613,7 +613,7 @@ func TestErrorHandling(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Check server output for error about invalid tool
 	output := server.GetOutput()
@@ -637,13 +637,13 @@ func TestEnvironmentVariables(t *testing.T) {
 		for _, env := range originalEnv {
 			parts := strings.SplitN(env, "=", 2)
 			if len(parts) == 2 {
-				os.Setenv(parts[0], parts[1])
+				_ = os.Setenv(parts[0], parts[1])
 			}
 		}
 	}()
 
-	os.Setenv("LOG_LEVEL", "info")
-	os.Setenv("OTEL_SERVICE_NAME", "test-kagent-tools")
+	_ = os.Setenv("LOG_LEVEL", "info")
+	_ = os.Setenv("OTEL_SERVICE_NAME", "test-kagent-tools")
 
 	config := TestServerConfig{
 		Port:    8098,
@@ -655,7 +655,7 @@ func TestEnvironmentVariables(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -664,7 +664,7 @@ func TestEnvironmentVariables(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Check server output
 	output := server.GetOutput()
@@ -686,7 +686,7 @@ func TestUtilsToolFunctionality(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -729,7 +729,7 @@ func TestK8sToolFunctionality(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(3 * time.Second)
@@ -767,7 +767,7 @@ func TestAllToolCategories(t *testing.T) {
 	server := NewTestServer(config)
 	err := server.Start(ctx, config)
 	require.NoError(t, err, "Server should start successfully")
-	defer server.Stop()
+	defer func() { _ = server.Stop() }()
 
 	// Wait for server to be ready
 	time.Sleep(5 * time.Second)
@@ -776,7 +776,7 @@ func TestAllToolCategories(t *testing.T) {
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 	require.NoError(t, err, "Health endpoint should be accessible")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Verify server output contains all tool registrations
 	output := server.GetOutput()
