@@ -51,8 +51,32 @@ For a quickstart guide on how to run KAgent tools using AgentGateway, please ref
 
 ## Architecture
 
-The Go tools are implemented as a single MCP server that exposes all available tools through the MCP protocol. 
-Each tool category is implemented in its own Go file for better organization and maintainability.
+The Go tools are implemented as a single MCP server that exposes all available tools through the Model Context Protocol (MCP). Built using the official `github.com/modelcontextprotocol/go-sdk`, the server provides comprehensive Kubernetes, cloud-native, and observability functionality through a unified interface.
+
+### MCP SDK Integration
+
+KAgent Tools leverages the official Model Context Protocol SDK:
+- **Official SDK**: Uses `github.com/modelcontextprotocol/go-sdk` for MCP compliance
+- **Type Safety**: Strongly-typed parameter validation and parsing
+- **JSON Schema**: Automatic schema generation for tool parameters
+- **Multiple Transports**: Support for stdio, HTTP, and SSE transports
+- **Error Handling**: Standardized error responses following MCP specification
+- **Tool Discovery**: Automatic tool registration and capability advertisement
+
+### Package Structure
+
+Each tool category is implemented in its own Go package under `pkg/` for better organization and maintainability:
+
+```
+pkg/
+├── k8s/        # Kubernetes operations
+├── helm/       # Helm package management
+├── istio/      # Istio service mesh
+├── argo/       # Argo Rollouts
+├── cilium/     # Cilium CNI
+├── prometheus/ # Prometheus monitoring
+└── utils/      # Common utilities
+```
 
 ## Tool Categories
 
@@ -183,10 +207,20 @@ go build -o kagent-tools .
 
 ### Running
 ```bash
-./kagent-tools
+# Run with stdio transport (default)
+./kagent-tools --stdio
+
+# Run with HTTP transport
+./kagent-tools --http --port 8084
+
+# Run with custom kubeconfig
+./kagent-tools --stdio --kubeconfig ~/.kube/config
 ```
 
-The server runs using sse transport for MCP communication.
+The server supports multiple MCP transports:
+- **Stdio**: For direct integration with MCP clients
+- **HTTP**: For web-based integrations and debugging
+- **SSE**: Server-Sent Events for real-time communication
 
 ### Testing
 ```bash
@@ -213,11 +247,13 @@ The tools use a common `runCommand` function that:
 - Handles timeouts and cancellation
 
 ### MCP Integration
-All tools are properly integrated with the MCP protocol:
-- Use proper parameter parsing with `mcp.ParseString`, `mcp.ParseBool`, etc.
-- Return results using `mcp.NewToolResultText` or `mcp.NewToolResultError`
-- Include comprehensive tool descriptions and parameter documentation
-- Support required and optional parameters
+All tools are properly integrated with the official MCP SDK:
+- Built using `github.com/modelcontextprotocol/go-sdk`
+- Use type-safe parameter parsing with `request.RequireString()`, `request.RequireBool()`, etc.
+- Return results using `mcp.NewToolResultText()` or `mcp.NewToolResultError()`
+- Include comprehensive tool descriptions and JSON schema parameter validation
+- Support required and optional parameters with proper validation
+- Follow MCP specification for error handling and result formatting
 
 ## Migration from Python
 
@@ -239,9 +275,47 @@ This Go implementation provides feature parity with the original Python tools wh
 
 Tools can be configured through environment variables:
 - `KUBECONFIG`: Kubernetes configuration file path
-- `PROMETHEUS_URL`: Default Prometheus server URL
+- `PROMETHEUS_URL`: Default Prometheus server URL (default: http://localhost:9090)
 - `GRAFANA_URL`: Default Grafana server URL
 - `GRAFANA_API_KEY`: Default Grafana API key
+- `LOG_LEVEL`: Logging level (debug, info, warn, error)
+
+## Example Usage
+
+### With MCP Clients
+
+Once connected to an MCP client, you can use natural language to interact with the tools:
+
+```
+"List all pods in the default namespace"
+→ Uses kubectl_get tool with resource_type="pods", namespace="default"
+
+"Scale the nginx deployment to 3 replicas"
+→ Uses kubectl_scale tool with resource_type="deployment", resource_name="nginx", replicas=3
+
+"Show me the Prometheus query for CPU usage"
+→ Uses prometheus_query tool with appropriate PromQL query
+
+"Install the nginx helm chart"
+→ Uses helm_install tool with chart="nginx"
+```
+
+### Direct HTTP API
+
+When running with HTTP transport, you can also interact directly:
+
+```bash
+# Check server health
+curl http://localhost:8084/health
+
+# Get server metrics
+curl http://localhost:8084/metrics
+
+# List available tools (when MCP endpoint is implemented)
+curl -X POST http://localhost:8084/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
 
 ## Error Handling and Debugging
 

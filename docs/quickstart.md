@@ -18,10 +18,16 @@ To learn more about agentgateway, see [AgentGateway](https://agentgateway.dev/do
 5. open http://localhost:15000/ui
 
 ```bash
+# Install KAgent Tools
 curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/install.sh | bash
-curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/agentgateway-config-tools.yaml
+
+# Download AgentGateway configuration
+curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/agentgateway-config-tools.yaml -o agentgateway-config-tools.yaml
+
+# Install AgentGateway
 curl -sL https://raw.githubusercontent.com/agentgateway/agentgateway/refs/heads/main/common/scripts/get-agentproxy | bash
 
+# Add to PATH and run
 export PATH=$PATH:$HOME/.local/bin/
 agentgateway -f agentgateway-config-tools.yaml
 ```
@@ -55,24 +61,39 @@ make run-agentgateway
 
 ### Running KAgent Tools using Cursor MCP
 
-
-1. Download the agentgateway binary and install it.
-```
+1. Install KAgent Tools:
+```bash
 curl -sL https://raw.githubusercontent.com/kagent-dev/tools/refs/heads/main/scripts/install.sh | bash
 ```
 
-2. Create `.cursor/mcp.json` 
+2. Create `.cursor/mcp.json` in your project root:
 
 ```json
 {
     "mcpServers": {
         "kagent-tools": {
             "command": "kagent-tools",
-            "args": ["--stdio", "--kubeconfig", "~/.kube/config"]
+            "args": ["--stdio", "--kubeconfig", "~/.kube/config"],
+            "env": {
+                "LOG_LEVEL": "info"
+            }
         }
     }
 }
 ```
+
+3. Restart Cursor and the KAgent Tools will be available through the MCP interface.
+
+### Available Tools
+
+Once connected, you'll have access to all KAgent tool categories:
+- **Kubernetes**: `kubectl_get`, `kubectl_describe`, `kubectl_logs`, `kubectl_apply`, etc.
+- **Helm**: `helm_list`, `helm_install`, `helm_upgrade`, etc.
+- **Istio**: `istio_proxy_status`, `istio_analyze`, `istio_install`, etc.
+- **Argo Rollouts**: `promote_rollout`, `pause_rollout`, `set_rollout_image`, etc.
+- **Cilium**: `cilium_status_and_version`, `install_cilium`, `upgrade_cilium`, etc.
+- **Prometheus**: `prometheus_query`, `prometheus_range_query`, `prometheus_labels`, etc.
+- **Utils**: `shell`, `current_date_time`, etc.
 
 
 
