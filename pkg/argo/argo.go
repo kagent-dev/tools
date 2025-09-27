@@ -13,37 +13,62 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/kagent-dev/tools/internal/commands"
-	"github.com/kagent-dev/tools/internal/telemetry"
+	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/pkg/utils"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // Argo Rollouts tools
 
-func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ns := mcp.ParseString(request, "namespace", "argo-rollouts")
-	label := mcp.ParseString(request, "label", "app.kubernetes.io/component=rollouts-controller")
+func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	ns := "argo-rollouts"
+	if namespace, ok := args["namespace"].(string); ok && namespace != "" {
+		ns = namespace
+	}
+
+	label := "app.kubernetes.io/component=rollouts-controller"
+	if labelArg, ok := args["label"].(string); ok && labelArg != "" {
+		label = labelArg
+	}
 
 	cmd := []string{"get", "pods", "-n", ns, "-l", label, "-o", "jsonpath={.items[*].status.phase}"}
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error: " + err.Error()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}},
+			IsError: true,
+		}, nil
 	}
 
 	output = strings.TrimSpace(output)
 	if output == "" {
-		return mcp.NewToolResultText("Error: No pods found"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: No pods found"}},
+		}, nil
 	}
 
 	if strings.HasPrefix(output, "Error") {
-		return mcp.NewToolResultText(output), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: output}},
+		}, nil
 	}
 
 	podStatuses := strings.Fields(output)
 	if len(podStatuses) == 0 {
-		return mcp.NewToolResultText("Error: No pod statuses returned"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: No pod statuses returned"}},
+		}, nil
 	}
 
 	allRunning := true
@@ -55,24 +80,34 @@ func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request mcp.
 	}
 
 	if allRunning {
-		return mcp.NewToolResultText("All pods are running"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "All pods are running"}},
+		}, nil
 	} else {
-		return mcp.NewToolResultText("Error: Not all pods are running (" + strings.Join(podStatuses, " ") + ")"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: Not all pods are running (" + strings.Join(podStatuses, " ") + ")"}},
+		}, nil
 	}
 }
 
-func handleVerifyKubectlPluginInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleVerifyKubectlPluginInstall(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := []string{"argo", "rollouts", "version"}
 	output, err := runArgoRolloutCommand(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultText("Kubectl Argo Rollouts plugin is not installed: " + err.Error()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Kubectl Argo Rollouts plugin is not installed: " + err.Error()}},
+		}, nil
 	}
 
 	if strings.HasPrefix(output, "Error") {
-		return mcp.NewToolResultText("Kubectl Argo Rollouts plugin is not installed: " + output), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Kubectl Argo Rollouts plugin is not installed: " + output}},
+		}, nil
 	}
 
-	return mcp.NewToolResultText(output), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: output}},
+	}, nil
 }
 
 func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
@@ -83,15 +118,33 @@ func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
 		Execute(ctx)
 }
 
-func handlePromoteRollout(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	rolloutName := mcp.ParseString(request, "rollout_name", "")
-	ns := mcp.ParseString(request, "namespace", "")
-	fullStr := mcp.ParseString(request, "full", "false")
-	full := fullStr == "true"
-
-	if rolloutName == "" {
-		return mcp.NewToolResultError("rollout_name parameter is required"), nil
+func handlePromoteRollout(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
 	}
+
+	rolloutName, ok := args["rollout_name"].(string)
+	if !ok || rolloutName == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "rollout_name parameter is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	ns := ""
+	if namespace, ok := args["namespace"].(string); ok {
+		ns = namespace
+	}
+
+	fullStr := "false"
+	if fullArg, ok := args["full"].(string); ok {
+		fullStr = fullArg
+	}
+	full := fullStr == "true"
 
 	cmd := []string{"argo", "rollouts", "promote"}
 	if ns != "" {
@@ -104,18 +157,37 @@ func handlePromoteRollout(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error promoting rollout: " + err.Error()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error promoting rollout: " + err.Error()}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(output), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: output}},
+	}, nil
 }
 
-func handlePauseRollout(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	rolloutName := mcp.ParseString(request, "rollout_name", "")
-	ns := mcp.ParseString(request, "namespace", "")
+func handlePauseRollout(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	if rolloutName == "" {
-		return mcp.NewToolResultError("rollout_name parameter is required"), nil
+	rolloutName, ok := args["rollout_name"].(string)
+	if !ok || rolloutName == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "rollout_name parameter is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	ns := ""
+	if namespace, ok := args["namespace"].(string); ok {
+		ns = namespace
 	}
 
 	cmd := []string{"argo", "rollouts", "pause"}
@@ -126,22 +198,45 @@ func handlePauseRollout(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error pausing rollout: " + err.Error()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error pausing rollout: " + err.Error()}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(output), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: output}},
+	}, nil
 }
 
-func handleSetRolloutImage(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	rolloutName := mcp.ParseString(request, "rollout_name", "")
-	containerImage := mcp.ParseString(request, "container_image", "")
-	ns := mcp.ParseString(request, "namespace", "")
-
-	if rolloutName == "" {
-		return mcp.NewToolResultError("rollout_name parameter is required"), nil
+func handleSetRolloutImage(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
 	}
-	if containerImage == "" {
-		return mcp.NewToolResultError("container_image parameter is required"), nil
+
+	rolloutName, ok := args["rollout_name"].(string)
+	if !ok || rolloutName == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "rollout_name parameter is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	containerImage, ok := args["container_image"].(string)
+	if !ok || containerImage == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "container_image parameter is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	ns := ""
+	if namespace, ok := args["namespace"].(string); ok {
+		ns = namespace
 	}
 
 	cmd := []string{"argo", "rollouts", "set", "image", rolloutName, containerImage}
@@ -151,10 +246,15 @@ func handleSetRolloutImage(ctx context.Context, request mcp.CallToolRequest) (*m
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error setting rollout image: " + err.Error()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error setting rollout image: " + err.Error()}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(output), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: output}},
+	}, nil
 }
 
 // Gateway Plugin Status struct
@@ -284,10 +384,29 @@ data:
 	}
 }
 
-func handleVerifyGatewayPlugin(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	version := mcp.ParseString(request, "version", "")
-	namespace := mcp.ParseString(request, "namespace", "argo-rollouts")
-	shouldInstallStr := mcp.ParseString(request, "should_install", "true")
+func handleVerifyGatewayPlugin(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	version := ""
+	if versionArg, ok := args["version"].(string); ok {
+		version = versionArg
+	}
+
+	namespace := "argo-rollouts"
+	if namespaceArg, ok := args["namespace"].(string); ok && namespaceArg != "" {
+		namespace = namespaceArg
+	}
+
+	shouldInstallStr := "true"
+	if shouldInstallArg, ok := args["should_install"].(string); ok {
+		shouldInstallStr = shouldInstallArg
+	}
 	shouldInstall := shouldInstallStr == "true"
 
 	// Check if ConfigMap exists and is configured
@@ -298,7 +417,9 @@ func handleVerifyGatewayPlugin(ctx context.Context, request mcp.CallToolRequest)
 			Installed:    true,
 			ErrorMessage: "Gateway API plugin is already configured",
 		}
-		return mcp.NewToolResultText(status.String()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: status.String()}},
+		}, nil
 	}
 
 	if !shouldInstall {
@@ -306,18 +427,37 @@ func handleVerifyGatewayPlugin(ctx context.Context, request mcp.CallToolRequest)
 			Installed:    false,
 			ErrorMessage: "Gateway API plugin is not configured and installation is disabled",
 		}
-		return mcp.NewToolResultText(status.String()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: status.String()}},
+		}, nil
 	}
 
 	// Configure plugin
 	status := configureGatewayPlugin(ctx, version, namespace)
-	return mcp.NewToolResultText(status.String()), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: status.String()}},
+	}, nil
 }
 
-func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "argo-rollouts")
+func handleCheckPluginLogs(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	namespace := "argo-rollouts"
+	if namespaceArg, ok := args["namespace"].(string); ok && namespaceArg != "" {
+		namespace = namespaceArg
+	}
+
 	// timeout parameter is parsed but not used currently
-	_ = mcp.ParseString(request, "timeout", "60")
+	_ = ""
+	if timeoutArg, ok := args["timeout"].(string); ok {
+		_ = timeoutArg
+	}
 
 	cmd := []string{"logs", "-n", namespace, "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}
 	output, err := runArgoRolloutCommand(ctx, cmd)
@@ -326,7 +466,9 @@ func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 			Installed:    false,
 			ErrorMessage: err.Error(),
 		}
-		return mcp.NewToolResultText(status.String()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: status.String()}},
+		}, nil
 	}
 
 	// Parse download information
@@ -344,19 +486,38 @@ func handleCheckPluginLogs(ctx context.Context, request mcp.CallToolRequest) (*m
 			Architecture: versionMatches[2],
 			DownloadTime: downloadTime,
 		}
-		return mcp.NewToolResultText(status.String()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: status.String()}},
+		}, nil
 	}
 
 	status := GatewayPluginStatus{
 		Installed:    false,
 		ErrorMessage: "Plugin installation not found in logs",
 	}
-	return mcp.NewToolResultText(status.String()), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: status.String()}},
+	}, nil
 }
 
-func handleListRollouts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ns := mcp.ParseString(request, "namespace", "argo-rollouts")
-	tt := mcp.ParseString(request, "type", "rollouts")
+func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	ns := "argo-rollouts"
+	if namespace, ok := args["namespace"].(string); ok && namespace != "" {
+		ns = namespace
+	}
+
+	tt := "rollouts"
+	if typeArg, ok := args["type"].(string); ok && typeArg != "" {
+		tt = typeArg
+	}
 
 	cmd := []string{"argo", "rollouts", "list", tt}
 	if ns != "" {
@@ -365,63 +526,181 @@ func handleListRollouts(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error listing rollouts: " + err.Error()), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error listing rollouts: " + err.Error()}},
+			IsError: true,
+		}, nil
 	}
 
 	if strings.HasPrefix(output, "Error") {
-		return mcp.NewToolResultText(output), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: output}},
+		}, nil
 	}
 
-	return mcp.NewToolResultText(output), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: output}},
+	}, nil
 }
 
-func RegisterTools(s *server.MCPServer) {
-	s.AddTool(mcp.NewTool("argo_verify_argo_rollouts_controller_install",
-		mcp.WithDescription("Verify that the Argo Rollouts controller is installed and running"),
-		mcp.WithString("namespace", mcp.Description("The namespace where Argo Rollouts is installed")),
-		mcp.WithString("label", mcp.Description("The label of the Argo Rollouts controller pods")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_verify_argo_rollouts_controller_install", handleVerifyArgoRolloutsControllerInstall)))
+func RegisterTools(s *mcp.Server) error {
+	logger.Get().Info("RegisterTools initialized")
+	// Register argo_verify_argo_rollouts_controller_install tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_verify_argo_rollouts_controller_install",
+		Description: "Verify that the Argo Rollouts controller is installed and running",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace where Argo Rollouts is installed",
+				},
+				"label": {
+					Type:        "string",
+					Description: "The label of the Argo Rollouts controller pods",
+				},
+			},
+		},
+	}, handleVerifyArgoRolloutsControllerInstall)
 
-	s.AddTool(mcp.NewTool("argo_verify_kubectl_plugin_install",
-		mcp.WithDescription("Verify that the kubectl Argo Rollouts plugin is installed"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_verify_kubectl_plugin_install", handleVerifyKubectlPluginInstall)))
+	// Register argo_verify_kubectl_plugin_install tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_verify_kubectl_plugin_install",
+		Description: "Verify that the kubectl Argo Rollouts plugin is installed",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+		},
+	}, handleVerifyKubectlPluginInstall)
 
-	s.AddTool(mcp.NewTool("argo_rollouts_list",
-		mcp.WithDescription("List rollouts or experiments"),
-		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
-		mcp.WithString("type", mcp.Description("What to list: rollouts or experiments"), mcp.DefaultString("rollouts")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_rollouts_list", handleListRollouts)))
+	// Register argo_rollouts_list tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_rollouts_list",
+		Description: "List rollouts or experiments",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the rollout",
+				},
+				"type": {
+					Type:        "string",
+					Description: "What to list: rollouts or experiments",
+				},
+			},
+		},
+	}, handleListRollouts)
 
-	s.AddTool(mcp.NewTool("argo_promote_rollout",
-		mcp.WithDescription("Promote a paused rollout to the next step"),
-		mcp.WithString("rollout_name", mcp.Description("The name of the rollout to promote"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
-		mcp.WithString("full", mcp.Description("Promote the rollout to the final step")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_promote_rollout", handlePromoteRollout)))
+	// Register argo_promote_rollout tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_promote_rollout",
+		Description: "Promote a paused rollout to the next step",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"rollout_name": {
+					Type:        "string",
+					Description: "The name of the rollout to promote",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the rollout",
+				},
+				"full": {
+					Type:        "string",
+					Description: "Promote the rollout to the final step",
+				},
+			},
+			Required: []string{"rollout_name"},
+		},
+	}, handlePromoteRollout)
 
-	s.AddTool(mcp.NewTool("argo_pause_rollout",
-		mcp.WithDescription("Pause a rollout"),
-		mcp.WithString("rollout_name", mcp.Description("The name of the rollout to pause"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_pause_rollout", handlePauseRollout)))
+	// Register argo_pause_rollout tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_pause_rollout",
+		Description: "Pause a rollout",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"rollout_name": {
+					Type:        "string",
+					Description: "The name of the rollout to pause",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the rollout",
+				},
+			},
+			Required: []string{"rollout_name"},
+		},
+	}, handlePauseRollout)
 
-	s.AddTool(mcp.NewTool("argo_set_rollout_image",
-		mcp.WithDescription("Set the image of a rollout"),
-		mcp.WithString("rollout_name", mcp.Description("The name of the rollout to set the image for"), mcp.Required()),
-		mcp.WithString("container_image", mcp.Description("The container image to set for the rollout"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the rollout")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_set_rollout_image", handleSetRolloutImage)))
+	// Register argo_set_rollout_image tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_set_rollout_image",
+		Description: "Set the image of a rollout",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"rollout_name": {
+					Type:        "string",
+					Description: "The name of the rollout to set the image for",
+				},
+				"container_image": {
+					Type:        "string",
+					Description: "The container image to set for the rollout",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the rollout",
+				},
+			},
+			Required: []string{"rollout_name", "container_image"},
+		},
+	}, handleSetRolloutImage)
 
-	s.AddTool(mcp.NewTool("argo_verify_gateway_plugin",
-		mcp.WithDescription("Verify the installation status of the Argo Rollouts Gateway API plugin"),
-		mcp.WithString("version", mcp.Description("The version of the plugin to check")),
-		mcp.WithString("namespace", mcp.Description("The namespace for the plugin resources")),
-		mcp.WithString("should_install", mcp.Description("Whether to install the plugin if not found")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_verify_gateway_plugin", handleVerifyGatewayPlugin)))
+	// Register argo_verify_gateway_plugin tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_verify_gateway_plugin",
+		Description: "Verify the installation status of the Argo Rollouts Gateway API plugin",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"version": {
+					Type:        "string",
+					Description: "The version of the plugin to check",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace for the plugin resources",
+				},
+				"should_install": {
+					Type:        "string",
+					Description: "Whether to install the plugin if not found",
+				},
+			},
+		},
+	}, handleVerifyGatewayPlugin)
 
-	s.AddTool(mcp.NewTool("argo_check_plugin_logs",
-		mcp.WithDescription("Check the logs of the Argo Rollouts Gateway API plugin"),
-		mcp.WithString("namespace", mcp.Description("The namespace of the plugin resources")),
-		mcp.WithString("timeout", mcp.Description("Timeout for log collection in seconds")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("argo_check_plugin_logs", handleCheckPluginLogs)))
+	// Register argo_check_plugin_logs tool
+	s.AddTool(&mcp.Tool{
+		Name:        "argo_check_plugin_logs",
+		Description: "Check the logs of the Argo Rollouts Gateway API plugin",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the plugin resources",
+				},
+				"timeout": {
+					Type:        "string",
+					Description: "Timeout for log collection in seconds",
+				},
+			},
+		},
+	}, handleCheckPluginLogs)
+
+	return nil
 }

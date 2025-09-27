@@ -15,9 +15,6 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/client/transport"
-	"github.com/mark3labs/mcp-go/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -164,10 +161,11 @@ func (ts *TestServer) Stop() error {
 	return nil
 }
 
-// MCPClient represents a client for communicating with the MCP server using the official mcp-go client
+// MCPClient represents a client for communicating with the MCP server
+// TODO: Update to use new SDK client when available
 type MCPClient struct {
-	client *client.Client
-	log    *slog.Logger
+	// client *client.Client // TODO: Replace with new SDK client
+	log *slog.Logger
 }
 
 // InstallKAgentTools installs KAgent Tools using helm in the specified namespace
@@ -247,216 +245,47 @@ func InstallKAgentTools(namespace string, releaseName string) {
 	Expect(nodePort).To(Equal("30885"))
 }
 
-// GetMCPClient creates a new MCP client configured for the e2e test environment using the official mcp-go client
+// GetMCPClient creates a new MCP client configured for the e2e test environment
+// TODO: Implement with new SDK client functionality when available
 func GetMCPClient() (*MCPClient, error) {
-	// Create HTTP transport for the MCP server with timeout long enough for operations like Istio installation
-	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885/mcp", transport.WithHTTPTimeout(180*time.Second))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP transport: %w", err)
-	}
-
-	// Create the official MCP client
-	mcpClient := client.NewClient(httpTransport)
-
-	// Start the client
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	if err := mcpClient.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start MCP client: %w", err)
-	}
-
-	// Initialize the client
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    "e2e-test-client",
-		Version: "1.0.0",
-	}
-	initRequest.Params.Capabilities = mcp.ClientCapabilities{}
-
-	_, err = mcpClient.Initialize(ctx, initRequest)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize MCP client: %w", err)
-	}
-
-	mcpHelper := &MCPClient{
-		client: mcpClient,
-		log:    slog.Default(),
-	}
-
-	// Validate connection by listing tools
-	tools, err := mcpHelper.listTools()
-	if len(tools) == 0 {
-		return nil, fmt.Errorf("no tools found in MCP server: %w", err)
-	}
-	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885/mcp", "tools", len(tools))
-	return mcpHelper, err
+	// Placeholder implementation - needs to be updated to use new SDK client
+	return nil, fmt.Errorf("MCP client functionality not yet implemented with new SDK")
 }
 
 // listTools calls the tools/list method to get available tools
+// TODO: Implement with new SDK client
 func (c *MCPClient) listTools() ([]interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	request := mcp.ListToolsRequest{}
-	result, err := c.client.ListTools(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert tools to interface{} slice for compatibility
-	tools := make([]interface{}, len(result.Tools))
-	for i, tool := range result.Tools {
-		tools[i] = tool
-	}
-
-	return tools, nil
+	return nil, fmt.Errorf("listTools not yet implemented with new SDK")
 }
 
 // k8sListResources calls the k8s_get_resources tool
+// TODO: Implement with new SDK client
 func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	type K8sArgs struct {
-		ResourceType string `json:"resource_type"`
-		Output       string `json:"output"`
-	}
-
-	arguments := K8sArgs{
-		ResourceType: resourceType,
-		Output:       "json",
-	}
-
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "k8s_get_resources",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %s", result.Content)
-	}
-	return result, nil
+	return nil, fmt.Errorf("k8sListResources not yet implemented with new SDK")
 }
 
 // helmListReleases calls the helm_list_releases tool
+// TODO: Implement with new SDK client
 func (c *MCPClient) helmListReleases() (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	type HelmArgs struct {
-		AllNamespaces string `json:"all_namespaces"`
-		Output        string `json:"output"`
-	}
-
-	arguments := HelmArgs{
-		AllNamespaces: "true",
-		Output:        "json",
-	}
-
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "helm_list_releases",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %s", result.Content)
-	}
-	return result, nil
+	return nil, fmt.Errorf("helmListReleases not yet implemented with new SDK")
 }
 
 // istioInstall calls the istio_install_istio tool
+// TODO: Implement with new SDK client
 func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second) // Istio install can take time
-	defer cancel()
-
-	type IstioArgs struct {
-		Profile string `json:"profile"`
-	}
-
-	arguments := IstioArgs{
-		Profile: profile,
-	}
-
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "istio_install_istio",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %s", result.Content)
-	}
-	return result, nil
+	return nil, fmt.Errorf("istioInstall not yet implemented with new SDK")
 }
 
 // argoRolloutsList calls the argo_rollouts_get tool to list rollouts
+// TODO: Implement with new SDK client
 func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	type ArgoArgs struct {
-		Namespace string `json:"namespace"`
-		Output    string `json:"output"`
-	}
-
-	arguments := ArgoArgs{
-		Namespace: namespace,
-		Output:    "json",
-	}
-
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "argo_rollouts_list",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %s", result.Content)
-	}
-	return result, nil
+	return nil, fmt.Errorf("argoRolloutsList not yet implemented with new SDK")
 }
 
 // ciliumStatus calls the cilium_status_and_version tool
+// TODO: Implement with new SDK client
 func (c *MCPClient) ciliumStatus() (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "cilium_status_and_version",
-			Arguments: nil,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return nil, fmt.Errorf("ciliumStatus not yet implemented with new SDK")
 }
 
 // Constants for default test values

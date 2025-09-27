@@ -2,37 +2,58 @@ package istio
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kagent-dev/tools/internal/commands"
-	"github.com/kagent-dev/tools/internal/telemetry"
+	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/pkg/utils"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Istio proxy status
-func handleIstioProxyStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	podName := mcp.ParseString(request, "pod_name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
+func handleIstioProxyStatus(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	args := []string{"proxy-status"}
+	podName := ""
+	namespace := ""
+
+	if val, ok := args["pod_name"].(string); ok {
+		podName = val
+	}
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+
+	cmdArgs := []string{"proxy-status"}
 
 	if namespace != "" {
-		args = append(args, "-n", namespace)
+		cmdArgs = append(cmdArgs, "-n", namespace)
 	}
 
 	if podName != "" {
-		args = append(args, podName)
+		cmdArgs = append(cmdArgs, podName)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl proxy-status failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl proxy-status failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 func runIstioCtl(ctx context.Context, args []string) (string, error) {
@@ -44,331 +65,742 @@ func runIstioCtl(ctx context.Context, args []string) (string, error) {
 }
 
 // Istio proxy config
-func handleIstioProxyConfig(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	podName := mcp.ParseString(request, "pod_name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	configType := mcp.ParseString(request, "config_type", "all")
+func handleIstioProxyConfig(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	podName := ""
+	namespace := ""
+	configType := "all"
+
+	if val, ok := args["pod_name"].(string); ok {
+		podName = val
+	}
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["config_type"].(string); ok {
+		configType = val
+	}
 
 	if podName == "" {
-		return mcp.NewToolResultError("pod_name parameter is required"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "pod_name parameter is required"}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"proxy-config", configType}
+	cmdArgs := []string{"proxy-config", configType}
 
 	if namespace != "" {
-		args = append(args, fmt.Sprintf("%s.%s", podName, namespace))
+		cmdArgs = append(cmdArgs, fmt.Sprintf("%s.%s", podName, namespace))
 	} else {
-		args = append(args, podName)
+		cmdArgs = append(cmdArgs, podName)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl proxy-config failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl proxy-config failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Istio install
-func handleIstioInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	profile := mcp.ParseString(request, "profile", "default")
-
-	args := []string{"install", "--set", fmt.Sprintf("profile=%s", profile), "-y"}
-
-	result, err := runIstioCtl(ctx, args)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl install failed: %v", err)), nil
+func handleIstioInstall(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	profile := "default"
+	if val, ok := args["profile"].(string); ok {
+		profile = val
+	}
+
+	cmdArgs := []string{"install", "--set", fmt.Sprintf("profile=%s", profile), "-y"}
+
+	result, err := runIstioCtl(ctx, cmdArgs)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl install failed: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Istio generate manifest
-func handleIstioGenerateManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	profile := mcp.ParseString(request, "profile", "default")
-
-	args := []string{"manifest", "generate", "--set", fmt.Sprintf("profile=%s", profile)}
-
-	result, err := runIstioCtl(ctx, args)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl manifest generate failed: %v", err)), nil
+func handleIstioGenerateManifest(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	profile := "default"
+	if val, ok := args["profile"].(string); ok {
+		profile = val
+	}
+
+	cmdArgs := []string{"manifest", "generate", "--set", fmt.Sprintf("profile=%s", profile)}
+
+	result, err := runIstioCtl(ctx, cmdArgs)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl manifest generate failed: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Istio analyze
-func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
+func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	args := []string{"analyze"}
+	namespace := ""
+	allNamespaces := false
+
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["all_namespaces"].(string); ok {
+		allNamespaces = val == "true"
+	}
+
+	cmdArgs := []string{"analyze"}
 
 	if allNamespaces {
-		args = append(args, "-A")
+		cmdArgs = append(cmdArgs, "-A")
 	} else if namespace != "" {
-		args = append(args, "-n", namespace)
+		cmdArgs = append(cmdArgs, "-n", namespace)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl analyze failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl analyze failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Istio version
-func handleIstioVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	short := mcp.ParseString(request, "short", "") == "true"
+func handleIstioVersion(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	args := []string{"version"}
+	short := false
+	if val, ok := args["short"].(string); ok {
+		short = val == "true"
+	}
+
+	cmdArgs := []string{"version"}
 
 	if short {
-		args = append(args, "--short")
+		cmdArgs = append(cmdArgs, "--short")
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl version failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl version failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Istio remote clusters
-func handleIstioRemoteClusters(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := []string{"remote-clusters"}
+func handleIstioRemoteClusters(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	cmdArgs := []string{"remote-clusters"}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl remote-clusters failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl remote-clusters failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Waypoint list
-func handleWaypointList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
+func handleWaypointList(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	args := []string{"waypoint", "list"}
+	namespace := ""
+	allNamespaces := false
+
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["all_namespaces"].(string); ok {
+		allNamespaces = val == "true"
+	}
+
+	cmdArgs := []string{"waypoint", "list"}
 
 	if allNamespaces {
-		args = append(args, "-A")
+		cmdArgs = append(cmdArgs, "-A")
 	} else if namespace != "" {
-		args = append(args, "-n", namespace)
+		cmdArgs = append(cmdArgs, "-n", namespace)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint list failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl waypoint list failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Waypoint generate
-func handleWaypointGenerate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	name := mcp.ParseString(request, "name", "waypoint")
-	trafficType := mcp.ParseString(request, "traffic_type", "all")
+func handleWaypointGenerate(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	namespace := ""
+	name := "waypoint"
+	trafficType := "all"
+
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["name"].(string); ok {
+		name = val
+	}
+	if val, ok := args["traffic_type"].(string); ok {
+		trafficType = val
+	}
 
 	if namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "namespace parameter is required"}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"waypoint", "generate"}
+	cmdArgs := []string{"waypoint", "generate"}
 
 	if name != "" {
-		args = append(args, name)
+		cmdArgs = append(cmdArgs, name)
 	}
 
-	args = append(args, "-n", namespace)
+	cmdArgs = append(cmdArgs, "-n", namespace)
 
 	if trafficType != "" {
-		args = append(args, "--for", trafficType)
+		cmdArgs = append(cmdArgs, "--for", trafficType)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint generate failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl waypoint generate failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Waypoint apply
-func handleWaypointApply(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	enrollNamespace := mcp.ParseString(request, "enroll_namespace", "") == "true"
+func handleWaypointApply(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	namespace := ""
+	enrollNamespace := false
+
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["enroll_namespace"].(string); ok {
+		enrollNamespace = val == "true"
+	}
 
 	if namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "namespace parameter is required"}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"waypoint", "apply", "-n", namespace}
+	cmdArgs := []string{"waypoint", "apply", "-n", namespace}
 
 	if enrollNamespace {
-		args = append(args, "--enroll-namespace")
+		cmdArgs = append(cmdArgs, "--enroll-namespace")
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint apply failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl waypoint apply failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Waypoint delete
-func handleWaypointDelete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	names := mcp.ParseString(request, "names", "")
-	all := mcp.ParseString(request, "all", "") == "true"
-
-	if namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil
+func handleWaypointDelete(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"waypoint", "delete"}
+	namespace := ""
+	names := ""
+	all := false
+
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["names"].(string); ok {
+		names = val
+	}
+	if val, ok := args["all"].(string); ok {
+		all = val == "true"
+	}
+
+	if namespace == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "namespace parameter is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	cmdArgs := []string{"waypoint", "delete"}
 
 	if all {
-		args = append(args, "--all")
+		cmdArgs = append(cmdArgs, "--all")
 	} else if names != "" {
 		namesList := strings.Split(names, ",")
 		for _, name := range namesList {
-			args = append(args, strings.TrimSpace(name))
+			cmdArgs = append(cmdArgs, strings.TrimSpace(name))
 		}
 	}
 
-	args = append(args, "-n", namespace)
+	cmdArgs = append(cmdArgs, "-n", namespace)
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint delete failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl waypoint delete failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Waypoint status
-func handleWaypointStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	name := mcp.ParseString(request, "name", "")
+func handleWaypointStatus(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	namespace := ""
+	name := ""
+
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["name"].(string); ok {
+		name = val
+	}
 
 	if namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "namespace parameter is required"}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"waypoint", "status"}
+	cmdArgs := []string{"waypoint", "status"}
 
 	if name != "" {
-		args = append(args, name)
+		cmdArgs = append(cmdArgs, name)
 	}
 
-	args = append(args, "-n", namespace)
+	cmdArgs = append(cmdArgs, "-n", namespace)
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint status failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl waypoint status failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Ztunnel config
-func handleZtunnelConfig(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	configType := mcp.ParseString(request, "config_type", "all")
+func handleZtunnelConfig(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	args := []string{"ztunnel", "config", configType}
+	namespace := ""
+	configType := "all"
+
+	if val, ok := args["namespace"].(string); ok {
+		namespace = val
+	}
+	if val, ok := args["config_type"].(string); ok {
+		configType = val
+	}
+
+	cmdArgs := []string{"ztunnel", "config", configType}
 
 	if namespace != "" {
-		args = append(args, "-n", namespace)
+		cmdArgs = append(cmdArgs, "-n", namespace)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl ztunnel config failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("istioctl ztunnel config failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Register Istio tools
-func RegisterTools(s *server.MCPServer) {
+func RegisterTools(s *mcp.Server) error {
+	logger.Get().Info("RegisterTools initialized")
 
 	// Istio proxy status
-	s.AddTool(mcp.NewTool("istio_proxy_status",
-		mcp.WithDescription("Get Envoy proxy status for pods, retrieves last sent and acknowledged xDS sync from Istiod to each Envoy in the mesh"),
-		mcp.WithString("pod_name", mcp.Description("Name of the pod to get proxy status for")),
-		mcp.WithString("namespace", mcp.Description("Namespace of the pod")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_proxy_status", handleIstioProxyStatus)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_proxy_status",
+		Description: "Get Envoy proxy status for pods, retrieves last sent and acknowledged xDS sync from Istiod to each Envoy in the mesh",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"pod_name": {
+					Type:        "string",
+					Description: "Name of the pod to get proxy status for",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace of the pod",
+				},
+			},
+		},
+	}, handleIstioProxyStatus)
 
 	// Istio proxy config
-	s.AddTool(mcp.NewTool("istio_proxy_config",
-		mcp.WithDescription("Get specific proxy configuration for a single pod"),
-		mcp.WithString("pod_name", mcp.Description("Name of the pod to get proxy configuration for"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("Namespace of the pod")),
-		mcp.WithString("config_type", mcp.Description("Type of configuration (all, bootstrap, cluster, ecds, listener, log, route, secret)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_proxy_config", handleIstioProxyConfig)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_proxy_config",
+		Description: "Get specific proxy configuration for a single pod",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"pod_name": {
+					Type:        "string",
+					Description: "Name of the pod to get proxy configuration for",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace of the pod",
+				},
+				"config_type": {
+					Type:        "string",
+					Description: "Type of configuration (all, bootstrap, cluster, ecds, listener, log, route, secret)",
+				},
+			},
+			Required: []string{"pod_name"},
+		},
+	}, handleIstioProxyConfig)
 
 	// Istio install
-	s.AddTool(mcp.NewTool("istio_install_istio",
-		mcp.WithDescription("Install Istio with a specified configuration profile"),
-		mcp.WithString("profile", mcp.Description("Istio configuration profile (ambient, default, demo, minimal, empty)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_install_istio", handleIstioInstall)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_install_istio",
+		Description: "Install Istio with a specified configuration profile",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"profile": {
+					Type:        "string",
+					Description: "Istio configuration profile (ambient, default, demo, minimal, empty)",
+				},
+			},
+		},
+	}, handleIstioInstall)
 
 	// Istio generate manifest
-	s.AddTool(mcp.NewTool("istio_generate_manifest",
-		mcp.WithDescription("Generate Istio manifest for a given profile"),
-		mcp.WithString("profile", mcp.Description("Istio configuration profile (ambient, default, demo, minimal, empty)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_generate_manifest", handleIstioGenerateManifest)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_generate_manifest",
+		Description: "Generate Istio manifest for a given profile",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"profile": {
+					Type:        "string",
+					Description: "Istio configuration profile (ambient, default, demo, minimal, empty)",
+				},
+			},
+		},
+	}, handleIstioGenerateManifest)
 
 	// Istio analyze
-	s.AddTool(mcp.NewTool("istio_analyze_cluster_configuration",
-		mcp.WithDescription("Analyze Istio cluster configuration for issues"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_analyze_cluster_configuration", handleIstioAnalyzeClusterConfiguration)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_analyze_cluster_configuration",
+		Description: "Analyze Istio cluster configuration for issues",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace to analyze",
+				},
+				"all_namespaces": {
+					Type:        "string",
+					Description: "Analyze all namespaces (true/false)",
+				},
+			},
+		},
+	}, handleIstioAnalyzeClusterConfiguration)
 
 	// Istio version
-	s.AddTool(mcp.NewTool("istio_version",
-		mcp.WithDescription("Get Istio version information"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_version", handleIstioVersion)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_version",
+		Description: "Get Istio version information",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"short": {
+					Type:        "string",
+					Description: "Show short version (true/false)",
+				},
+			},
+		},
+	}, handleIstioVersion)
 
 	// Istio remote clusters
-	s.AddTool(mcp.NewTool("istio_remote_clusters",
-		mcp.WithDescription("List remote clusters registered with Istio"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_remote_clusters", handleIstioRemoteClusters)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_remote_clusters",
+		Description: "List remote clusters registered with Istio",
+		InputSchema: &jsonschema.Schema{
+			Type:       "object",
+			Properties: map[string]*jsonschema.Schema{},
+		},
+	}, handleIstioRemoteClusters)
 
 	// Waypoint list
-	s.AddTool(mcp.NewTool("istio_list_waypoints",
-		mcp.WithDescription("List all waypoints in the mesh"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_list_waypoints", handleWaypointList)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_list_waypoints",
+		Description: "List all waypoints in the mesh",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace to list waypoints from",
+				},
+				"all_namespaces": {
+					Type:        "string",
+					Description: "List waypoints from all namespaces (true/false)",
+				},
+			},
+		},
+	}, handleWaypointList)
 
 	// Waypoint generate
-	s.AddTool(mcp.NewTool("istio_generate_waypoint",
-		mcp.WithDescription("Generate a waypoint resource YAML"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_generate_waypoint", handleWaypointGenerate)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_generate_waypoint",
+		Description: "Generate a waypoint resource YAML",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace for the waypoint",
+				},
+				"name": {
+					Type:        "string",
+					Description: "Name of the waypoint",
+				},
+				"traffic_type": {
+					Type:        "string",
+					Description: "Traffic type for the waypoint (all, service, workload)",
+				},
+			},
+			Required: []string{"namespace"},
+		},
+	}, handleWaypointGenerate)
 
 	// Waypoint apply
-	s.AddTool(mcp.NewTool("istio_apply_waypoint",
-		mcp.WithDescription("Apply a waypoint resource to the cluster"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_apply_waypoint", handleWaypointApply)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_apply_waypoint",
+		Description: "Apply a waypoint resource to the cluster",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace for the waypoint",
+				},
+				"enroll_namespace": {
+					Type:        "string",
+					Description: "Enroll the namespace to use the waypoint (true/false)",
+				},
+			},
+			Required: []string{"namespace"},
+		},
+	}, handleWaypointApply)
 
 	// Waypoint delete
-	s.AddTool(mcp.NewTool("istio_delete_waypoint",
-		mcp.WithDescription("Delete a waypoint resource from the cluster"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_delete_waypoint", handleWaypointDelete)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_delete_waypoint",
+		Description: "Delete a waypoint resource from the cluster",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace of the waypoint",
+				},
+				"names": {
+					Type:        "string",
+					Description: "Comma-separated list of waypoint names to delete",
+				},
+				"all": {
+					Type:        "string",
+					Description: "Delete all waypoints in the namespace (true/false)",
+				},
+			},
+			Required: []string{"namespace"},
+		},
+	}, handleWaypointDelete)
 
 	// Waypoint status
-	s.AddTool(mcp.NewTool("istio_waypoint_status",
-		mcp.WithDescription("Get the status of a waypoint resource"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_waypoint_status", handleWaypointStatus)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_waypoint_status",
+		Description: "Get the status of a waypoint resource",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace of the waypoint",
+				},
+				"name": {
+					Type:        "string",
+					Description: "Name of the waypoint",
+				},
+			},
+			Required: []string{"namespace"},
+		},
+	}, handleWaypointStatus)
 
 	// Ztunnel config
-	s.AddTool(mcp.NewTool("istio_ztunnel_config",
-		mcp.WithDescription("Get the ztunnel configuration for a namespace"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_ztunnel_config", handleZtunnelConfig)))
+	s.AddTool(&mcp.Tool{
+		Name:        "istio_ztunnel_config",
+		Description: "Get the ztunnel configuration for a namespace",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "Namespace to get ztunnel config for",
+				},
+				"config_type": {
+					Type:        "string",
+					Description: "Type of configuration (all, workload, service, policy)",
+				},
+			},
+		},
+	}, handleZtunnelConfig)
+
+	return nil
 }

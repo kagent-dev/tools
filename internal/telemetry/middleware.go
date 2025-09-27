@@ -7,8 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -16,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type ToolHandler func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+type ToolHandler func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error)
 
 // contextKey is used for storing HTTP context in the request context
 type contextKey string
@@ -84,7 +83,7 @@ func ExtractTraceInfo(ctx context.Context) (traceID, spanID string) {
 }
 
 func WithTracing(toolName string, handler ToolHandler) ToolHandler {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		tracer := otel.Tracer("kagent-tools/mcp")
 
 		spanName := fmt.Sprintf("mcp.tool.%s", toolName)
@@ -171,9 +170,9 @@ func AddEvent(span trace.Span, name string, attrs ...attribute.KeyValue) {
 	span.AddEvent(name, trace.WithAttributes(attrs...))
 }
 
-// AdaptToolHandler adapts a telemetry.ToolHandler to a server.ToolHandlerFunc.
-func AdaptToolHandler(th ToolHandler) server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// AdaptToolHandler adapts a telemetry.ToolHandler to a function that can be used with the new SDK.
+func AdaptToolHandler(th ToolHandler) func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return th(ctx, req)
 	}
 }

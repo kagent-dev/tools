@@ -457,7 +457,7 @@ users:
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
 			resp.Body.Close()
 
 			err = server.Stop()
