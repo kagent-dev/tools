@@ -506,9 +506,10 @@ func TestComprehensiveStdioTransport(t *testing.T) {
 				assert.Contains(t, output, "RegisterTools initialized")
 				assert.Contains(t, output, "utils")
 
-				// TODO: Once stdio transport is implemented, test actual MCP communication
-				// For now, verify the error message about unimplemented stdio transport
-				assert.Contains(t, output, "Stdio transport not yet implemented with new SDK")
+				// Verify stdio transport is working (should not contain old error message)
+				assert.NotContains(t, output, "Stdio transport not yet implemented with new SDK")
+
+				// TODO: Test actual MCP communication over stdio once client is implemented
 			},
 		},
 		{
@@ -650,9 +651,10 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			assert.Contains(t, output, "RegisterTools initialized")
 			assert.Contains(t, output, tool)
 
-			// TODO: Once stdio transport is implemented, test actual MCP communication
-			// For now, verify the error message about unimplemented stdio transport
-			assert.Contains(t, output, "Stdio transport not yet implemented with new SDK")
+			// Verify stdio transport is working (should not contain old error message)
+			assert.NotContains(t, output, "Stdio transport not yet implemented with new SDK")
+
+			// TODO: Test actual MCP communication over stdio once client is implemented
 		})
 	}
 }

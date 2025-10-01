@@ -147,12 +147,7 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcpServer)
 		}()
 	} else {
-		// TODO: Implement new SDK HTTP transport
-		// The new SDK should provide HTTP transport capabilities
-		// This needs to be updated once the correct HTTP transport pattern is identified
-		// sseServer := server.NewStreamableHTTPServer(mcpServer,
-		//	server.WithHeartbeatInterval(30*time.Second),
-		// )
+		// HTTP transport implemented using MCP SDK SSE handler
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()
@@ -177,18 +172,14 @@ func run(cmd *cobra.Command, args []string) {
 			}
 		})
 
-		// TODO: Handle MCP routes with new SDK HTTP transport
-		// mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//	sseServer.ServeHTTP(w, r)
-		// })))
+		// MCP HTTP transport using SSE handler (2024-11-05 spec)
+		sseHandler := mcp.NewSSEHandler(func(request *http.Request) *mcp.Server {
+			// Return the server instance for each request
+			return mcpServer
+		}, nil) // nil options uses defaults
 
-		// Placeholder: Add MCP routes here once HTTP transport is implemented
-		mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotImplemented)
-			if err := writeResponse(w, []byte("MCP HTTP transport not yet implemented with new SDK")); err != nil {
-				logger.Get().Error("Failed to write MCP response", "error", err)
-			}
-		})
+		// Mount the MCP handler with telemetry middleware
+		mux.Handle("/mcp", telemetry.HTTPMiddleware(sseHandler))
 
 		httpServer = &http.Server{
 			Addr:    fmt.Sprintf(":%d", port),
@@ -287,21 +278,34 @@ func generateRuntimeMetrics() string {
 }
 
 func runStdioServer(ctx context.Context, mcpServer *mcp.Server) {
+	tracer := otel.Tracer("kagent-tools/stdio")
+	ctx, span := tracer.Start(ctx, "stdio.server.run")
+	defer span.End()
+
 	logger.Get().Info("Running KAgent Tools Server STDIO:", "tools", strings.Join(tools, ","))
 
-	// TODO: Implement proper stdio transport from new SDK
-	// The new SDK should provide a stdio transport pattern
-	// This needs to be researched and implemented correctly
+	// Create stdio transport - uses stdin/stdout for JSON-RPC communication
+	stdioTransport := &mcp.StdioTransport{}
 
-	// Placeholder implementation - this will not work and needs to be replaced
-	// with the correct new SDK stdio transport pattern
-	logger.Get().Error("Stdio transport not yet implemented with new SDK")
+	span.AddEvent("stdio.transport.starting")
 
-	// Example of what the new pattern might look like (needs verification):
-	// stdioTransport := mcp.NewStdioTransport(os.Stdin, os.Stdout)
-	// if _, err := mcpServer.Connect(ctx, stdioTransport, nil); err != nil {
-	//     logger.Get().Error("Failed to connect stdio transport", "error", err)
-	// }
+	// Run the server on the stdio transport
+	// This blocks until the context is cancelled or an error occurs
+	if err := mcpServer.Run(ctx, stdioTransport); err != nil {
+		// Check if the error is due to context cancellation (normal shutdown)
+		if !errors.Is(err, context.Canceled) {
+			logger.Get().Error("Stdio server error", "error", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Stdio server error")
+		} else {
+			span.AddEvent("stdio.server.cancelled")
+			logger.Get().Info("Stdio server cancelled")
+		}
+		return
+	}
+
+	span.AddEvent("stdio.server.shutdown")
+	logger.Get().Info("Stdio server stopped")
 }
 
 func registerMCP(mcpServer *mcp.Server, enabledToolProviders []string, kubeconfig string) {

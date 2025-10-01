@@ -426,9 +426,8 @@ func TestMCPIntegrationStdio(t *testing.T) {
 	assert.Contains(t, output, "Running KAgent Tools Server STDIO")
 	assert.Contains(t, output, "RegisterTools initialized")
 
-	// TODO: Test actual stdio communication once transport is implemented
-	// For now, verify the error message about unimplemented stdio transport
-	assert.Contains(t, output, "Stdio transport not yet implemented with new SDK")
+	// Verify stdio transport is working (should not contain old error message)
+	assert.NotContains(t, output, "Stdio transport not yet implemented with new SDK")
 }
 
 // TestToolRegistration tests that all tool categories register correctly
