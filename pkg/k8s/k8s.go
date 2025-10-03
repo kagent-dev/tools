@@ -362,6 +362,10 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 					Type:        "string",
 					Description: "Namespace to get events from (default: default)",
 				},
+				"output": {
+					Type:        "string",
+					Description: "Output format (json, yaml, wide)",
+				},
 			},
 		},
 	}, k8sTool.handleGetEvents)
@@ -464,12 +468,17 @@ func (k *K8sTool) handleDeleteResource(ctx context.Context, request *mcp.CallToo
 // Get cluster events
 func (k *K8sTool) handleGetEvents(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	namespace := parseString(request, "namespace", "")
+	output := parseString(request, "output", "wide")
 
-	args := []string{"get", "events", "-o", "json"}
+	args := []string{"get", "events"}
 	if namespace != "" {
 		args = append(args, "-n", namespace)
 	} else {
 		args = append(args, "--all-namespaces")
+	}
+
+	if output != "" {
+		args = append(args, "-o", output)
 	}
 
 	return k.runKubectlCommand(ctx, args...)

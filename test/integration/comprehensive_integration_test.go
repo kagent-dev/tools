@@ -917,7 +917,7 @@ func TestComprehensiveRobustness(t *testing.T) {
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 		require.NoError(t, err, "Health endpoint should be accessible")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		closeBody(resp.Body)
+		_ = resp.Body.Close()
 
 		// Measure shutdown time
 		start := time.Now()
@@ -972,7 +972,7 @@ func TestComprehensiveRobustness(t *testing.T) {
 				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", tc.config.Port))
 				require.NoError(t, err, "Health endpoint should be accessible")
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
-				closeBody(resp.Body)
+				_ = resp.Body.Close()
 
 				// Check for appropriate error messages
 				output := server.GetOutput()
@@ -1004,7 +1004,7 @@ func TestComprehensiveRobustness(t *testing.T) {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			require.NoError(t, err, "Health endpoint should be accessible iteration %d", i)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			closeBody(resp.Body)
+			_ = resp.Body.Close()
 
 			// Stop server
 			err = server.Stop()
@@ -1055,7 +1055,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 		require.NoError(t, err, "Health endpoint should be accessible")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		closeBody(resp.Body)
+		_ = resp.Body.Close()
 
 		// Test MCP endpoint (should return not implemented until HTTP transport is complete)
 		resp, err = http.Get(fmt.Sprintf("http://localhost:%d/mcp", config.Port))
@@ -1064,7 +1064,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		closeBody(resp.Body)
+		_ = resp.Body.Close()
 		assert.Contains(t, string(body), "MCP HTTP transport not yet implemented with new SDK")
 	})
 
@@ -1091,7 +1091,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 		require.NoError(t, err, "Health endpoint should be accessible")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		closeBody(resp.Body)
+		_ = resp.Body.Close()
 
 		// Verify all tool categories are registered
 		output := server.GetOutput()

@@ -31,8 +31,12 @@ spec:
           command:
             - /tool-server
           args:
+          - "--log-level"
+          - "{{ .Values.tools.loglevel }}"
           - "--port"
           - "{{ .Values.service.ports.tools.targetPort }}"
+          - "--tools"
+          - "{{ .Values.tools.filter }}"
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.tools.image.registry }}/{{ .Values.tools.image.repository }}:{{ coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version }}"

@@ -36,6 +36,7 @@ var (
 	stdio       bool
 	tools       []string
 	kubeconfig  *string
+	logLevel    string
 	showVersion bool
 
 	// These variables should be set during build time using -ldflags
@@ -53,6 +54,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8084, "Port to run the server on")
+	rootCmd.Flags().StringVarP(&logLevel, "log-level", "l", "info", "Log level")
 	rootCmd.Flags().BoolVar(&stdio, "stdio", false, "Use stdio for communication instead of HTTP")
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
@@ -66,7 +68,7 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		logger.Get().Error("Failed to execute root command", "error", err)
 		os.Exit(1)
 	}
 }
@@ -88,7 +90,7 @@ func run(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	logger.Init(stdio)
+	logger.Init(stdio, logLevel)
 	defer logger.Sync()
 
 	// Setup context with cancellation for graceful shutdown

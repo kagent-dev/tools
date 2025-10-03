@@ -178,9 +178,10 @@ helm-uninstall:
 	helm uninstall kagent --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
 
 .PHONY: helm-install
-helm-install: helm-version
+helm-install: helm-version retag
+	#delete first to allow testing with kagent
+	helm template kagent-tools ./helm/kagent-tools --namespace kagent | kubectl --namespace kagent delete -f - || :
 	helm $(HELM_ACTION) kagent-tools ./helm/kagent-tools \
-		--kube-context kind-$(KIND_CLUSTER_NAME) \
 		--namespace kagent \
 		--create-namespace \
 		--history-max 2    \

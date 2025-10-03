@@ -157,10 +157,11 @@ func TestHandleScaleDeployment(t *testing.T) {
 func TestHandleGetEvents(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success with default output", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		expectedOutput := `{"items": [{"metadata": {"name": "test-event"}, "message": "Test event message"}]}`
-		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "--all-namespaces"}, expectedOutput, nil)
+		expectedOutput := `NAMESPACE   LAST SEEN   TYPE      REASON    OBJECT              MESSAGE
+default     5m          Normal    Created   pod/test-pod        Created container test`
+		mock.AddCommandString("kubectl", []string{"get", "events", "--all-namespaces", "-o", "wide"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -176,13 +177,14 @@ func TestHandleGetEvents(t *testing.T) {
 		assert.False(t, result.IsError)
 
 		resultText := getResultText(result)
-		assert.Contains(t, resultText, "test-event")
+		assert.Contains(t, resultText, "test-pod")
 	})
 
 	t.Run("with namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		expectedOutput := `{"items": []}`
-		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "-n", "custom-namespace"}, expectedOutput, nil)
+		expectedOutput := `LAST SEEN   TYPE     REASON    OBJECT         MESSAGE
+5m          Normal   Started   pod/my-pod     Started container`
+		mock.AddCommandString("kubectl", []string{"get", "events", "-n", "custom-namespace", "-o", "wide"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -197,6 +199,57 @@ func TestHandleGetEvents(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
+	})
+
+	t.Run("with json output format", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `{"items": [{"metadata": {"name": "test-event"}, "message": "Test event message"}]}`
+		mock.AddCommandString("kubectl", []string{"get", "events", "--all-namespaces", "-o", "json"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"output": "json"}`),
+			},
+		}
+
+		result, err := k8sTool.handleGetEvents(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Contains(t, resultText, "test-event")
+	})
+
+	t.Run("with yaml output format and namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `apiVersion: v1
+items:
+- kind: Event
+  metadata:
+    name: test-event
+    namespace: kube-system`
+		mock.AddCommandString("kubectl", []string{"get", "events", "-n", "kube-system", "-o", "yaml"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"namespace": "kube-system", "output": "yaml"}`),
+			},
+		}
+
+		result, err := k8sTool.handleGetEvents(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Contains(t, resultText, "test-event")
 	})
 }
 
