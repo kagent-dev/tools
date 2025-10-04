@@ -20,6 +20,24 @@ These tools enhance functionality but aren't required for basic development:
 - `istioctl` - Istio service mesh CLI for istio tools
 - `cilium` - Cilium CLI for cilium tools
 
+### MCP Tools
+```json
+{
+    "mcpServers": {
+        "kagent-tools": {
+            "command": "kagent-tools",
+            "args": ["--stdio", "--kubeconfig", "~/.kube/config", "--tools", "k8s,helm,istio,utils"]
+        },
+        "go-sdk-docs": {
+            "url": "https://gitmcp.io/modelcontextprotocol/go-sdk"
+        },
+        "modelcontextprotocol-docs": {
+            "url": "https://gitmcp.io/modelcontextprotocol/modelcontextprotocol"
+        }
+    }
+}
+```
+
 ## Project Structure
 
 ```
@@ -272,10 +290,6 @@ func TestToolFunction(t *testing.T) {
 
 ```go
 func TestIntegration(t *testing.T) {
-    if testing.Short() {
-        t.Skip("skipping integration test in short mode")
-    }
-    
     // Setup test environment
     ctx := context.Background()
     tools := NewTools()

@@ -110,12 +110,6 @@ func TestBuildProcess(t *testing.T) {
 	// This test ensures the build process works correctly
 	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
 
-	// Check if Makefile exists
-	_, err := os.Stat("../../Makefile")
-	if os.IsNotExist(err) {
-		t.Skip("Makefile not found, skipping build test")
-	}
-
 	// If binary doesn't exist, try building it
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
 		t.Log("Binary not found, testing build process...")

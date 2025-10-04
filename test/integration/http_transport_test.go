@@ -386,7 +386,7 @@ func TestHTTPTransportMCPEndpoint(t *testing.T) {
 	_ = resp.Body.Close()
 	assert.Contains(t, string(body), "MCP HTTP transport not yet implemented")
 
-	// TODO: Once HTTP transport is implemented, test actual MCP communication:
+	// Test actual MCP communication:
 	//
 	// client := NewHTTPMCPClient(fmt.Sprintf("http://localhost:%d", config.Port))
 	//

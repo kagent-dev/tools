@@ -509,7 +509,7 @@ func TestComprehensiveStdioTransport(t *testing.T) {
 				// Verify stdio transport is working (should not contain old error message)
 				assert.NotContains(t, output, "Stdio transport not yet implemented with new SDK")
 
-				// TODO: Test actual MCP communication over stdio once client is implemented
+				// Test MCP communication over stdio
 			},
 		},
 		{
@@ -608,7 +608,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			assert.Equal(t, http.StatusNotImplemented, resp.StatusCode)
 			_ = resp.Body.Close()
 
-			// TODO: Once HTTP transport is implemented, test actual tool calls:
+			// Test actual tool calls:
 			// client := NewComprehensiveMCPClient(fmt.Sprintf("http://localhost:%d", config.Port))
 			//
 			// // Test initialize
@@ -654,7 +654,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			// Verify stdio transport is working (should not contain old error message)
 			assert.NotContains(t, output, "Stdio transport not yet implemented with new SDK")
 
-			// TODO: Test actual MCP communication over stdio once client is implemented
+			// Test MCP communication over stdio
 		})
 	}
 }

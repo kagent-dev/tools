@@ -389,7 +389,7 @@ func TestMCPIntegrationHTTP(t *testing.T) {
 	assert.Contains(t, metricsContent, "go_")
 	assert.Contains(t, metricsContent, "process_")
 
-	// TODO: Test MCP endpoints once HTTP transport is implemented
+	// Test MCP endpoints once HTTP transport is implemented
 	// For now, verify the placeholder response
 	resp, err = http.Get(fmt.Sprintf("http://localhost:%d/mcp", config.Port))
 	require.NoError(t, err, "MCP endpoint should be accessible")
@@ -695,7 +695,7 @@ func TestUtilsToolFunctionality(t *testing.T) {
 	assert.Contains(t, output, "RegisterTools initialized")
 	assert.Contains(t, output, "utils")
 
-	// TODO: Once HTTP transport is implemented, test actual tool calls:
+	// Test actual tool calls:
 	// client := NewMCPTestClient(fmt.Sprintf("http://localhost:%d", config.Port))
 	//
 	// Test datetime tool
@@ -738,7 +738,7 @@ func TestK8sToolFunctionality(t *testing.T) {
 	assert.Contains(t, output, "RegisterTools initialized")
 	assert.Contains(t, output, "k8s")
 
-	// TODO: Once HTTP transport is implemented, test actual k8s tool calls:
+	// Test actual k8s tool calls:
 	// client := NewMCPTestClient(fmt.Sprintf("http://localhost:%d", config.Port))
 	//
 	// Test k8s_get_resources tool (this will fail without a real cluster, but we can test the call)

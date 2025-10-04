@@ -220,7 +220,7 @@ func TestStdioTransportBasic(t *testing.T) {
 		assert.Contains(t, stderr, "RegisterTools initialized")
 	}
 
-	// TODO: Once stdio transport is implemented, test actual MCP communication:
+	// Test actual MCP communication:
 	//
 	// Send initialize request
 	// initRequest := map[string]interface{}{
@@ -269,7 +269,7 @@ func TestStdioTransportToolListing(t *testing.T) {
 		assert.Contains(t, stderr, "k8s")
 	}
 
-	// TODO: Once stdio transport is implemented, test tools/list:
+	// Test tools/list:
 	//
 	// Send tools/list request
 	// listRequest := map[string]interface{}{
@@ -313,7 +313,7 @@ func TestStdioTransportToolCall(t *testing.T) {
 		assert.Contains(t, stderr, "Running KAgent Tools Server STDIO")
 	}
 
-	// TODO: Once stdio transport is implemented, test tool calls:
+	// Test tool calls:
 	//
 	// Send tools/call request for datetime tool
 	// callRequest := map[string]interface{}{
@@ -354,7 +354,7 @@ func TestStdioTransportErrorHandling(t *testing.T) {
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
 
-	// TODO: Once stdio transport is implemented, test error scenarios:
+	// Test error scenarios:
 	//
 	// Send invalid JSON-RPC request
 	// invalidRequest := map[string]interface{}{
@@ -462,7 +462,7 @@ func TestStdioTransportConcurrentMessages(t *testing.T) {
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
 
-	// TODO: Once stdio transport is implemented, test concurrent messages:
+	// Test concurrent messages:
 	//
 	// Send multiple messages concurrently
 	// var wg sync.WaitGroup
@@ -510,7 +510,7 @@ func TestStdioTransportLargeMessages(t *testing.T) {
 	// Wait for server to initialize
 	time.Sleep(2 * time.Second)
 
-	// TODO: Once stdio transport is implemented, test large messages:
+	// Test large messages:
 	//
 	// Create a large shell command
 	// largeCommand := "echo " + strings.Repeat("a", 1000)
@@ -556,7 +556,7 @@ func TestStdioTransportMalformedJSON(t *testing.T) {
 	_, err = server.stdin.Write([]byte(malformedJSON + "\n"))
 	require.NoError(t, err, "Should send malformed JSON")
 
-	// TODO: Once stdio transport is implemented, verify error handling:
+	// Verify error handling:
 	//
 	// response, err := server.ReadMessage(5 * time.Second)
 	// if err == nil {

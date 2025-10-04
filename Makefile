@@ -114,6 +114,7 @@ run: docker-build
 retag: docker-build helm-version
 	@echo "Check Kind cluster $(KIND_CLUSTER_NAME) exists"
 	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || bash -c $(KIND_CREATE_CMD)
+	bash ./scripts/kind/setup-kind.sh
 	@echo "Retagging tools image to $(RETAGGED_TOOLS_IMG)"
 	docker tag $(TOOLS_IMG) $(RETAGGED_TOOLS_IMG)
 	kind load docker-image --name $(KIND_CLUSTER_NAME) $(RETAGGED_TOOLS_IMG)

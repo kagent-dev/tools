@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -169,9 +171,20 @@ func (ts *TestServer) Stop() error {
 }
 
 // MCPClient represents a client for communicating with the MCP server
-// TODO: Update to use new SDK client when available
+// Uses official github.com/modelcontextprotocol/go-sdk v1.0.0
 type MCPClient struct {
-	// client *client.Client // TODO: Replace with new SDK client
+	client    *mcp.Client
+	session   *mcp.ClientSession
+	serverURL string
+	timeout   time.Duration
+	logger    *slog.Logger
+}
+
+// MCPClientOptions configures the MCPClient
+type MCPClientOptions struct {
+	ServerURL string
+	Timeout   time.Duration
+	Logger    *slog.Logger
 }
 
 // InstallKAgentTools installs KAgent Tools using helm in the specified namespace
@@ -251,44 +264,206 @@ func InstallKAgentTools(namespace string, releaseName string) {
 	Expect(nodePort).To(Equal("30885"))
 }
 
-// GetMCPClient creates a new MCP client configured for the e2e test environment
-// TODO: Implement with new SDK client functionality when available
-func GetMCPClient() (*MCPClient, error) {
-	// Placeholder implementation - needs to be updated to use new SDK client
-	return nil, fmt.Errorf("MCP client functionality not yet implemented with new SDK")
+// NewMCPClient creates a new MCP client for E2E testing
+// Implements: T018 - Create MCPClient Struct and Constructor
+func NewMCPClient(opts MCPClientOptions) (*MCPClient, error) {
+	// Validate ServerURL
+	if opts.ServerURL == "" {
+		return nil, fmt.Errorf("invalid server URL: empty")
+	}
+	if !strings.HasPrefix(opts.ServerURL, "http://") && !strings.HasPrefix(opts.ServerURL, "https://") {
+		return nil, fmt.Errorf("invalid server URL: %s (must start with http:// or https://)", opts.ServerURL)
+	}
+
+	// Validate Timeout
+	if opts.Timeout <= 0 {
+		return nil, fmt.Errorf("timeout must be > 0")
+	}
+
+	// Use provided logger or create default
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	// Create MCP SDK client
+	client := mcp.NewClient(&mcp.Implementation{
+		Name:    "kagent-tools-e2e-client",
+		Version: "1.0.0",
+	}, nil)
+
+	return &MCPClient{
+		client:    client,
+		serverURL: opts.ServerURL,
+		timeout:   opts.Timeout,
+		logger:    logger,
+	}, nil
 }
 
-// listTools calls the tools/list method to get available tools
-// TODO: Implement with new SDK client
+// Connect establishes connection to MCP server
+// Implements: T019 - Implement MCPClient Connect Method
+func (c *MCPClient) Connect(ctx context.Context) error {
+	if c.session != nil {
+		return fmt.Errorf("client already connected")
+	}
+
+	// Create HTTP transport for SSE endpoint
+	transport := createHTTPTransport(c.serverURL)
+
+	// Connect to server
+	session, err := c.client.Connect(ctx, transport, nil)
+	if err != nil {
+		return fmt.Errorf("failed to connect to MCP server: %w", err)
+	}
+
+	c.session = session
+	c.logger.Info("MCP client connected", "serverURL", c.serverURL)
+	return nil
+}
+
+// Close closes the MCP session
+// Implements: T020 - Implement MCPClient Close Method
+func (c *MCPClient) Close() error {
+	if c.session == nil {
+		return nil // Already closed or never connected
+	}
+
+	err := c.session.Close()
+	c.session = nil
+
+	if err != nil {
+		return fmt.Errorf("failed to close MCP session: %w", err)
+	}
+
+	c.logger.Info("MCP client closed")
+	return nil
+}
+
+// ListTools retrieves available tools from server
+// Implements: T021 - Implement MCPClient ListTools Method
+func (c *MCPClient) ListTools(ctx context.Context) ([]*mcp.Tool, error) {
+	if c.session == nil {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	var tools []*mcp.Tool
+	for tool, err := range c.session.Tools(ctx, nil) {
+		if err != nil {
+			return nil, fmt.Errorf("failed to list tools: %w", err)
+		}
+		tools = append(tools, tool)
+	}
+
+	c.logger.Info("Listed MCP tools", "count", len(tools))
+	return tools, nil
+}
+
+// CallTool executes a tool with parameters
+// Implements: T022 - Implement MCPClient CallTool Method
+func (c *MCPClient) CallTool(ctx context.Context, name string, args map[string]any) (*mcp.CallToolResult, error) {
+	if c.session == nil {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	// Set timeout if not already in context
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	result, err := c.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      name,
+		Arguments: args,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("tool call failed: %w", err)
+	}
+
+	c.logger.Info("Tool called", "name", name, "isError", result.IsError)
+	return result, nil
+}
 
 // k8sListResources calls the k8s_get_resources tool
-// TODO: Implement with new SDK client
+// Implements: T023 - Implement k8sListResources Method
 func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
-	return nil, fmt.Errorf("k8sListResources not yet implemented with new SDK")
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	return c.CallTool(ctx, "k8s_get_resources", map[string]any{
+		"resource_type": resourceType,
+		"namespace":     "default",
+	})
 }
 
 // helmListReleases calls the helm_list_releases tool
-// TODO: Implement with new SDK client
+// Implements: T024 - Implement helmListReleases Method
 func (c *MCPClient) helmListReleases() (interface{}, error) {
-	return nil, fmt.Errorf("helmListReleases not yet implemented with new SDK")
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	return c.CallTool(ctx, "helm_list_releases", map[string]any{})
 }
 
-// istioInstall calls the istio_install_istio tool
-// TODO: Implement with new SDK client
-func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
-	return nil, fmt.Errorf("istioInstall not yet implemented with new SDK")
+// istioVersion calls the istio_version tool
+// Implements: T025 - Implement istioVersion Method
+func (c *MCPClient) istioVersion() (interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	return c.CallTool(ctx, "istio_version", map[string]any{})
 }
 
-// argoRolloutsList calls the argo_rollouts_get tool to list rollouts
-// TODO: Implement with new SDK client
+// argoRolloutsList calls the argo_rollouts_list tool to list rollouts
+// Implements: T026 - Implement argoRolloutsList Method
 func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
-	return nil, fmt.Errorf("argoRolloutsList not yet implemented with new SDK")
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	return c.CallTool(ctx, "argo_rollouts_list", map[string]any{
+		"namespace": namespace,
+	})
 }
 
 // ciliumStatus calls the cilium_status_and_version tool
-// TODO: Implement with new SDK client
+// Implements: T027 - Implement ciliumStatus Method
 func (c *MCPClient) ciliumStatus() (interface{}, error) {
-	return nil, fmt.Errorf("ciliumStatus not yet implemented with new SDK")
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	return c.CallTool(ctx, "cilium_status_and_version", map[string]any{})
+}
+
+// GetMCPClient creates a new MCP client configured for the e2e test environment
+func GetMCPClient() (*MCPClient, error) {
+	return NewMCPClient(MCPClientOptions{
+		ServerURL: "http://localhost:30885/mcp",
+		Timeout:   60 * time.Second,
+		Logger:    slog.Default(),
+	})
+}
+
+// createHTTPTransport creates an HTTP transport for MCP communication
+// This helper is used by MCPClient and integration tests
+func createHTTPTransport(serverURL string) mcp.Transport {
+	// Parse the URL
+	parsedURL, err := url.Parse(serverURL)
+	if err != nil {
+		panic(fmt.Sprintf("invalid server URL: %v", err))
+	}
+
+	// Create HTTP client
+	httpClient := &http.Client{}
+
+	// Create SSE client transport using the SDK
+	// The SDK provides SSEClientTransport for HTTP/SSE communication
+	transport := &mcp.SSEClientTransport{
+		Endpoint:   parsedURL.String(),
+		HTTPClient: httpClient,
+	}
+
+	return transport
 }
 
 // Constants for default test values
