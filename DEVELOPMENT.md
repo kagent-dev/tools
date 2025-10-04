@@ -20,6 +20,24 @@ These tools enhance functionality but aren't required for basic development:
 - `istioctl` - Istio service mesh CLI for istio tools
 - `cilium` - Cilium CLI for cilium tools
 
+### MCP Tools
+```json
+{
+    "mcpServers": {
+        "kagent-tools": {
+            "command": "kagent-tools",
+            "args": ["--stdio", "--kubeconfig", "~/.kube/config", "--tools", "k8s,helm,istio,utils"]
+        },
+        "go-sdk-docs": {
+            "url": "https://gitmcp.io/modelcontextprotocol/go-sdk"
+        },
+        "modelcontextprotocol-docs": {
+            "url": "https://gitmcp.io/modelcontextprotocol/modelcontextprotocol"
+        }
+    }
+}
+```
+
 ## Project Structure
 
 ```
@@ -157,7 +175,7 @@ package category
 
 import (
     "context"
-    "github.com/mark3labs/mcp-go/pkg/mcp"
+    "github.com/modelcontextprotocol/go-sdk/src/go/mcp"
 )
 
 type Tools struct {
@@ -169,11 +187,33 @@ func NewTools() *Tools {
 }
 
 func (t *Tools) RegisterTools(server *mcp.Server) {
-    server.RegisterTool("tool_name", t.handleTool)
+    tool := mcp.NewTool("tool_name",
+        mcp.WithDescription("Description of what this tool does"),
+        mcp.WithString("param1",
+            mcp.Required(),
+            mcp.Description("Description of parameter 1"),
+        ),
+        mcp.WithBool("param2",
+            mcp.Description("Optional boolean parameter"),
+        ),
+    )
+    server.AddTool(tool, t.handleTool)
 }
 
-func (t *Tools) handleTool(ctx context.Context, params map[string]interface{}) (*mcp.ToolResult, error) {
-    // implementation
+func (t *Tools) handleTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    // Parse required parameters with type safety
+    param1, err := request.RequireString("param1")
+    if err != nil {
+        return mcp.NewToolResultError(err.Error()), nil
+    }
+    
+    // Parse optional parameters
+    param2, _ := request.GetBool("param2")
+    
+    // Tool implementation logic here
+    result := fmt.Sprintf("Processing %s with flag %v", param1, param2)
+    
+    return mcp.NewToolResultText(result), nil
 }
 ```
 
@@ -250,10 +290,6 @@ func TestToolFunction(t *testing.T) {
 
 ```go
 func TestIntegration(t *testing.T) {
-    if testing.Short() {
-        t.Skip("skipping integration test in short mode")
-    }
-    
     // Setup test environment
     ctx := context.Background()
     tools := NewTools()

@@ -64,10 +64,31 @@ func TestGet(t *testing.T) {
 }
 
 func TestInit(t *testing.T) {
-	assert.NotPanics(t, func() { Init(false) })
-	assert.NotPanics(t, func() { Init(true) })
+	assert.NotPanics(t, func() { Init(false, "info") })
+	assert.NotPanics(t, func() { Init(true, "debug") })
 }
 
 func TestSync(t *testing.T) {
 	assert.NotPanics(t, Sync)
+}
+
+func TestParseLogLevel(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected slog.Level
+	}{
+		{"debug", slog.LevelDebug},
+		{"info", slog.LevelInfo},
+		{"warn", slog.LevelWarn},
+		{"error", slog.LevelError},
+		{"invalid", slog.LevelInfo}, // default to info
+		{"", slog.LevelInfo},        // default to info
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := parseLogLevel(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
