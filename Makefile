@@ -193,6 +193,12 @@ helm-install: helm-version
 helm-publish: helm-version
 	helm push $(HELM_DIST_FOLDER)/kagent-tools-$(VERSION).tgz $(HELM_REPO)/tools/helm
 
+.PHONY: helm-test
+helm-test: helm-version
+	mkdir -p tmp
+	helm plugin ls | grep unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git
+	helm unittest helm/kagent-tools
+
 .PHONY: create-kind-cluster
 create-kind-cluster:
 	docker pull kindest/node:v$(KIND_IMAGE_VERSION) || true

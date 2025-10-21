@@ -50,6 +50,29 @@ securityContext: {}
   # readOnlyRootFilesystem: true
   # runAsNonRoot: true
   # runAsUser: 1000
+  
+# Node taints which will be tolerated for Pod.
+tolerations: []
+
+# Node labels to match for Pod.
+nodeSelector: {}
+
+# Affinity settings for Pod.
+affinity: {}
+#  nodeAffinity:
+#    requiredDuringSchedulingIgnoredDuringExecution:
+#      nodeSelectorTerms:
+#        - matchExpressions:
+#            - key: kubernetes.io/e2e-az-name
+#              operator: In
+#              values:
+#                - e2e-az1
+
+# Topology spread constraints for Pod.
+topologySpreadConstraints: []
+#  - maxSkew: 1
+#    topologyKey: topology.kubernetes.io/zone
+#    whenUnsatisfiable: DoNotSchedule
 
 otel:
   tracing:
