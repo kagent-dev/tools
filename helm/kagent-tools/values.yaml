@@ -5,7 +5,10 @@ global:
   tag: ""
 
 tools:
+  # log level
   loglevel: "debug"
+  # comma separated list of tools to filter
+  filter: utils,k8s,argo,helm,istio,cilium,prometheus
   image:
     registry: ghcr.io
     repository: kagent-dev/kagent/tools

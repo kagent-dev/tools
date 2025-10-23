@@ -24,12 +24,11 @@ import (
 	"github.com/kagent-dev/tools/pkg/k8s"
 	"github.com/kagent-dev/tools/pkg/prometheus"
 	"github.com/kagent-dev/tools/pkg/utils"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-
-	"github.com/mark3labs/mcp-go/server"
 )
 
 var (
@@ -37,6 +36,7 @@ var (
 	stdio       bool
 	tools       []string
 	kubeconfig  *string
+	logLevel    string
 	showVersion bool
 
 	// These variables should be set during build time using -ldflags
@@ -54,6 +54,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8084, "Port to run the server on")
+	rootCmd.Flags().StringVarP(&logLevel, "log-level", "l", "info", "Log level")
 	rootCmd.Flags().BoolVar(&stdio, "stdio", false, "Use stdio for communication instead of HTTP")
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
@@ -67,7 +68,7 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		logger.Get().Error("Failed to execute root command", "error", err)
 		os.Exit(1)
 	}
 }
@@ -89,7 +90,7 @@ func run(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	logger.Init(stdio)
+	logger.Init(stdio, logLevel)
 	defer logger.Sync()
 
 	// Setup context with cancellation for graceful shutdown
@@ -122,13 +123,13 @@ func run(cmd *cobra.Command, args []string) {
 
 	logger.Get().Info("Starting "+Name, "version", Version, "git_commit", GitCommit, "build_date", BuildDate)
 
-	mcp := server.NewMCPServer(
-		Name,
-		Version,
-	)
+	mcpServer := mcp.NewServer(&mcp.Implementation{
+		Name:    Name,
+		Version: Version,
+	}, nil)
 
 	// Register tools
-	registerMCP(mcp, tools, *kubeconfig)
+	registerMCP(mcpServer, tools, *kubeconfig)
 
 	// Create wait group for server goroutines
 	var wg sync.WaitGroup
@@ -145,12 +146,10 @@ func run(cmd *cobra.Command, args []string) {
 	if stdio {
 		go func() {
 			defer wg.Done()
-			runStdioServer(ctx, mcp)
+			runStdioServer(ctx, mcpServer)
 		}()
 	} else {
-		sseServer := server.NewStreamableHTTPServer(mcp,
-			server.WithHeartbeatInterval(30*time.Second),
-		)
+		// HTTP transport implemented using MCP SDK SSE handler
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()
@@ -175,10 +174,14 @@ func run(cmd *cobra.Command, args []string) {
 			}
 		})
 
-		// Handle all other routes with the MCP server wrapped in telemetry middleware
-		mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			sseServer.ServeHTTP(w, r)
-		})))
+		// MCP HTTP transport using SSE handler (2024-11-05 spec)
+		sseHandler := mcp.NewSSEHandler(func(request *http.Request) *mcp.Server {
+			// Return the server instance for each request
+			return mcpServer
+		}, nil) // nil options uses defaults
+
+		// Mount the MCP handler with telemetry middleware
+		mux.Handle("/mcp", telemetry.HTTPMiddleware(sseHandler))
 
 		httpServer = &http.Server{
 			Addr:    fmt.Sprintf(":%d", port),
@@ -276,22 +279,45 @@ func generateRuntimeMetrics() string {
 	return metrics.String()
 }
 
-func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
+func runStdioServer(ctx context.Context, mcpServer *mcp.Server) {
+	tracer := otel.Tracer("kagent-tools/stdio")
+	ctx, span := tracer.Start(ctx, "stdio.server.run")
+	defer span.End()
+
 	logger.Get().Info("Running KAgent Tools Server STDIO:", "tools", strings.Join(tools, ","))
-	stdioServer := server.NewStdioServer(mcp)
-	if err := stdioServer.Listen(ctx, os.Stdin, os.Stdout); err != nil {
-		logger.Get().Info("Stdio server stopped", "error", err)
+
+	// Create stdio transport - uses stdin/stdout for JSON-RPC communication
+	stdioTransport := &mcp.StdioTransport{}
+
+	span.AddEvent("stdio.transport.starting")
+
+	// Run the server on the stdio transport
+	// This blocks until the context is cancelled or an error occurs
+	if err := mcpServer.Run(ctx, stdioTransport); err != nil {
+		// Check if the error is due to context cancellation (normal shutdown)
+		if !errors.Is(err, context.Canceled) {
+			logger.Get().Error("Stdio server error", "error", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Stdio server error")
+		} else {
+			span.AddEvent("stdio.server.cancelled")
+			logger.Get().Info("Stdio server cancelled")
+		}
+		return
 	}
+
+	span.AddEvent("stdio.server.shutdown")
+	logger.Get().Info("Stdio server stopped")
 }
 
-func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string) {
+func registerMCP(mcpServer *mcp.Server, enabledToolProviders []string, kubeconfig string) {
 	// A map to hold tool providers and their registration functions
-	toolProviderMap := map[string]func(*server.MCPServer){
+	toolProviderMap := map[string]func(*mcp.Server) error{
 		"argo":       argo.RegisterTools,
 		"cilium":     cilium.RegisterTools,
 		"helm":       helm.RegisterTools,
 		"istio":      istio.RegisterTools,
-		"k8s":        func(s *server.MCPServer) { k8s.RegisterTools(s, nil, kubeconfig) },
+		"k8s":        func(s *mcp.Server) error { return k8s.RegisterTools(s, nil, kubeconfig) },
 		"prometheus": prometheus.RegisterTools,
 		"utils":      utils.RegisterTools,
 	}
@@ -304,7 +330,9 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 	}
 	for _, toolProviderName := range enabledToolProviders {
 		if registerFunc, ok := toolProviderMap[toolProviderName]; ok {
-			registerFunc(mcp)
+			if err := registerFunc(mcpServer); err != nil {
+				logger.Get().Error("Failed to register tool provider", "provider", toolProviderName, "error", err)
+			}
 		} else {
 			logger.Get().Error("Unknown tool specified", "provider", toolProviderName)
 		}

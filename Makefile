@@ -114,6 +114,7 @@ run: docker-build
 retag: docker-build helm-version
 	@echo "Check Kind cluster $(KIND_CLUSTER_NAME) exists"
 	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || bash -c $(KIND_CREATE_CMD)
+	bash ./scripts/kind/setup-kind.sh
 	@echo "Retagging tools image to $(RETAGGED_TOOLS_IMG)"
 	docker tag $(TOOLS_IMG) $(RETAGGED_TOOLS_IMG)
 	kind load docker-image --name $(KIND_CLUSTER_NAME) $(RETAGGED_TOOLS_IMG)
@@ -178,9 +179,10 @@ helm-uninstall:
 	helm uninstall kagent --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
 
 .PHONY: helm-install
-helm-install: helm-version
+helm-install: helm-version retag
+	#delete first to allow testing with kagent
+	helm template kagent-tools ./helm/kagent-tools --namespace kagent | kubectl --namespace kagent delete -f - || :
 	helm $(HELM_ACTION) kagent-tools ./helm/kagent-tools \
-		--kube-context kind-$(KIND_CLUSTER_NAME) \
 		--namespace kagent \
 		--create-namespace \
 		--history-max 2    \
@@ -244,12 +246,12 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v1.63.4
+GOLANGCI_LINT_VERSION ?= v2.5.0
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
