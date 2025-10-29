@@ -77,6 +77,38 @@ func handleGetCurrentDateTimeTool(ctx context.Context, request *mcp.CallToolRequ
 	}, nil
 }
 
+// handleShellTool handles the shell tool MCP request
+func handleShellTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	command, ok := args["command"].(string)
+	if !ok || command == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "command parameter is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	params := shellParams{Command: command}
+	result, err := shellTool(ctx, params)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
+			IsError: true,
+		}, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
+}
+
 func RegisterTools(s *mcp.Server) error {
 	logger.Get().Info("RegisterTools initialized")
 
@@ -94,36 +126,7 @@ func RegisterTools(s *mcp.Server) error {
 			},
 			Required: []string{"command"},
 		},
-	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var args map[string]interface{}
-		if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
-				IsError: true,
-			}, nil
-		}
-
-		command, ok := args["command"].(string)
-		if !ok || command == "" {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: "command parameter is required"}},
-				IsError: true,
-			}, nil
-		}
-
-		params := shellParams{Command: command}
-		result, err := shellTool(ctx, params)
-		if err != nil {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
-				IsError: true,
-			}, nil
-		}
-
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: result}},
-		}, nil
-	})
+	}, handleShellTool)
 
 	// Register datetime tool
 	s.AddTool(&mcp.Tool{

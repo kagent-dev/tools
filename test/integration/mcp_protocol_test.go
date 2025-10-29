@@ -206,8 +206,8 @@ func TestMCPToolSchemaValidation(t *testing.T) {
 		Description: "A tool with strict schema",
 	}
 	strictHandler := func(ctx context.Context, req *mcp.CallToolRequest, in struct {
-		RequiredField string `json:"required_field" jsonschema:"required"`
-		NumberField   int    `json:"number_field" jsonschema:"minimum=0,maximum=100"`
+		RequiredField string `json:"required_field" jsonschema:"required,description,A required field"`
+		NumberField   int    `json:"number_field" jsonschema:"minimum,0,maximum,100,description,A number field"`
 	}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Valid input"}},

@@ -68,7 +68,7 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		logger.Get().Error("Failed to execute root command", "error", err)
+		logger.Get().Error("Failed to start tools mcp server", "error", err)
 		os.Exit(1)
 	}
 }

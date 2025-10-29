@@ -73,7 +73,7 @@ func (ts *TestServer) Start(ctx context.Context, config TestServerConfig) error 
 	ts.cancel = cancel
 
 	// Start server process
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 	ts.cmd = exec.CommandContext(ctx, binaryPath, args...)
 	ts.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
 
@@ -790,7 +790,7 @@ func TestAllToolCategories(t *testing.T) {
 
 // Helper function to ensure binary exists before running tests
 func init() {
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
 		// Try to build the binary
 		cmd := exec.Command("make", "build")

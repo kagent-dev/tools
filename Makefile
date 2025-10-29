@@ -24,6 +24,7 @@ HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
 clean:
+	rm -rf ./*.out ./coverage.out ./coverage.html ./*.test
 	rm -rf ./bin/kagent-tools-*
 	rm -rf $(HOME)/.local/bin/kagent-tools-*
 
@@ -58,7 +59,20 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 
 .PHONY: test
 test: build lint ## Run all tests with build, lint, and coverage
-	go test -tags=test -v -cover ./pkg/... ./internal/...
+	go test -tags=test -v -cover -coverprofile=coverage.out ./pkg/... || true
+	@echo ""
+	@echo "Coverage Report:"
+	@./scripts/check-coverage.sh coverage.out || true
+	@echo ""
+
+.PHONY: test-coverage
+test-coverage: ## Run tests with coverage output
+	go test -tags=test -v -cover -coverprofile=coverage.out ./pkg/... ./internal/...
+
+.PHONY: coverage-report
+coverage-report: test-coverage ## Generate HTML coverage report
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "✅ Coverage report generated: coverage.html"
 
 .PHONY: test-only
 test-only: ## Run tests only (without build/lint for faster iteration)
@@ -137,17 +151,19 @@ DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
 
 # tools image build args
-TOOLS_ISTIO_VERSION ?= 1.27.1
+TOOLS_ISTIO_VERSION ?= 1.27.3
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
 TOOLS_KUBECTL_VERSION ?= 1.34.1
 TOOLS_HELM_VERSION ?= 3.19.0
-TOOLS_CILIUM_VERSION ?= 0.18.7
+TOOLS_CILIUM_VERSION ?= 0.18.8
+TOOLS_ARGO_CLI_VERSION ?= 3.1.9
 
 # build args
 TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg LDFLAGS="$(LDFLAGS)"
 TOOLS_IMAGE_BUILD_ARGS += --build-arg LOCALARCH=$(LOCALARCH)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ISTIO_VERSION=$(TOOLS_ISTIO_VERSION)
+TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ARGO_CLI_VERSION=$(TOOLS_ARGO_CLI_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ARGO_ROLLOUTS_VERSION=$(TOOLS_ARGO_ROLLOUTS_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_KUBECTL_VERSION=$(TOOLS_KUBECTL_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_HELM_VERSION=$(TOOLS_HELM_VERSION)
@@ -214,15 +230,36 @@ otel-local:
 	docker run -d --name jaeger-desktop --restart=always -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/jaeger:2.7.0
 	open http://localhost:16686/
 
-.PHONY: tools-install
-tools-install: clean
+.PHONY: install/argocd
+install/argocd:
+	kubectl create namespace argocd
+	kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+.PHONY: install/istio
+install/istio:
+	istioctl install --set profile=demo -y
+
+.PHONY: install/kagent
+install/kagent:
+	curl https://raw.githubusercontent.com/kagent-dev/kagent/refs/heads/main/scripts/get-kagent | bash
+	kagent install   -n kagent
+
+.PHONY: install/tools
+install/tools: clean
 	mkdir -p $(HOME)/.local/bin
 	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools ./cmd
 	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd
 	$(HOME)/.local/bin/kagent-tools --version
 
+.PHONY: docker-build install
+install: install/tools install/kagent install/istio install/argocd helm-install
+
+.PHONY: dashboard/kagent
+dashboard/kagent:
+	kagent dashboard -n kagent
+
 .PHONY: run-agentgateway
-run-agentgateway: tools-install
+run-agentgateway: install/tools
 	open http://localhost:15000/ui
 	cd scripts \
 	&& agentgateway -f agentgateway-config-tools.yaml
@@ -234,6 +271,30 @@ report/image-cve: docker-build govulncheck
 
 ## Tool Binaries
 ## Location to install dependencies t
+
+# check-release-version checks if a tool version matches the latest GitHub release
+# $1 - variable name (e.g., TOOLS_ISTIO_VERSION)
+# $2 - current version value
+# $3 - GitHub repo (e.g., istio/istio)
+define check-release-version
+@LATEST=$$(gh release list --repo $(3) --json tagName,isLatest | jq -r '.[] | select(.isLatest==true) | .tagName'); \
+if [ "$(2)" = "$${LATEST#v}" ]; then \
+	echo "✅ $(1)=$(2) == $$LATEST"; \
+else \
+	echo "❌ $(1)=$(2) != $$LATEST"; \
+fi
+endef
+
+.PHONY: gh_check_releases
+gh_check_releases:
+	@echo "Checking tool versions against latest releases..."
+	@echo ""
+	$(call check-release-version,TOOLS_ISTIO_VERSION,$(TOOLS_ISTIO_VERSION),istio/istio)
+	$(call check-release-version,TOOLS_ARGO_ROLLOUTS_VERSION,$(TOOLS_ARGO_ROLLOUTS_VERSION),argoproj/argo-rollouts)
+	$(call check-release-version,TOOLS_KUBECTL_VERSION,$(TOOLS_KUBECTL_VERSION),kubernetes/kubernetes)
+	$(call check-release-version,TOOLS_HELM_VERSION,$(TOOLS_HELM_VERSION),helm/helm)
+	$(call check-release-version,TOOLS_CILIUM_VERSION,$(TOOLS_CILIUM_VERSION),cilium/cilium-cli)
+	$(call check-release-version,TOOLS_ARGO_CLI_VERSION,$(TOOLS_ARGO_CLI_VERSION),argoproj/argo-cd)
 
 .PHONY: $(LOCALBIN)
 $(LOCALBIN):

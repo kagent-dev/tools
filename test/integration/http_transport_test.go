@@ -66,7 +66,7 @@ func (s *HTTPTestServer) Start(ctx context.Context, config HTTPTestServerConfig)
 	s.cancel = cancel
 
 	// Start server process
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 	s.cmd = exec.CommandContext(ctx, binaryPath, args...)
 	s.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
 

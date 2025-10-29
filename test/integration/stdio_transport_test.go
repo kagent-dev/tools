@@ -32,7 +32,7 @@ func NewStdioTestServer() *StdioTestServer {
 
 // Start starts the stdio test server
 func (s *StdioTestServer) Start(ctx context.Context, tools []string) error {
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 
 	// Build command arguments
 	args := []string{"--stdio"}

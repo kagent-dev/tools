@@ -6,6 +6,9 @@
     <a href="https://github.com/kagent-dev/tools/actions/workflows/ci.yaml">
       <img src="https://github.com/kagent-dev/tools/actions/workflows/ci.yaml/badge.svg" alt="Build Status" height="20">
     </a>
+    <a href="coverage.md">
+      <img src="https://img.shields.io/badge/Coverage-73%25-yellow.svg?style=flat" alt="Test Coverage">
+    </a>
       <a href="https://opensource.org/licenses/Apache-2.0">
       <img src="https://img.shields.io/badge/License-Apache2.0-brightgreen.svg?style=flat" alt="License: Apache 2.0">
     </a>
@@ -340,8 +343,15 @@ Potential areas for future improvement:
 
 When adding new tools or modifying existing ones:
 1. Follow the existing code structure and naming conventions
-2. Add comprehensive error handling
-3. Include proper MCP tool registration
-4. Update this README with new tool documentation
-5. Add appropriate tests
-6. Ensure backward compatibility with existing tools
+2. Write tests for all new tools 
+3. Implement type-safe input validation for all parameters
+4. Add comprehensive error handling with structured logging
+5. Use the official MCP SDK for all tool registrations
+6. Maintain modular package design (tools in `pkg/` subdirectories)
+7. Update this README with new tool documentation
+8. Ensure minimum 80% test coverage
+9. Ensure backward compatibility with existing tools
+
+For detailed development guidelines, see:
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Development environment and workflow
+- [CONTRIBUTION.md](CONTRIBUTION.md) - Contribution process and standards

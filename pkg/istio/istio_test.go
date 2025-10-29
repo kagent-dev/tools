@@ -3,6 +3,7 @@ package istio
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
@@ -477,6 +478,55 @@ func TestHandleWaypointApply(t *testing.T) {
 		request := &mcp.CallToolRequest{
 			Params: &mcp.CallToolParamsRaw{
 				Arguments: json.RawMessage(`{}`),
+			},
+		}
+
+		result, err := handleWaypointApply(ctx, request)
+
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+
+	t.Run("apply waypoint with enroll namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default", "--enroll-namespace"}, "Waypoint applied and enrolled", nil)
+
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		args := map[string]interface{}{
+			"namespace":        "default",
+			"enroll_namespace": "true",
+		}
+		argsJSON, _ := json.Marshal(args)
+
+		request := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: argsJSON,
+			},
+		}
+
+		result, err := handleWaypointApply(ctx, request)
+
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("istioctl command failure", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default"}, "", errors.New("istioctl failed"))
+
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		args := map[string]interface{}{
+			"namespace": "default",
+		}
+		argsJSON, _ := json.Marshal(args)
+
+		request := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: argsJSON,
 			},
 		}
 

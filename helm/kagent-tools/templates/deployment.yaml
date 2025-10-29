@@ -70,9 +70,14 @@ spec:
             - name: http-tools
               containerPort: {{ .Values.service.ports.tools.targetPort }}
               protocol: TCP
+          volumeMounts:
+            - name: home
+              mountPath: /home/nonroot
           readinessProbe:
             tcpSocket:
               port: http-tools
             initialDelaySeconds: 15
             periodSeconds: 15
-
+      volumes:
+        - name: home
+          emptyDir: {}

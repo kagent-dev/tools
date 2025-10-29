@@ -466,6 +466,108 @@ func handleHelmRepoUpdate(ctx context.Context, request *mcp.CallToolRequest) (*m
 	}, nil
 }
 
+// Helm template
+func handleHelmTemplate(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	name, nameOk := args["name"].(string)
+	chart, chartOk := args["chart"].(string)
+	if !nameOk || name == "" || !chartOk || chart == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "name and chart parameters are required"}},
+			IsError: true,
+		}, nil
+	}
+
+	// Validate release name
+	if err := security.ValidateHelmReleaseName(name); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid release name: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	namespace := ""
+	if ns, ok := args["namespace"].(string); ok {
+		namespace = ns
+	}
+
+	// Validate namespace if provided
+	if namespace != "" {
+		if err := security.ValidateNamespace(namespace); err != nil {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid namespace: %v", err)}},
+				IsError: true,
+			}, nil
+		}
+	}
+
+	version := ""
+	if ver, ok := args["version"].(string); ok {
+		version = ver
+	}
+
+	values := ""
+	if val, ok := args["values"].(string); ok {
+		values = val
+	}
+
+	// Validate values file path if provided
+	if values != "" {
+		if err := security.ValidateFilePath(values); err != nil {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid values file path: %v", err)}},
+				IsError: true,
+			}, nil
+		}
+	}
+
+	setValues := ""
+	if set, ok := args["set"].(string); ok {
+		setValues = set
+	}
+
+	cmdArgs := []string{"template", name, chart}
+
+	if namespace != "" {
+		cmdArgs = append(cmdArgs, "-n", namespace)
+	}
+
+	if version != "" {
+		cmdArgs = append(cmdArgs, "--version", version)
+	}
+
+	if values != "" {
+		cmdArgs = append(cmdArgs, "-f", values)
+	}
+
+	if setValues != "" {
+		// Split multiple set values by comma
+		setValuesList := strings.Split(setValues, ",")
+		for _, setValue := range setValuesList {
+			cmdArgs = append(cmdArgs, "--set", strings.TrimSpace(setValue))
+		}
+	}
+
+	result, err := runHelmCommand(ctx, cmdArgs)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm template command failed: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
+}
+
 // Register Helm tools
 func RegisterTools(s *mcp.Server) error {
 	logger.Get().Info("RegisterTools initialized")
@@ -648,6 +750,38 @@ func RegisterTools(s *mcp.Server) error {
 			Type: "object",
 		},
 	}, handleHelmRepoUpdate)
+
+	// Register helm_template tool
+	s.AddTool(&mcp.Tool{
+		Name:        "helm_template",
+		Description: "Render Helm chart templates locally",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"name": {
+					Type:        "string",
+					Description: "The name of the release",
+				},
+				"chart": {
+					Type:        "string",
+					Description: "The chart to template",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the release",
+				},
+				"version": {
+					Type:        "string",
+					Description: "The version of the chart to template",
+				},
+				"set": {
+					Type:        "string",
+					Description: "Set values on the command line (e.g., 'key1=val1,key2=val2')",
+				},
+			},
+			Required: []string{"name", "chart"},
+		},
+	}, handleHelmTemplate)
 
 	return nil
 }

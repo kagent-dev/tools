@@ -573,3 +573,50 @@ exp1     Running  5m`
 		assert.Equal(t, []string{"argo", "rollouts", "list", "experiments", "-n", "argo-rollouts"}, callLog[0].Args)
 	})
 }
+
+func TestGatewayPluginInstallFlowAndLogs(t *testing.T) {
+	// should_install=true triggers configureGatewayPlugin with kubectl apply
+	mock := cmd.NewMockShellExecutor()
+	// First, get configmap returns some text without the plugin marker
+	mock.AddCommandString("kubectl", []string{"get", "configmap", "argo-rollouts-config", "-n", "argo-rollouts", "-o", "yaml"}, "not configured", nil)
+	// Then, apply is called with a temp file path; use partial matcher
+	mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "config applied", nil)
+	ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+	req := createMCPRequest(map[string]interface{}{
+		"should_install": "true",
+		"version":        "0.5.0",
+		"namespace":      "argo-rollouts",
+	})
+	res, err := handleVerifyGatewayPlugin(ctx, req)
+	require.NoError(t, err)
+	assert.NotNil(t, res)
+
+	// Now test logs parser success path
+	mock2 := cmd.NewMockShellExecutor()
+	logs := `... Downloading plugin argoproj-labs/gatewayAPI from: https://example/v1.2.3/gatewayapi-plugin-darwin-arm64"
+Download complete, it took 1.23s`
+	mock2.AddCommandString("kubectl", []string{"logs", "-n", "argo-rollouts", "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}, logs, nil)
+	ctx2 := cmd.WithShellExecutor(context.Background(), mock2)
+	res2, err := handleCheckPluginLogs(ctx2, createMCPRequest(map[string]interface{}{}))
+	require.NoError(t, err)
+	assert.NotNil(t, res2)
+	content := getResultText(res2)
+	assert.Contains(t, content, "download_time")
+	assert.Contains(t, content, "darwin-arm64")
+}
+
+// TestRegisterToolsArgo verifies that RegisterTools correctly registers all Argo tools
+func TestRegisterToolsArgo(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "test-server",
+		Version: "1.0.0",
+	}, nil)
+
+	err := RegisterTools(server)
+	require.NoError(t, err, "RegisterTools should not return an error")
+
+	// Note: In the actual implementation, we can't easily verify tool registration
+	// without accessing internal server state. This test verifies the function
+	// runs without errors, which covers the registration logic paths.
+}

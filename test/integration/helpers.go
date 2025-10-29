@@ -45,5 +45,6 @@ func AssertToolExists(tools []*mcp.Tool, name string) bool {
 // getBinaryName returns the platform-specific binary name
 // Implements: T028 - Integration Test Helpers (binary resolution)
 func getBinaryName() string {
-	return "../bin/kagent-tools"
+	// Return the symlink which points to the current platform binary
+	return "../../bin/kagent-tools"
 }

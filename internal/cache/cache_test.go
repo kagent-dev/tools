@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCache(t *testing.T) {
@@ -485,4 +486,135 @@ func TestCacheOTelTracing(t *testing.T) {
 	oldSize := cache.Size()
 	InvalidateByType(CacheTypeCommand)
 	assert.True(t, oldSize > 0) // Verify we had items to clear
+}
+
+// TestInvalidateKubernetesCache tests the Kubernetes cache invalidation
+func TestInvalidateKubernetesCache(t *testing.T) {
+	// Initialize caches
+	InitCaches()
+
+	// Get the Kubernetes cache
+	kubernetesCache := GetCacheByType(CacheTypeKubernetes)
+	require.NotNil(t, kubernetesCache)
+
+	// Add some data to the Kubernetes cache
+	kubernetesCache.Set("test-key", "test-value")
+	assert.Equal(t, 1, kubernetesCache.Size())
+
+	// Invalidate Kubernetes cache
+	InvalidateKubernetesCache()
+
+	// Verify cache was cleared
+	assert.Equal(t, 0, kubernetesCache.Size())
+}
+
+// TestInvalidateHelmCache tests the Helm cache invalidation
+func TestInvalidateHelmCache(t *testing.T) {
+	// Initialize caches
+	InitCaches()
+
+	// Get the Helm cache
+	helmCache := GetCacheByType(CacheTypeHelm)
+	require.NotNil(t, helmCache)
+
+	// Add some data to the Helm cache
+	helmCache.Set("test-key", "test-value")
+	assert.Equal(t, 1, helmCache.Size())
+
+	// Invalidate Helm cache
+	InvalidateHelmCache()
+
+	// Verify cache was cleared
+	assert.Equal(t, 0, helmCache.Size())
+}
+
+// TestInvalidateIstioCache tests the Istio cache invalidation
+func TestInvalidateIstioCache(t *testing.T) {
+	// Initialize caches
+	InitCaches()
+
+	// Get the Istio cache
+	istioCache := GetCacheByType(CacheTypeIstio)
+	require.NotNil(t, istioCache)
+
+	// Add some data to the Istio cache
+	istioCache.Set("test-key", "test-value")
+	assert.Equal(t, 1, istioCache.Size())
+
+	// Invalidate Istio cache
+	InvalidateIstioCache()
+
+	// Verify cache was cleared
+	assert.Equal(t, 0, istioCache.Size())
+}
+
+// TestInvalidateCommandCache tests the Command cache invalidation
+func TestInvalidateCommandCache(t *testing.T) {
+	// Initialize caches
+	InitCaches()
+
+	// Get the Command cache
+	commandCache := GetCacheByType(CacheTypeCommand)
+	require.NotNil(t, commandCache)
+
+	// Add some data to the Command cache
+	commandCache.Set("test-key", "test-value")
+	assert.Equal(t, 1, commandCache.Size())
+
+	// Invalidate Command cache
+	InvalidateCommandCache()
+
+	// Verify cache was cleared
+	assert.Equal(t, 0, commandCache.Size())
+}
+
+// TestInvalidateCacheForCommand tests the cache invalidation based on command type
+func TestInvalidateCacheForCommand(t *testing.T) {
+	// Initialize caches
+	InitCaches()
+
+	tests := []struct {
+		name      string
+		command   string
+		cacheType CacheType
+	}{
+		{
+			name:      "kubectl command invalidates kubernetes cache",
+			command:   "kubectl",
+			cacheType: CacheTypeKubernetes,
+		},
+		{
+			name:      "helm command invalidates helm cache",
+			command:   "helm",
+			cacheType: CacheTypeHelm,
+		},
+		{
+			name:      "istioctl command invalidates istio cache",
+			command:   "istioctl",
+			cacheType: CacheTypeIstio,
+		},
+		{
+			name:      "unknown command invalidates command cache",
+			command:   "unknown-command",
+			cacheType: CacheTypeCommand,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Get the appropriate cache
+			cacheToTest := GetCacheByType(tt.cacheType)
+			require.NotNil(t, cacheToTest)
+
+			// Add data to the cache
+			cacheToTest.Set("test-key", "test-value")
+			assert.Equal(t, 1, cacheToTest.Size())
+
+			// Invalidate based on command
+			InvalidateCacheForCommand(tt.command)
+
+			// Verify cache was cleared
+			assert.Equal(t, 0, cacheToTest.Size())
+		})
+	}
 }

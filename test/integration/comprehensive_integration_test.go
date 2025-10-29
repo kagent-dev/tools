@@ -77,7 +77,7 @@ func (ts *ComprehensiveTestServer) Start(ctx context.Context, config Comprehensi
 	ts.cancel = cancel
 
 	// Start server process
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 	ts.cmd = exec.CommandContext(ctx, binaryPath, args...)
 	ts.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
 

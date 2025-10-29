@@ -33,7 +33,7 @@ func TestHTTPServerConnection(t *testing.T) {
 	}
 
 	echoHandler := func(ctx context.Context, req *mcp.CallToolRequest, in struct {
-		Message string `json:"message" jsonschema:"description=The message to echo back"`
+		Message string `json:"message" jsonschema:"description,The message to echo back"`
 	}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: in.Message}},
@@ -208,7 +208,7 @@ func TestHTTPToolExecution(t *testing.T) {
 		Description: "Echo back the message",
 	}
 	echoHandler := func(ctx context.Context, req *mcp.CallToolRequest, in struct {
-		Message string `json:"message"`
+		Message string `json:"message" jsonschema:"description,The message to echo"`
 	}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: in.Message}},
@@ -275,7 +275,7 @@ func TestHTTPErrorHandling(t *testing.T) {
 		Description: "A tool that returns errors",
 	}
 	errorHandler := func(ctx context.Context, req *mcp.CallToolRequest, in struct {
-		ShouldError bool `json:"should_error"`
+		ShouldError bool `json:"should_error" jsonschema:"description,Whether to return an error"`
 	}) (*mcp.CallToolResult, struct{}, error) {
 		if in.ShouldError {
 			return &mcp.CallToolResult{

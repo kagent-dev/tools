@@ -13,7 +13,7 @@ import (
 
 // TestBinaryExists verifies the server binary exists and is executable
 func TestBinaryExists(t *testing.T) {
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 
 	// Check if server binary exists
 	_, err := os.Stat(binaryPath)
@@ -51,7 +51,7 @@ func TestBinaryExists(t *testing.T) {
 
 // TestVersionFlag tests the version flag functionality
 func TestVersionFlag(t *testing.T) {
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 
 	// Check if server binary exists
 	_, err := os.Stat(binaryPath)
@@ -79,7 +79,7 @@ func TestVersionFlag(t *testing.T) {
 
 // TestBinaryExecutable tests that the binary is executable and starts correctly
 func TestBinaryExecutable(t *testing.T) {
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 
 	// Check if server binary exists
 	_, err := os.Stat(binaryPath)
@@ -108,7 +108,7 @@ func TestBinaryExecutable(t *testing.T) {
 // TestBuildProcess tests the build process if binary doesn't exist
 func TestBuildProcess(t *testing.T) {
 	// This test ensures the build process works correctly
-	binaryPath := "../../bin/kagent-tools-" + getBinaryName()
+	binaryPath := getBinaryName()
 
 	// If binary doesn't exist, try building it
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
