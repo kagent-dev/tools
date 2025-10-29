@@ -7,7 +7,7 @@
       <img src="https://github.com/kagent-dev/tools/actions/workflows/ci.yaml/badge.svg" alt="Build Status" height="20">
     </a>
     <a href="coverage.md">
-      <img src="https://img.shields.io/badge/Coverage-73%25-yellow.svg?style=flat" alt="Test Coverage">
+      <img src="https://img.shields.io/badge/Coverage-80%25-yellow.svg?style=flat" alt="Test Coverage">
     </a>
       <a href="https://opensource.org/licenses/Apache-2.0">
       <img src="https://img.shields.io/badge/License-Apache2.0-brightgreen.svg?style=flat" alt="License: Apache 2.0">

@@ -516,3 +516,178 @@ func TestInvalidJSONArguments(t *testing.T) {
 		assert.Contains(t, getResultText(result), "failed to parse arguments")
 	})
 }
+
+// Additional comprehensive tests for prometheus package
+
+func TestHandlePrometheusRangeQueryToolErrors(t *testing.T) {
+	t.Run("missing query parameter", func(t *testing.T) {
+		ctx := context.Background()
+		request := createCallToolRequest(map[string]interface{}{})
+
+		result, err := handlePrometheusRangeQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+
+	t.Run("invalid JSON arguments", func(t *testing.T) {
+		ctx := context.Background()
+		request := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{invalid json`),
+			},
+		}
+
+		result, err := handlePrometheusRangeQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+}
+
+func TestHandlePrometheusLabelsQueryToolErrors(t *testing.T) {
+	t.Run("HTTP error response", func(t *testing.T) {
+		client := newTestClient(createMockResponse(500, "Internal Server Error"), nil)
+		ctx := contextWithMockClient(client)
+
+		request := createCallToolRequest(map[string]interface{}{
+			"prometheus_url": "http://localhost:9090",
+		})
+
+		result, err := handlePrometheusLabelsQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+
+	t.Run("invalid JSON arguments", func(t *testing.T) {
+		ctx := context.Background()
+		request := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{invalid json`),
+			},
+		}
+
+		result, err := handlePrometheusLabelsQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+}
+
+func TestHandlePrometheusTargetsQueryToolErrors(t *testing.T) {
+	t.Run("HTTP 404 error", func(t *testing.T) {
+		client := newTestClient(createMockResponse(404, "Not Found"), nil)
+		ctx := contextWithMockClient(client)
+
+		request := createCallToolRequest(map[string]interface{}{
+			"prometheus_url": "http://localhost:9090",
+		})
+
+		result, err := handlePrometheusTargetsQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+
+	t.Run("invalid JSON arguments", func(t *testing.T) {
+		ctx := context.Background()
+		request := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{bad json`),
+			},
+		}
+
+		result, err := handlePrometheusTargetsQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+}
+
+func TestHandlePrometheusQueryToolWithValidation(t *testing.T) {
+	t.Run("invalid URL", func(t *testing.T) {
+		ctx := context.Background()
+		request := createCallToolRequest(map[string]interface{}{
+			"prometheus_url": "not a valid url",
+			"query":          "up",
+		})
+
+		result, err := handlePrometheusQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+	})
+
+	t.Run("successful query with custom URL", func(t *testing.T) {
+		mockResponse := `{
+			"status": "success",
+			"data": {
+				"resultType": "vector",
+				"result": [
+					{"metric": {"__name__": "up"}, "value": [1609459200, "1"]}
+				]
+			}
+		}`
+		client := newTestClient(createMockResponse(200, mockResponse), nil)
+		ctx := contextWithMockClient(client)
+
+		request := createCallToolRequest(map[string]interface{}{
+			"prometheus_url": "http://prometheus.example.com:9090",
+			"query":          "up",
+		})
+
+		result, err := handlePrometheusQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+	})
+}
+
+func TestHandlePrometheusRangeQueryWithCustomRange(t *testing.T) {
+	t.Run("custom time range", func(t *testing.T) {
+		mockResponse := `{
+			"status": "success",
+			"data": {
+				"resultType": "matrix",
+				"result": []
+			}
+		}`
+		client := newTestClient(createMockResponse(200, mockResponse), nil)
+		ctx := contextWithMockClient(client)
+
+		request := createCallToolRequest(map[string]interface{}{
+			"query":          "up",
+			"start_time":     "2024-01-01T00:00:00Z",
+			"end_time":       "2024-01-02T00:00:00Z",
+			"step":           "60s",
+			"prometheus_url": "http://localhost:9090",
+		})
+
+		result, err := handlePrometheusRangeQueryTool(ctx, request)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+	})
+}
+
+func TestPrometheusRegistration(t *testing.T) {
+	t.Run("register tools successfully", func(t *testing.T) {
+		server := mcp.NewServer(&mcp.Implementation{
+			Name:    "test-server",
+			Version: "v1",
+		}, nil)
+
+		err := RegisterTools(server)
+		assert.NoError(t, err)
+	})
+}

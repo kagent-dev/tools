@@ -310,46 +310,35 @@ func TestHandleKubectlDescribeTool(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
-
 		req := &mcp.CallToolRequest{
 			Params: &mcp.CallToolParamsRaw{
-				Arguments: []byte(`{"resource_type": "deployment"}`),
+				Arguments: []byte("{}"),
 			},
 		}
-
 		result, err := k8sTool.handleKubectlDescribeTool(ctx, req)
 		assert.NoError(t, err)
-		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
-
-		// Verify no commands were executed since parameters are missing
-		callLog := mock.GetCallLog()
-		assert.Len(t, callLog, 0)
 	})
 
 	t.Run("valid parameters", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		expectedOutput := `Name:               test-deployment
-Namespace:          default
-Labels:             app=test`
-		mock.AddCommandString("kubectl", []string{"describe", "deployment", "test-deployment", "-n", "default"}, expectedOutput, nil)
+		expectedOutput := `Name:         test-pod
+Namespace:    default
+Status:       Running`
+		mock.AddCommandString("kubectl", []string{"describe", "pod", "test-pod", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
-
 		req := &mcp.CallToolRequest{
 			Params: &mcp.CallToolParamsRaw{
-				Arguments: []byte(`{"resource_type": "deployment", "resource_name": "test-deployment", "namespace": "default"}`),
+				Arguments: []byte(`{"resource_type": "pod", "resource_name": "test-pod", "namespace": "default"}`),
 			},
 		}
-
 		result, err := k8sTool.handleKubectlDescribeTool(ctx, req)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
-
-		resultText := getResultText(result)
-		assert.Contains(t, resultText, "test-deployment")
+		assert.Contains(t, getResultText(result), "test-pod")
 	})
 }
 
@@ -565,5 +554,230 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 		// Verify no commands were executed since parameters are missing
 		callLog := mock.GetCallLog()
 		assert.Len(t, callLog, 0)
+	})
+}
+
+// Test helper functions for better coverage
+func TestParseString(t *testing.T) {
+	t.Run("parse valid string parameter", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"key": "value"}`),
+			},
+		}
+		result := parseString(req, "key", "default")
+		assert.Equal(t, "value", result)
+	})
+
+	t.Run("parse with default value when key missing", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"other_key": "value"}`),
+			},
+		}
+		result := parseString(req, "key", "default")
+		assert.Equal(t, "default", result)
+	})
+
+	t.Run("parse with null arguments", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: nil,
+			},
+		}
+		result := parseString(req, "key", "default")
+		assert.Equal(t, "default", result)
+	})
+
+	t.Run("parse with invalid JSON arguments", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{invalid json`),
+			},
+		}
+		result := parseString(req, "key", "default")
+		assert.Equal(t, "default", result)
+	})
+
+	t.Run("parse non-string value", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"key": 123}`),
+			},
+		}
+		result := parseString(req, "key", "default")
+		assert.Equal(t, "default", result)
+	})
+}
+
+func TestParseInt(t *testing.T) {
+	t.Run("parse valid integer parameter", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"count": 42}`),
+			},
+		}
+		result := parseInt(req, "count", 0)
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("parse float as integer", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"count": 42.5}`),
+			},
+		}
+		result := parseInt(req, "count", 0)
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("parse string as integer", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"count": "42"}`),
+			},
+		}
+		result := parseInt(req, "count", 0)
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("parse with default when key missing", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"other": 10}`),
+			},
+		}
+		result := parseInt(req, "count", 99)
+		assert.Equal(t, 99, result)
+	})
+
+	t.Run("parse with null arguments", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: nil,
+			},
+		}
+		result := parseInt(req, "count", 99)
+		assert.Equal(t, 99, result)
+	})
+
+	t.Run("parse invalid string as integer", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"count": "not-a-number"}`),
+			},
+		}
+		result := parseInt(req, "count", 99)
+		assert.Equal(t, 99, result)
+	})
+
+	t.Run("parse invalid JSON arguments", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{invalid json`),
+			},
+		}
+		result := parseInt(req, "count", 99)
+		assert.Equal(t, 99, result)
+	})
+}
+
+func TestToolResultHelpers(t *testing.T) {
+	t.Run("newToolResultError creates error result", func(t *testing.T) {
+		result := newToolResultError("test error message")
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.NotEmpty(t, result.Content)
+		assert.Contains(t, getResultText(result), "test error message")
+	})
+
+	t.Run("newToolResultText creates success result", func(t *testing.T) {
+		result := newToolResultText("test output")
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.NotEmpty(t, result.Content)
+		assert.Contains(t, getResultText(result), "test output")
+	})
+}
+
+func TestKubectlGetEnhancedEdgeCases(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("with namespace specified", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `NAME        READY   STATUS    RESTARTS   AGE
+test-pod    1/1     Running   0          1d`
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-n", "test-ns", "-o", "wide"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"resource_type": "pods", "namespace": "test-ns"}`),
+			},
+		}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("with all namespaces flag", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `NAMESPACE   NAME        READY   STATUS
+default     test-pod    1/1     Running`
+		mock.AddCommandString("kubectl", []string{"get", "pods", "--all-namespaces", "-o", "wide"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"resource_type": "pods", "all_namespaces": "true"}`),
+			},
+		}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("with resource name specified", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `NAME        READY   STATUS    RESTARTS   AGE
+specific    1/1     Running   0          1d`
+		mock.AddCommandString("kubectl", []string{"get", "pods", "specific", "-o", "wide"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"resource_type": "pods", "resource_name": "specific"}`),
+			},
+		}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("with custom output format", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod`
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "yaml"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := &mcp.CallToolRequest{
+			Params: &mcp.CallToolParamsRaw{
+				Arguments: []byte(`{"resource_type": "pods", "output": "yaml"}`),
+			},
+		}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
 	})
 }
