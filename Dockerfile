@@ -31,6 +31,7 @@ RUN curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$TOOLS_ISTIO_VERSION 
     && /downloads/istioctl --help
 
 # Install kubectl-argo-rollouts from source and fix CVE's
+# PENDING PR https://github.com/argoproj/argo-rollouts/pull/4515/files
 ARG TOOLS_ARGO_ROLLOUTS_VERSION
 RUN git clone --depth 1 https://github.com/argoproj/argo-rollouts.git -b v${TOOLS_ARGO_ROLLOUTS_VERSION}
 RUN cd argo-rollouts \

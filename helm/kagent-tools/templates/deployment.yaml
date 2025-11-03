@@ -33,7 +33,7 @@ spec:
           args:
           - "--log-level"
           - "{{ .Values.tools.loglevel }}"
-          - "--port"
+          - "--http-port"
           - "{{ .Values.service.ports.tools.targetPort }}"
           - "--tools"
           - "{{ .Values.tools.filter }}"

@@ -285,16 +285,16 @@ else \
 fi
 endef
 
-.PHONY: gh_check_releases
-gh_check_releases:
+.PHONY: check-releases
+check-releases:
 	@echo "Checking tool versions against latest releases..."
 	@echo ""
-	$(call check-release-version,TOOLS_ISTIO_VERSION,$(TOOLS_ISTIO_VERSION),istio/istio)
 	$(call check-release-version,TOOLS_ARGO_ROLLOUTS_VERSION,$(TOOLS_ARGO_ROLLOUTS_VERSION),argoproj/argo-rollouts)
-	$(call check-release-version,TOOLS_KUBECTL_VERSION,$(TOOLS_KUBECTL_VERSION),kubernetes/kubernetes)
-	$(call check-release-version,TOOLS_HELM_VERSION,$(TOOLS_HELM_VERSION),helm/helm)
-	$(call check-release-version,TOOLS_CILIUM_VERSION,$(TOOLS_CILIUM_VERSION),cilium/cilium-cli)
 	$(call check-release-version,TOOLS_ARGO_CLI_VERSION,$(TOOLS_ARGO_CLI_VERSION),argoproj/argo-cd)
+	$(call check-release-version,TOOLS_CILIUM_VERSION,$(TOOLS_CILIUM_VERSION),cilium/cilium-cli)
+	$(call check-release-version,TOOLS_ISTIO_VERSION,$(TOOLS_ISTIO_VERSION),istio/istio)
+	$(call check-release-version,TOOLS_HELM_VERSION,$(TOOLS_HELM_VERSION),helm/helm)
+	$(call check-release-version,TOOLS_KUBECTL_VERSION,$(TOOLS_KUBECTL_VERSION),kubernetes/kubernetes)
 
 .PHONY: $(LOCALBIN)
 $(LOCALBIN):
