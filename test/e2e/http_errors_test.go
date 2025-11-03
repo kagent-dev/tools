@@ -13,20 +13,36 @@ import (
 	mcphttp "github.com/kagent-dev/tools/internal/mcp/http"
 )
 
-// TestMalformedJSONRequest tests handling of invalid JSON in request body
-func TestMalformedJSONRequest(t *testing.T) {
-	server := mcphttp.NewServer(18091)
-	defer func() {
-		if err := server.Stop(context.Background()); err != nil {
-			t.Logf("error stopping server: %v", err)
-		}
-	}()
-
+// setupTestServerWithHandlers creates a test HTTP server with MCP handlers registered
+func setupTestServerWithHandlers(t *testing.T, port int) *mcphttp.Server {
+	server := mcphttp.NewServer(port)
+	
+	// Register handlers before starting server
+	requestHandler := mcphttp.NewRequestHandler(server, 100)
+	if err := requestHandler.RegisterHandlers(); err != nil {
+		t.Fatalf("Failed to register handlers: %v", err)
+	}
+	
 	if err := server.Start(context.Background()); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
+	
+	// Cleanup
+	t.Cleanup(func() {
+		if err := server.Stop(context.Background()); err != nil {
+			t.Logf("error stopping server: %v", err)
+		}
+	})
+	
+	// Give server time to start
+	time.Sleep(100 * time.Millisecond)
+	
+	return server
+}
 
-	time.Sleep(100 * time.Millisecond) // Give server time to start
+// TestMalformedJSONRequest tests handling of invalid JSON in request body
+func TestMalformedJSONRequest(t *testing.T) {
+	_ = setupTestServerWithHandlers(t, 18091)
 
 	testCases := []struct {
 		name           string

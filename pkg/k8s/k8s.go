@@ -222,13 +222,31 @@ func newToolResultText(text string) *mcp.CallToolResult {
 	}
 }
 
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
 // RegisterTools registers all k8s tools with the MCP server
 func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error {
+	return RegisterToolsWithRegistry(server, nil, llm, kubeconfig)
+}
+
+// RegisterToolsWithRegistry registers all k8s tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(server *mcp.Server, registry ToolRegistry, llm llms.Model, kubeconfig string) error {
 	logger.Get().Info("RegisterTools initialized")
 	k8sTool := NewK8sToolWithConfig(kubeconfig, llm)
 
+	// Helper function to register tool with both server and registry
+	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
+		server.AddTool(tool, handler)
+		if registry != nil {
+			registry.Register(tool, handler)
+		}
+	}
+
 	// Register k8s_get_resources tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_get_resources",
 		Description: "Get Kubernetes resources using kubectl",
 		InputSchema: &jsonschema.Schema{
@@ -260,7 +278,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleKubectlGetEnhanced)
 
 	// Register k8s_get_pod_logs tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_get_pod_logs",
 		Description: "Get logs from a Kubernetes pod",
 		InputSchema: &jsonschema.Schema{
@@ -288,7 +306,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleKubectlLogsEnhanced)
 
 	// Register k8s_apply_manifest tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_apply_manifest",
 		Description: "Apply a YAML manifest to the Kubernetes cluster",
 		InputSchema: &jsonschema.Schema{
@@ -304,7 +322,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleApplyManifest)
 
 	// Register k8s_scale tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_scale",
 		Description: "Scale a Kubernetes deployment",
 		InputSchema: &jsonschema.Schema{
@@ -328,7 +346,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleScaleDeployment)
 
 	// Register k8s_delete_resource tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_delete_resource",
 		Description: "Delete a Kubernetes resource",
 		InputSchema: &jsonschema.Schema{
@@ -352,7 +370,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleDeleteResource)
 
 	// Register k8s_get_events tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_get_events",
 		Description: "Get events from a Kubernetes namespace",
 		InputSchema: &jsonschema.Schema{
@@ -371,7 +389,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleGetEvents)
 
 	// Register k8s_execute_command tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_execute_command",
 		Description: "Execute a command in a Kubernetes pod",
 		InputSchema: &jsonschema.Schema{
@@ -399,7 +417,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleExecCommand)
 
 	// Register k8s_describe tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_describe",
 		Description: "Describe a Kubernetes resource",
 		InputSchema: &jsonschema.Schema{
@@ -423,7 +441,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 	}, k8sTool.handleKubectlDescribeTool)
 
 	// Register k8s_get_available_api_resources tool
-	server.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "k8s_get_available_api_resources",
 		Description: "Get available Kubernetes API resources",
 		InputSchema: &jsonschema.Schema{

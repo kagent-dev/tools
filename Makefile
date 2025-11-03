@@ -241,7 +241,8 @@ install/istio:
 
 .PHONY: install/kagent
 install/kagent:
-	curl https://raw.githubusercontent.com/kagent-dev/kagent/refs/heads/main/scripts/get-kagent | bash
+	@echo "Installing kagent in namespace 'kagent' ..."
+	which kagent || curl https://raw.githubusercontent.com/kagent-dev/kagent/refs/heads/main/scripts/get-kagent | bash
 	kagent install   -n kagent
 
 .PHONY: install/tools

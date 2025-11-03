@@ -555,12 +555,30 @@ func handleZtunnelConfig(ctx context.Context, request *mcp.CallToolRequest) (*mc
 	}, nil
 }
 
-// Register Istio tools
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
+// RegisterTools registers Istio tools with the MCP server
 func RegisterTools(s *mcp.Server) error {
+	return RegisterToolsWithRegistry(s, nil)
+}
+
+// RegisterToolsWithRegistry registers Istio tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
+	
+	// Helper function to register tool with both server and registry
+	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
+		s.AddTool(tool, handler)
+		if registry != nil {
+			registry.Register(tool, handler)
+		}
+	}
 
 	// Istio proxy status
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_proxy_status",
 		Description: "Get Envoy proxy status for pods, retrieves last sent and acknowledged xDS sync from Istiod to each Envoy in the mesh",
 		InputSchema: &jsonschema.Schema{
@@ -579,7 +597,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleIstioProxyStatus)
 
 	// Istio proxy config
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_proxy_config",
 		Description: "Get specific proxy configuration for a single pod",
 		InputSchema: &jsonschema.Schema{
@@ -603,7 +621,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleIstioProxyConfig)
 
 	// Istio install
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_install_istio",
 		Description: "Install Istio with a specified configuration profile",
 		InputSchema: &jsonschema.Schema{
@@ -618,7 +636,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleIstioInstall)
 
 	// Istio generate manifest
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_generate_manifest",
 		Description: "Generate Istio manifest for a given profile",
 		InputSchema: &jsonschema.Schema{
@@ -633,7 +651,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleIstioGenerateManifest)
 
 	// Istio analyze
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_analyze_cluster_configuration",
 		Description: "Analyze Istio cluster configuration for issues",
 		InputSchema: &jsonschema.Schema{
@@ -652,7 +670,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleIstioAnalyzeClusterConfiguration)
 
 	// Istio version
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_version",
 		Description: "Get Istio version information",
 		InputSchema: &jsonschema.Schema{
@@ -667,7 +685,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleIstioVersion)
 
 	// Istio remote clusters
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_remote_clusters",
 		Description: "List remote clusters registered with Istio",
 		InputSchema: &jsonschema.Schema{
@@ -677,7 +695,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleIstioRemoteClusters)
 
 	// Waypoint list
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_list_waypoints",
 		Description: "List all waypoints in the mesh",
 		InputSchema: &jsonschema.Schema{
@@ -696,7 +714,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleWaypointList)
 
 	// Waypoint generate
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_generate_waypoint",
 		Description: "Generate a waypoint resource YAML",
 		InputSchema: &jsonschema.Schema{
@@ -720,7 +738,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleWaypointGenerate)
 
 	// Waypoint apply
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_apply_waypoint",
 		Description: "Apply a waypoint resource to the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -740,7 +758,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleWaypointApply)
 
 	// Waypoint delete
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_delete_waypoint",
 		Description: "Delete a waypoint resource from the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -764,7 +782,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleWaypointDelete)
 
 	// Waypoint status
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_waypoint_status",
 		Description: "Get the status of a waypoint resource",
 		InputSchema: &jsonschema.Schema{
@@ -784,7 +802,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleWaypointStatus)
 
 	// Ztunnel config
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "istio_ztunnel_config",
 		Description: "Get the ztunnel configuration for a namespace",
 		InputSchema: &jsonschema.Schema{

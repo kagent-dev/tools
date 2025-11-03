@@ -139,21 +139,18 @@ func run(cmd *cobra.Command, args []string) {
 
 	logger.Get().Info("Starting "+Name, "version", Version, "git_commit", GitCommit, "build_date", BuildDate, "mode", map[bool]string{true: "stdio", false: "http"}[stdio])
 
+	// Create shared tool registry
+	toolRegistry := mcpinternal.NewToolRegistry()
+
 	// Create MCP server
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    Name,
 		Version: Version,
 	}, nil)
 
-	// Register tools
-	registerMCP(mcpServer, tools, *kubeconfig)
-
-	// Create wait group for server goroutines
-	var wg sync.WaitGroup
-
-	// Setup signal handling
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+	// Register tools with both MCP server and tool registry
+	registerMCP(mcpServer, toolRegistry, tools, *kubeconfig)
+	logger.Get().Info("Registered tools", "count", toolRegistry.Count())
 
 	// Select transport based on mode
 	var transport mcpinternal.Transport
@@ -162,9 +159,17 @@ func run(cmd *cobra.Command, args []string) {
 		transport = mcpinternal.NewStdioTransport(mcpServer)
 		logger.Get().Info("Using stdio transport")
 	} else {
-		transport = mcpinternal.NewHTTPTransport(mcpServer, httpPort)
+		httpTransport := mcpinternal.NewHTTPTransport(mcpServer, httpPort, toolRegistry)
+		transport = httpTransport
 		logger.Get().Info("Using HTTP transport", "port", httpPort)
 	}
+
+	// Create wait group for server goroutines
+	var wg sync.WaitGroup
+
+	// Setup signal handling
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
 	// Channel to track when transport has started
 	transportErrorChan := make(chan error, 1)
@@ -213,16 +218,16 @@ func run(cmd *cobra.Command, args []string) {
 	logger.Get().Info("Server shutdown complete")
 }
 
-func registerMCP(mcpServer *mcp.Server, enabledToolProviders []string, kubeconfig string) {
+func registerMCP(mcpServer *mcp.Server, toolRegistry *mcpinternal.ToolRegistry, enabledToolProviders []string, kubeconfig string) {
 	// A map to hold tool providers and their registration functions
 	toolProviderMap := map[string]func(*mcp.Server) error{
-		"argo":       argo.RegisterTools,
-		"cilium":     cilium.RegisterTools,
-		"helm":       helm.RegisterTools,
-		"istio":      istio.RegisterTools,
-		"k8s":        func(s *mcp.Server) error { return k8s.RegisterTools(s, nil, kubeconfig) },
-		"prometheus": prometheus.RegisterTools,
-		"utils":      utils.RegisterTools,
+		"argo":       func(s *mcp.Server) error { return argo.RegisterToolsWithRegistry(s, toolRegistry) },
+		"cilium":     func(s *mcp.Server) error { return cilium.RegisterToolsWithRegistry(s, toolRegistry) },
+		"helm":       func(s *mcp.Server) error { return helm.RegisterToolsWithRegistry(s, toolRegistry) },
+		"istio":      func(s *mcp.Server) error { return istio.RegisterToolsWithRegistry(s, toolRegistry) },
+		"k8s":        func(s *mcp.Server) error { return k8s.RegisterToolsWithRegistry(s, toolRegistry, nil, kubeconfig) },
+		"prometheus": func(s *mcp.Server) error { return prometheus.RegisterToolsWithRegistry(s, toolRegistry) },
+		"utils":      func(s *mcp.Server) error { return utils.RegisterToolsWithRegistry(s, toolRegistry) },
 	}
 
 	// If no specific tools are specified, register all available tools.
@@ -231,6 +236,8 @@ func registerMCP(mcpServer *mcp.Server, enabledToolProviders []string, kubeconfi
 			enabledToolProviders = append(enabledToolProviders, name)
 		}
 	}
+
+	// Register tools with MCP server (and registry for providers that support it)
 	for _, toolProviderName := range enabledToolProviders {
 		if registerFunc, ok := toolProviderMap[toolProviderName]; ok {
 			if err := registerFunc(mcpServer); err != nil {
@@ -240,4 +247,6 @@ func registerMCP(mcpServer *mcp.Server, enabledToolProviders []string, kubeconfi
 			logger.Get().Error("Unknown tool specified", "provider", toolProviderName)
 		}
 	}
+
+	// All tool providers now support ToolRegistry for full HTTP transport support
 }

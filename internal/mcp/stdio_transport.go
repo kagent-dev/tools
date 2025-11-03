@@ -64,3 +64,9 @@ func (s *StdioTransportImpl) IsRunning() bool {
 func (s *StdioTransportImpl) GetName() string {
 	return "stdio"
 }
+
+// RegisterToolHandler is a no-op for stdio transport since tools are registered with MCP server directly
+func (s *StdioTransportImpl) RegisterToolHandler(tool *mcp.Tool, handler mcp.ToolHandler) error {
+	// Stdio transport uses MCP SDK's built-in tool handling, so this is not needed
+	return nil
+}

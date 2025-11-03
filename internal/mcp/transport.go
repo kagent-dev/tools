@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Transport defines the interface that different MCP server transport implementations must implement.
@@ -21,4 +23,9 @@ type Transport interface {
 
 	// GetName returns the human-readable name of this transport (e.g., "stdio", "http", "grpc").
 	GetName() string
+
+	// RegisterToolHandler registers a tool handler with the transport (optional for some transports).
+	// For HTTP transport, this allows tools to be called directly via HTTP endpoints.
+	// For stdio transport, this is a no-op since tools are registered with MCP server.
+	RegisterToolHandler(tool *mcp.Tool, handler mcp.ToolHandler) error
 }

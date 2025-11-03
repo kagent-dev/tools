@@ -568,11 +568,30 @@ func handleHelmTemplate(ctx context.Context, request *mcp.CallToolRequest) (*mcp
 	}, nil
 }
 
-// Register Helm tools
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
+// RegisterTools registers Helm tools with the MCP server
 func RegisterTools(s *mcp.Server) error {
+	return RegisterToolsWithRegistry(s, nil)
+}
+
+// RegisterToolsWithRegistry registers Helm tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
+	
+	// Helper function to register tool with both server and registry
+	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
+		s.AddTool(tool, handler)
+		if registry != nil {
+			registry.Register(tool, handler)
+		}
+	}
+	
 	// Register helm_list_releases tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "helm_list_releases",
 		Description: "List Helm releases in a namespace",
 		InputSchema: &jsonschema.Schema{
@@ -623,7 +642,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleHelmListReleases)
 
 	// Register helm_get_release tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "helm_get_release",
 		Description: "Get extended information about a Helm release",
 		InputSchema: &jsonschema.Schema{
@@ -647,7 +666,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleHelmGetRelease)
 
 	// Register helm_upgrade tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "helm_upgrade",
 		Description: "Upgrade or install a Helm release",
 		InputSchema: &jsonschema.Schema{
@@ -695,7 +714,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleHelmUpgradeRelease)
 
 	// Register helm_uninstall tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "helm_uninstall",
 		Description: "Uninstall a Helm release",
 		InputSchema: &jsonschema.Schema{
@@ -723,7 +742,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleHelmUninstall)
 
 	// Register helm_repo_add tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "helm_repo_add",
 		Description: "Add a Helm repository",
 		InputSchema: &jsonschema.Schema{
@@ -743,7 +762,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleHelmRepoAdd)
 
 	// Register helm_repo_update tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "helm_repo_update",
 		Description: "Update information of available charts locally from chart repositories",
 		InputSchema: &jsonschema.Schema{
@@ -752,7 +771,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleHelmRepoUpdate)
 
 	// Register helm_template tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "helm_template",
 		Description: "Render Helm chart templates locally",
 		InputSchema: &jsonschema.Schema{

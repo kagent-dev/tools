@@ -2119,10 +2119,29 @@ func handleUpdatePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest)
 		Content: []mcp.Content{&mcp.TextContent{Text: output}},
 	}, nil
 }
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
+// RegisterTools registers Cilium tools with the MCP server
 func RegisterTools(s *mcp.Server) error {
+	return RegisterToolsWithRegistry(s, nil)
+}
+
+// RegisterToolsWithRegistry registers Cilium tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
+	
+	// Helper function to register tool with both server and registry
+	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
+		s.AddTool(tool, handler)
+		if registry != nil {
+			registry.Register(tool, handler)
+		}
+	}
 	// Register all Cilium tools (main and debug)
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_status_and_version",
 		Description: "Get the status and version of Cilium installation",
 		InputSchema: &jsonschema.Schema{
@@ -2130,7 +2149,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleCiliumStatusAndVersion)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_upgrade_cilium",
 		Description: "Upgrade Cilium on the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2148,7 +2167,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleUpgradeCilium)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_install_cilium",
 		Description: "Install Cilium on the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2170,7 +2189,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleInstallCilium)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_uninstall_cilium",
 		Description: "Uninstall Cilium from the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2178,7 +2197,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleUninstallCilium)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_connect_to_remote_cluster",
 		Description: "Connect to a remote cluster for cluster mesh",
 		InputSchema: &jsonschema.Schema{
@@ -2197,7 +2216,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleConnectToRemoteCluster)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_disconnect_remote_cluster",
 		Description: "Disconnect from a remote cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2212,7 +2231,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDisconnectRemoteCluster)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_bgp_peers",
 		Description: "List BGP peers",
 		InputSchema: &jsonschema.Schema{
@@ -2220,7 +2239,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListBGPPeers)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_bgp_routes",
 		Description: "List BGP routes",
 		InputSchema: &jsonschema.Schema{
@@ -2228,7 +2247,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListBGPRoutes)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_show_cluster_mesh_status",
 		Description: "Show cluster mesh status",
 		InputSchema: &jsonschema.Schema{
@@ -2236,7 +2255,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleShowClusterMeshStatus)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_show_features_status",
 		Description: "Show Cilium features status",
 		InputSchema: &jsonschema.Schema{
@@ -2244,7 +2263,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleShowFeaturesStatus)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_toggle_hubble",
 		Description: "Enable or disable Hubble",
 		InputSchema: &jsonschema.Schema{
@@ -2258,7 +2277,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleToggleHubble)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_toggle_cluster_mesh",
 		Description: "Enable or disable cluster mesh",
 		InputSchema: &jsonschema.Schema{
@@ -2273,7 +2292,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleToggleClusterMesh)
 
 	// Add tools that are also needed by cilium-manager agent
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_daemon_status",
 		Description: "Get the status of the Cilium daemon for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2315,7 +2334,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetDaemonStatus)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_endpoints_list",
 		Description: "Get the list of all endpoints in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2329,7 +2348,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetEndpointsList)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_endpoint_details",
 		Description: "List the details of an endpoint in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2355,7 +2374,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetEndpointDetails)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_show_configuration_options",
 		Description: "Show Cilium configuration options",
 		InputSchema: &jsonschema.Schema{
@@ -2381,7 +2400,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleShowConfigurationOptions)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_toggle_configuration_option",
 		Description: "Toggle a Cilium configuration option",
 		InputSchema: &jsonschema.Schema{
@@ -2404,7 +2423,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleToggleConfigurationOption)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_services",
 		Description: "List services for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2422,7 +2441,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListServices)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_service_information",
 		Description: "Get information about a service in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2442,7 +2461,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleGetServiceInformation)
 
 	// Continue with more tool registrations
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_update_service",
 		Description: "Update a service in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2513,7 +2532,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleUpdateService)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_delete_service",
 		Description: "Delete a service from the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2536,7 +2555,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleDeleteService)
 
 	// Debug tools
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_endpoint_logs",
 		Description: "Get the logs of an endpoint in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2555,7 +2574,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetEndpointLogs)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_endpoint_health",
 		Description: "Get the health of an endpoint in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2574,7 +2593,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetEndpointHealth)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_manage_endpoint_labels",
 		Description: "Manage the labels (add or delete) of an endpoint in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2601,7 +2620,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleManageEndpointLabels)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_manage_endpoint_config",
 		Description: "Manage the configuration of an endpoint in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2624,7 +2643,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleManageEndpointConfig)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_disconnect_endpoint",
 		Description: "Disconnect an endpoint from the network",
 		InputSchema: &jsonschema.Schema{
@@ -2643,7 +2662,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDisconnectEndpoint)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_identities",
 		Description: "List all identities in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2657,7 +2676,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListIdentities)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_identity_details",
 		Description: "Get the details of an identity in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2676,7 +2695,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetIdentityDetails)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_request_debugging_information",
 		Description: "Request debugging information for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2690,7 +2709,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleRequestDebuggingInformation)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_display_encryption_state",
 		Description: "Display the encryption state for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2704,7 +2723,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDisplayEncryptionState)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_flush_ipsec_state",
 		Description: "Flush the IPsec state for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2718,7 +2737,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleFlushIPsecState)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_envoy_config",
 		Description: "List the Envoy configuration for a resource in the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2737,7 +2756,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListEnvoyConfig)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_fqdn_cache",
 		Description: "Manage the FQDN cache for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2756,7 +2775,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleFQDNCache)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_show_dns_names",
 		Description: "Show the DNS names for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2770,7 +2789,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleShowDNSNames)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_ip_addresses",
 		Description: "List the IP addresses for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2784,7 +2803,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListIPAddresses)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_show_ip_cache_information",
 		Description: "Show the IP cache information for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2807,7 +2826,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleShowIPCacheInformation)
 
 	// Continue with kvstore, load, BPF, metrics, nodes, policy, and other tools
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_delete_key_from_kv_store",
 		Description: "Delete a key from the kvstore for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2826,7 +2845,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDeleteKeyFromKVStore)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_kv_store_key",
 		Description: "Get a key from the kvstore for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2845,7 +2864,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetKVStoreKey)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_set_kv_store_key",
 		Description: "Set a key in the kvstore for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2868,7 +2887,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleSetKVStoreKey)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_show_load_information",
 		Description: "Show load information for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2882,7 +2901,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleShowLoadInformation)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_local_redirect_policies",
 		Description: "List local redirect policies for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2896,7 +2915,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListLocalRedirectPolicies)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_bpf_map_events",
 		Description: "List BPF map events for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2915,7 +2934,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListBPFMapEvents)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_bpf_map",
 		Description: "Get BPF map for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2934,7 +2953,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetBPFMap)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_bpf_maps",
 		Description: "List BPF maps for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2948,7 +2967,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListBPFMaps)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_metrics",
 		Description: "List metrics for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2966,7 +2985,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListMetrics)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_cluster_nodes",
 		Description: "List cluster nodes for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2980,7 +2999,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListClusterNodes)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_node_ids",
 		Description: "List node IDs for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -2994,7 +3013,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListNodeIds)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_display_policy_node_information",
 		Description: "Display policy node information for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3012,7 +3031,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDisplayPolicyNodeInformation)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_delete_policy_rules",
 		Description: "Delete policy rules for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3034,7 +3053,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDeletePolicyRules)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_display_selectors",
 		Description: "Display selectors for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3048,7 +3067,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDisplaySelectors)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_xdp_cidr_filters",
 		Description: "List XDP CIDR filters for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3062,7 +3081,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListXDPCIDRFilters)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_update_xdp_cidr_filters",
 		Description: "Update XDP CIDR filters for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3085,7 +3104,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleUpdateXDPCIDRFilters)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_delete_xdp_cidr_filters",
 		Description: "Delete XDP CIDR filters for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3108,7 +3127,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDeleteXDPCIDRFilters)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_validate_cilium_network_policies",
 		Description: "Validate Cilium network policies for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3130,7 +3149,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleValidateCiliumNetworkPolicies)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_list_pcap_recorders",
 		Description: "List PCAP recorders for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3144,7 +3163,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleListPCAPRecorders)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_get_pcap_recorder",
 		Description: "Get a PCAP recorder for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3163,7 +3182,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleGetPCAPRecorder)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_delete_pcap_recorder",
 		Description: "Delete a PCAP recorder for the cluster",
 		InputSchema: &jsonschema.Schema{
@@ -3182,7 +3201,7 @@ func RegisterTools(s *mcp.Server) error {
 		},
 	}, handleDeletePCAPRecorder)
 
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "cilium_update_pcap_recorder",
 		Description: "Update a PCAP recorder for the cluster",
 		InputSchema: &jsonschema.Schema{

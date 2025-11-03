@@ -272,6 +272,7 @@ users:
 			for i := 0; i < 10; i++ {
 				wg.Add(1)
 				go func(id int) {
+					defer GinkgoRecover()
 					defer wg.Done()
 					resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 					Expect(err).NotTo(HaveOccurred(), "Concurrent request %d should succeed", id)
@@ -337,7 +338,7 @@ users:
 
 			// Check server output for STDIO mode
 			output := server.GetOutput()
-			Expect(output).To(ContainSubstring("Running KAgent Tools Server STDIO"))
+			Expect(output).To(ContainSubstring("Starting stdio transport"))
 
 			// Stop server
 			err = server.Stop()
@@ -543,6 +544,7 @@ users:
 			for i := 0; i < numServers; i++ {
 				wg.Add(1)
 				go func(index int) {
+					defer GinkgoRecover()
 					defer wg.Done()
 
 					config := TestServerConfig{

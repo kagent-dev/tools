@@ -109,11 +109,21 @@ func handleShellTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 	}, nil
 }
 
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
 func RegisterTools(s *mcp.Server) error {
+	return RegisterToolsWithRegistry(s, nil)
+}
+
+// RegisterToolsWithRegistry registers all utility tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
 
-	// Register shell tool
-	s.AddTool(&mcp.Tool{
+	// Define tools
+	shellTool := &mcp.Tool{
 		Name:        "shell",
 		Description: "Execute shell commands",
 		InputSchema: &jsonschema.Schema{
@@ -126,17 +136,28 @@ func RegisterTools(s *mcp.Server) error {
 			},
 			Required: []string{"command"},
 		},
-	}, handleShellTool)
+	}
 
-	// Register datetime tool
-	s.AddTool(&mcp.Tool{
+	datetimeTool := &mcp.Tool{
 		Name:        "datetime_get_current_time",
 		Description: "Returns the current date and time in ISO 8601 format.",
 		InputSchema: &jsonschema.Schema{
 			Type:       "object",
 			Properties: map[string]*jsonschema.Schema{},
 		},
-	}, handleGetCurrentDateTimeTool)
+	}
+
+	// Register shell tool
+	s.AddTool(shellTool, handleShellTool)
+	if registry != nil {
+		registry.Register(shellTool, handleShellTool)
+	}
+
+	// Register datetime tool
+	s.AddTool(datetimeTool, handleGetCurrentDateTimeTool)
+	if registry != nil {
+		registry.Register(datetimeTool, handleGetCurrentDateTimeTool)
+	}
 
 	return nil
 }

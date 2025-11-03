@@ -437,10 +437,29 @@ func handlePrometheusTargetsQueryTool(ctx context.Context, request *mcp.CallTool
 	}, nil
 }
 
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
+// RegisterTools registers Prometheus tools with the MCP server
 func RegisterTools(s *mcp.Server) error {
+	return RegisterToolsWithRegistry(s, nil)
+}
+
+// RegisterToolsWithRegistry registers Prometheus tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
+	
+	// Helper function to register tool with both server and registry
+	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
+		s.AddTool(tool, handler)
+		if registry != nil {
+			registry.Register(tool, handler)
+		}
+	}
 	// Prometheus query tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "prometheus_query_tool",
 		Description: "Execute a PromQL query against Prometheus",
 		InputSchema: &jsonschema.Schema{
@@ -460,7 +479,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handlePrometheusQueryTool)
 
 	// Prometheus range query tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "prometheus_query_range_tool",
 		Description: "Execute a PromQL range query against Prometheus",
 		InputSchema: &jsonschema.Schema{
@@ -492,7 +511,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handlePrometheusRangeQueryTool)
 
 	// Prometheus label names tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "prometheus_label_names_tool",
 		Description: "Get all available labels from Prometheus",
 		InputSchema: &jsonschema.Schema{
@@ -507,7 +526,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handlePrometheusLabelsQueryTool)
 
 	// Prometheus targets tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "prometheus_targets_tool",
 		Description: "Get all Prometheus targets and their status",
 		InputSchema: &jsonschema.Schema{
@@ -522,7 +541,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handlePrometheusTargetsQueryTool)
 
 	// Prometheus PromQL tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "prometheus_promql_tool",
 		Description: "Generate a PromQL query",
 		InputSchema: &jsonschema.Schema{

@@ -543,10 +543,29 @@ func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest) (*mcp
 	}, nil
 }
 
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
+// RegisterTools registers Argo tools with the MCP server
 func RegisterTools(s *mcp.Server) error {
+	return RegisterToolsWithRegistry(s, nil)
+}
+
+// RegisterToolsWithRegistry registers Argo tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
+	
+	// Helper function to register tool with both server and registry
+	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
+		s.AddTool(tool, handler)
+		if registry != nil {
+			registry.Register(tool, handler)
+		}
+	}
 	// Register argo_verify_argo_rollouts_controller_install tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_verify_argo_rollouts_controller_install",
 		Description: "Verify that the Argo Rollouts controller is installed and running",
 		InputSchema: &jsonschema.Schema{
@@ -565,7 +584,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleVerifyArgoRolloutsControllerInstall)
 
 	// Register argo_verify_kubectl_plugin_install tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_verify_kubectl_plugin_install",
 		Description: "Verify that the kubectl Argo Rollouts plugin is installed",
 		InputSchema: &jsonschema.Schema{
@@ -574,7 +593,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleVerifyKubectlPluginInstall)
 
 	// Register argo_rollouts_list tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_rollouts_list",
 		Description: "List rollouts or experiments",
 		InputSchema: &jsonschema.Schema{
@@ -593,7 +612,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleListRollouts)
 
 	// Register argo_promote_rollout tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_promote_rollout",
 		Description: "Promote a paused rollout to the next step",
 		InputSchema: &jsonschema.Schema{
@@ -617,7 +636,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handlePromoteRollout)
 
 	// Register argo_pause_rollout tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_pause_rollout",
 		Description: "Pause a rollout",
 		InputSchema: &jsonschema.Schema{
@@ -637,7 +656,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handlePauseRollout)
 
 	// Register argo_set_rollout_image tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_set_rollout_image",
 		Description: "Set the image of a rollout",
 		InputSchema: &jsonschema.Schema{
@@ -661,7 +680,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleSetRolloutImage)
 
 	// Register argo_verify_gateway_plugin tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_verify_gateway_plugin",
 		Description: "Verify the installation status of the Argo Rollouts Gateway API plugin",
 		InputSchema: &jsonschema.Schema{
@@ -684,7 +703,7 @@ func RegisterTools(s *mcp.Server) error {
 	}, handleVerifyGatewayPlugin)
 
 	// Register argo_check_plugin_logs tool
-	s.AddTool(&mcp.Tool{
+	registerTool(&mcp.Tool{
 		Name:        "argo_check_plugin_logs",
 		Description: "Check the logs of the Argo Rollouts Gateway API plugin",
 		InputSchema: &jsonschema.Schema{

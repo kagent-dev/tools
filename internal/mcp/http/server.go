@@ -16,6 +16,7 @@ type Server struct {
 	port              int
 	httpServer        *http.Server
 	listener          net.Listener
+	mux               *http.ServeMux
 	isRunning         bool
 	startTime         time.Time
 	requestTimeout    time.Duration
@@ -30,13 +31,18 @@ type Server struct {
 // NewServer creates a new HTTP MCP server with default configuration.
 // The server is not started until Start() is called.
 func NewServer(port int) *Server {
-	return &Server{
+	mux := http.NewServeMux()
+	s := &Server{
 		port:            port,
+		mux:             mux,
 		isRunning:       false,
 		requestTimeout:  30 * time.Second,
 		startupTimeout:  2 * time.Second,
 		shutdownTimeout: 10 * time.Second,
 	}
+	// Register health handler immediately
+	mux.HandleFunc("/health", s.healthHandler)
+	return s
 }
 
 // SetRequestTimeout configures the request timeout for all handlers.
@@ -81,16 +87,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 	logger.Get().Info("HTTP MCP server listening", "port", s.port)
 
-	// Create HTTP server with configured handler and timeout
-	mux := http.NewServeMux()
-
-	// Register handlers (they will be added by the transport layer)
-	// For now, we just register a basic health endpoint
-	mux.HandleFunc("/health", s.healthHandler)
-
+	// Create HTTP server using the pre-configured mux
 	s.httpServer = &http.Server{
 		Addr:              fmt.Sprintf(":%d", s.port),
-		Handler:           mux,
+		Handler:           s.mux,
 		ReadTimeout:       s.requestTimeout,
 		WriteTimeout:      s.requestTimeout,
 		IdleTimeout:       60 * time.Second,
@@ -262,21 +262,13 @@ func (s *Server) HandleServerShutdown() *HTTPErrorResponse {
 }
 
 // RegisterHandler registers a handler function for a specific path.
+// Can be called before or after server starts.
 func (s *Server) RegisterHandler(path string, handler http.Handler) error {
-	if !s.isRunning {
-		return fmt.Errorf("cannot register handler on stopped server")
+	if s.mux == nil {
+		return fmt.Errorf("server mux not initialized")
 	}
 
-	if s.httpServer == nil || s.httpServer.Handler == nil {
-		return fmt.Errorf("server handler not initialized")
-	}
-
-	mux, ok := s.httpServer.Handler.(*http.ServeMux)
-	if !ok {
-		return fmt.Errorf("server handler is not a *http.ServeMux")
-	}
-
-	mux.Handle(path, handler)
+	s.mux.Handle(path, handler)
 	logger.Get().Debug("Registered handler", "path", path)
 	return nil
 }
