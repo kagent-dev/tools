@@ -556,7 +556,7 @@ func RegisterTools(s *mcp.Server) error {
 // RegisterToolsWithRegistry registers Argo tools with the MCP server and optionally with a tool registry
 func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
-	
+
 	// Helper function to register tool with both server and registry
 	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
 		s.AddTool(tool, handler)

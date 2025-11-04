@@ -581,7 +581,7 @@ func RegisterTools(s *mcp.Server) error {
 // RegisterToolsWithRegistry registers Helm tools with the MCP server and optionally with a tool registry
 func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
-	
+
 	// Helper function to register tool with both server and registry
 	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
 		s.AddTool(tool, handler)
@@ -589,7 +589,7 @@ func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 			registry.Register(tool, handler)
 		}
 	}
-	
+
 	// Register helm_list_releases tool
 	registerTool(&mcp.Tool{
 		Name:        "helm_list_releases",

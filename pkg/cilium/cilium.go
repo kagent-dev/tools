@@ -2119,6 +2119,7 @@ func handleUpdatePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest)
 		Content: []mcp.Content{&mcp.TextContent{Text: output}},
 	}, nil
 }
+
 // ToolRegistry is an interface for tool registration (to avoid import cycles)
 type ToolRegistry interface {
 	Register(tool *mcp.Tool, handler mcp.ToolHandler)
@@ -2132,7 +2133,7 @@ func RegisterTools(s *mcp.Server) error {
 // RegisterToolsWithRegistry registers Cilium tools with the MCP server and optionally with a tool registry
 func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	logger.Get().Info("RegisterTools initialized")
-	
+
 	// Helper function to register tool with both server and registry
 	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
 		s.AddTool(tool, handler)

@@ -29,6 +29,7 @@ func NewStdioTransport(mcpServer *mcp.Server) *StdioTransportImpl {
 // This blocks until the transport is stopped or an error occurs.
 func (s *StdioTransportImpl) Start(ctx context.Context) error {
 	logger.Get().Info("Starting stdio transport")
+	logger.Get().Info("Running KAgent Tools Server STDIO")
 	s.isRunning = true
 	defer func() { s.isRunning = false }()
 

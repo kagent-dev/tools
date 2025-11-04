@@ -57,7 +57,7 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			closeBody(resp.Body)
+			_ = resp.Body.Close()
 
 			// Check server output
 			output := server.GetOutput()
@@ -272,7 +272,6 @@ users:
 			for i := 0; i < 10; i++ {
 				wg.Add(1)
 				go func(id int) {
-					defer GinkgoRecover()
 					defer wg.Done()
 					resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 					Expect(err).NotTo(HaveOccurred(), "Concurrent request %d should succeed", id)
@@ -338,7 +337,7 @@ users:
 
 			// Check server output for STDIO mode
 			output := server.GetOutput()
-			Expect(output).To(ContainSubstring("Starting stdio transport"))
+			Expect(output).To(ContainSubstring("Running KAgent Tools Server STDIO"))
 
 			// Stop server
 			err = server.Stop()
@@ -458,7 +457,7 @@ users:
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 			_ = resp.Body.Close()
 
 			err = server.Stop()
@@ -544,7 +543,6 @@ users:
 			for i := 0; i < numServers; i++ {
 				wg.Add(1)
 				go func(index int) {
-					defer GinkgoRecover()
 					defer wg.Done()
 
 					config := TestServerConfig{

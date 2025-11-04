@@ -176,6 +176,7 @@ func (h *HTTPTransportImpl) Start(ctx context.Context) error {
 	}
 
 	logger.Get().Info("HTTP transport started successfully", "port", h.port)
+	logger.Get().Info("Running KAgent Tools Server", "port", h.port)
 	return nil
 }
 

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -16,7 +15,9 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
+	"github.com/mark3labs/mcp-go/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -57,13 +58,6 @@ func NewTestServer(config TestServerConfig) *TestServer {
 	}
 }
 
-// closeBody closes the response body while ignoring the returned error.
-func closeBody(b io.ReadCloser) {
-	if b != nil {
-		_ = b.Close()
-	}
-}
-
 // Start starts the test server
 func (ts *TestServer) Start(ctx context.Context, config TestServerConfig) error {
 	ts.mu.Lock()
@@ -74,7 +68,7 @@ func (ts *TestServer) Start(ctx context.Context, config TestServerConfig) error 
 	if config.Stdio {
 		args = append(args, "--stdio")
 	} else {
-		args = append(args, "--port", fmt.Sprintf("%d", config.Port))
+		args = append(args, "--http-port", fmt.Sprintf("%d", config.Port))
 	}
 
 	if len(config.Tools) > 0 {
@@ -170,21 +164,10 @@ func (ts *TestServer) Stop() error {
 	return nil
 }
 
-// MCPClient represents a client for communicating with the MCP server
-// Uses official github.com/modelcontextprotocol/go-sdk v1.0.0
+// MCPClient represents a client for communicating with the MCP server using the official mcp-go client
 type MCPClient struct {
-	client    *mcp.Client
-	session   *mcp.ClientSession
-	serverURL string
-	timeout   time.Duration
-	logger    *slog.Logger
-}
-
-// MCPClientOptions configures the MCPClient
-type MCPClientOptions struct {
-	ServerURL string
-	Timeout   time.Duration
-	Logger    *slog.Logger
+	client *client.Client
+	log    *slog.Logger
 }
 
 // InstallKAgentTools installs KAgent Tools using helm in the specified namespace
@@ -264,206 +247,216 @@ func InstallKAgentTools(namespace string, releaseName string) {
 	Expect(nodePort).To(Equal("30885"))
 }
 
-// NewMCPClient creates a new MCP client for E2E testing
-// Implements: T018 - Create MCPClient Struct and Constructor
-func NewMCPClient(opts MCPClientOptions) (*MCPClient, error) {
-	// Validate ServerURL
-	if opts.ServerURL == "" {
-		return nil, fmt.Errorf("invalid server URL: empty")
-	}
-	if !strings.HasPrefix(opts.ServerURL, "http://") && !strings.HasPrefix(opts.ServerURL, "https://") {
-		return nil, fmt.Errorf("invalid server URL: %s (must start with http:// or https://)", opts.ServerURL)
+// GetMCPClient creates a new MCP client configured for the e2e test environment using the official mcp-go client
+func GetMCPClient() (*MCPClient, error) {
+	// Create HTTP transport for the MCP server with timeout long enough for operations like Istio installation
+	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885/mcp", transport.WithHTTPTimeout(180*time.Second))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP transport: %w", err)
 	}
 
-	// Validate Timeout
-	if opts.Timeout <= 0 {
-		return nil, fmt.Errorf("timeout must be > 0")
+	// Create the official MCP client
+	mcpClient := client.NewClient(httpTransport)
+
+	// Start the client
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	if err := mcpClient.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start MCP client: %w", err)
 	}
 
-	// Use provided logger or create default
-	logger := opts.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	// Create MCP SDK client
-	client := mcp.NewClient(&mcp.Implementation{
-		Name:    "kagent-tools-e2e-client",
+	// Initialize the client
+	initRequest := mcp.InitializeRequest{}
+	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initRequest.Params.ClientInfo = mcp.Implementation{
+		Name:    "e2e-test-client",
 		Version: "1.0.0",
-	}, nil)
-
-	return &MCPClient{
-		client:    client,
-		serverURL: opts.ServerURL,
-		timeout:   opts.Timeout,
-		logger:    logger,
-	}, nil
-}
-
-// Connect establishes connection to MCP server
-// Implements: T019 - Implement MCPClient Connect Method
-func (c *MCPClient) Connect(ctx context.Context) error {
-	if c.session != nil {
-		return fmt.Errorf("client already connected")
 	}
+	initRequest.Params.Capabilities = mcp.ClientCapabilities{}
 
-	// Create HTTP transport for SSE endpoint
-	transport := createHTTPTransport(c.serverURL)
-
-	// Connect to server
-	session, err := c.client.Connect(ctx, transport, nil)
+	_, err = mcpClient.Initialize(ctx, initRequest)
 	if err != nil {
-		return fmt.Errorf("failed to connect to MCP server: %w", err)
+		return nil, fmt.Errorf("failed to initialize MCP client: %w", err)
 	}
 
-	c.session = session
-	c.logger.Info("MCP client connected", "serverURL", c.serverURL)
-	return nil
+	mcpHelper := &MCPClient{
+		client: mcpClient,
+		log:    slog.Default(),
+	}
+
+	// Validate connection by listing tools
+	tools, err := mcpHelper.listTools()
+	if len(tools) == 0 {
+		return nil, fmt.Errorf("no tools found in MCP server: %w", err)
+	}
+	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885/mcp", "tools", len(tools))
+	return mcpHelper, err
 }
 
-// Close closes the MCP session
-// Implements: T020 - Implement MCPClient Close Method
-func (c *MCPClient) Close() error {
-	if c.session == nil {
-		return nil // Already closed or never connected
-	}
+// listTools calls the tools/list method to get available tools
+func (c *MCPClient) listTools() ([]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	err := c.session.Close()
-	c.session = nil
-
+	request := mcp.ListToolsRequest{}
+	result, err := c.client.ListTools(ctx, request)
 	if err != nil {
-		return fmt.Errorf("failed to close MCP session: %w", err)
+		return nil, err
 	}
 
-	c.logger.Info("MCP client closed")
-	return nil
-}
-
-// ListTools retrieves available tools from server
-// Implements: T021 - Implement MCPClient ListTools Method
-func (c *MCPClient) ListTools(ctx context.Context) ([]*mcp.Tool, error) {
-	if c.session == nil {
-		return nil, fmt.Errorf("client not connected")
+	// Convert tools to interface{} slice for compatibility
+	tools := make([]interface{}, len(result.Tools))
+	for i, tool := range result.Tools {
+		tools[i] = tool
 	}
 
-	var tools []*mcp.Tool
-	for tool, err := range c.session.Tools(ctx, nil) {
-		if err != nil {
-			return nil, fmt.Errorf("failed to list tools: %w", err)
-		}
-		tools = append(tools, tool)
-	}
-
-	c.logger.Info("Listed MCP tools", "count", len(tools))
 	return tools, nil
 }
 
-// CallTool executes a tool with parameters
-// Implements: T022 - Implement MCPClient CallTool Method
-func (c *MCPClient) CallTool(ctx context.Context, name string, args map[string]any) (*mcp.CallToolResult, error) {
-	if c.session == nil {
-		return nil, fmt.Errorf("client not connected")
+// k8sListResources calls the k8s_get_resources tool
+func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	type K8sArgs struct {
+		ResourceType string `json:"resource_type"`
+		Output       string `json:"output"`
 	}
 
-	// Set timeout if not already in context
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
-		defer cancel()
+	arguments := K8sArgs{
+		ResourceType: resourceType,
+		Output:       "json",
 	}
 
-	result, err := c.session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      name,
-		Arguments: args,
-	})
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "k8s_get_resources",
+			Arguments: arguments,
+		},
+	}
 
+	result, err := c.client.CallTool(ctx, request)
 	if err != nil {
-		return nil, fmt.Errorf("tool call failed: %w", err)
+		return nil, err
 	}
-
-	c.logger.Info("Tool called", "name", name, "isError", result.IsError)
+	if result.IsError {
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
+	}
 	return result, nil
 }
 
-// k8sListResources calls the k8s_get_resources tool
-// Implements: T023 - Implement k8sListResources Method
-func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	return c.CallTool(ctx, "k8s_get_resources", map[string]any{
-		"resource_type": resourceType,
-		"namespace":     "default",
-	})
-}
-
 // helmListReleases calls the helm_list_releases tool
-// Implements: T024 - Implement helmListReleases Method
 func (c *MCPClient) helmListReleases() (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return c.CallTool(ctx, "helm_list_releases", map[string]any{})
+	type HelmArgs struct {
+		AllNamespaces string `json:"all_namespaces"`
+		Output        string `json:"output"`
+	}
+
+	arguments := HelmArgs{
+		AllNamespaces: "true",
+		Output:        "json",
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "helm_list_releases",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if result.IsError {
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
+	}
+	return result, nil
 }
 
-// istioVersion calls the istio_version tool
-// Implements: T025 - Implement istioVersion Method
-func (c *MCPClient) istioVersion() (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+// istioInstall calls the istio_install_istio tool
+func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second) // Istio install can take time
 	defer cancel()
 
-	return c.CallTool(ctx, "istio_version", map[string]any{})
+	type IstioArgs struct {
+		Profile string `json:"profile"`
+	}
+
+	arguments := IstioArgs{
+		Profile: profile,
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "istio_install_istio",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if result.IsError {
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
+	}
+	return result, nil
 }
 
-// argoRolloutsList calls the argo_rollouts_list tool to list rollouts
-// Implements: T026 - Implement argoRolloutsList Method
+// argoRolloutsList calls the argo_rollouts_get tool to list rollouts
 func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return c.CallTool(ctx, "argo_rollouts_list", map[string]any{
-		"namespace": namespace,
-	})
+	type ArgoArgs struct {
+		Namespace string `json:"namespace"`
+		Output    string `json:"output"`
+	}
+
+	arguments := ArgoArgs{
+		Namespace: namespace,
+		Output:    "json",
+	}
+
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "argo_rollouts_list",
+			Arguments: arguments,
+		},
+	}
+
+	result, err := c.client.CallTool(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if result.IsError {
+		return nil, fmt.Errorf("tool call failed: %s", result.Content)
+	}
+	return result, nil
 }
 
 // ciliumStatus calls the cilium_status_and_version tool
-// Implements: T027 - Implement ciliumStatus Method
 func (c *MCPClient) ciliumStatus() (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return c.CallTool(ctx, "cilium_status_and_version", map[string]any{})
-}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "cilium_status_and_version",
+			Arguments: nil,
+		},
+	}
 
-// GetMCPClient creates a new MCP client configured for the e2e test environment
-func GetMCPClient() (*MCPClient, error) {
-	return NewMCPClient(MCPClientOptions{
-		ServerURL: "http://localhost:30885/mcp",
-		Timeout:   60 * time.Second,
-		Logger:    slog.Default(),
-	})
-}
-
-// createHTTPTransport creates an HTTP transport for MCP communication
-// This helper is used by MCPClient and integration tests
-func createHTTPTransport(serverURL string) mcp.Transport {
-	// Parse the URL
-	parsedURL, err := url.Parse(serverURL)
+	result, err := c.client.CallTool(ctx, request)
 	if err != nil {
-		panic(fmt.Sprintf("invalid server URL: %v", err))
+		return nil, err
 	}
-
-	// Create HTTP client
-	httpClient := &http.Client{}
-
-	// Create SSE client transport using the SDK
-	// The SDK provides SSEClientTransport for HTTP/SSE communication
-	transport := &mcp.SSEClientTransport{
-		Endpoint:   parsedURL.String(),
-		HTTPClient: httpClient,
-	}
-
-	return transport
+	return result, nil
 }
 
 // Constants for default test values
