@@ -194,29 +194,55 @@ func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 	defer ticker.Stop()
 
 	startTime := time.Now()
-	elapsedSeconds := 0
+	log := logger.Get()
 
 	for {
 		select {
 		case <-ctx.Done():
+			elapsed := time.Since(startTime)
+			log.Info("Sleep operation cancelled",
+				"elapsed_seconds", elapsed.Seconds(),
+				"total_seconds", durationSeconds)
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: "sleep cancelled after context cancellation"}},
+				Content: []mcp.Content{&mcp.TextContent{
+					Text: fmt.Sprintf("sleep cancelled after %.2f seconds (requested %.2f seconds)", elapsed.Seconds(), durationSeconds),
+				}},
 				IsError: true,
 			}, nil
 		case <-ticker.C:
-			elapsedSeconds++
 			elapsed := time.Since(startTime)
 			remaining := duration - elapsed
 			if remaining < 0 {
 				remaining = 0
 			}
+			elapsedSeconds := int(elapsed.Seconds())
+			totalSeconds := int(durationSeconds)
+
 			if request.Session != nil {
-				_ = request.Session.Log(ctx, &mcp.LoggingMessageParams{
-					Data:  fmt.Sprintf("Sleep progress: %d/%d seconds (%.1fs remaining)", elapsedSeconds, int(durationSeconds), remaining.Seconds()),
-					Level: "info",
-				})
+				progressParams := &mcp.ProgressNotificationParams{
+					Message:  fmt.Sprintf("Sleep progress: %d/%d seconds (%.1fs remaining)", elapsedSeconds, totalSeconds, remaining.Seconds()),
+					Progress: elapsed.Seconds(),
+					Total:    duration.Seconds(),
+				}
+
+				if err := request.Session.NotifyProgress(ctx, progressParams); err != nil {
+					// Log the error but continue sleeping - progress notification failure shouldn't abort the operation
+					log.Error("Failed to send progress notification",
+						"error", err,
+						"elapsed_seconds", elapsedSeconds,
+						"total_seconds", totalSeconds)
+				} else {
+					log.Info("Progress notification sent",
+						"elapsed_seconds", elapsedSeconds,
+						"total_seconds", totalSeconds,
+						"remaining_seconds", remaining.Seconds())
+				}
 			}
 		case <-timer.C:
+			actualDuration := time.Since(startTime).Seconds()
+			log.Info("Sleep operation completed",
+				"requested_seconds", durationSeconds,
+				"actual_seconds", actualDuration)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("slept for %.2f seconds", durationSeconds)}},
 			}, nil

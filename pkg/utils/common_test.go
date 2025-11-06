@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -792,8 +793,9 @@ func TestHandleSleepTool(t *testing.T) {
 			}
 			if len(result.Content) > 0 {
 				if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
-					if textContent.Text != "sleep cancelled after context cancellation" {
-						t.Errorf("expected 'sleep cancelled after context cancellation', got %q", textContent.Text)
+					// The improved error message includes actual elapsed time
+					if !strings.Contains(textContent.Text, "sleep cancelled after") || !strings.Contains(textContent.Text, "requested 10.00 seconds") {
+						t.Errorf("expected cancellation message with timing info, got %q", textContent.Text)
 					}
 				}
 			}
