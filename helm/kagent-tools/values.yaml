@@ -30,7 +30,7 @@ tools:
     apiKey: ""
   argocd:
     url: "http://argocd-server.argocd.svc.cluster.local:8080"
-    apiToken: "$(ARGOCD_PASSWORD)"
+    apiToken: ""
 
 service:
   type: ClusterIP

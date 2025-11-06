@@ -197,7 +197,6 @@ helm-uninstall:
 
 .PHONY: helm-install
 helm-install: helm-version retag
-	#delete first to allow testing with kagent
 	export ARGOCD_PASSWORD=$$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d) || true
 	helm template kagent-tools ./helm/kagent-tools --namespace kagent | kubectl --namespace kagent delete -f - || :
 	helm $(HELM_ACTION) kagent-tools ./helm/kagent-tools \

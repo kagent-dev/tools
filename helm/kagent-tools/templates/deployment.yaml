@@ -58,11 +58,11 @@ spec:
             - name: ARGOCD_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kagent.fullname" . }}-argocd
+                  name: {{ include "kagent.fullname" . }}-argocd-secret
                   key: apiToken
                   optional: true # if the secret is not found, the tool will not be available
             - name: ARGOCD_BASE_URL
-              value: {{ .Values.argocd.url | quote }}
+              value: {{ .Values.tools.argocd.url | quote }}
             - name: OTEL_TRACING_ENABLED
               value: {{ .Values.otel.tracing.enabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
