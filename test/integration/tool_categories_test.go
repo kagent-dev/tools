@@ -12,6 +12,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// getToolRegistrationMessage returns the expected registration message for a given tool
+func getToolRegistrationMessage(tool string) string {
+	messages := map[string]string{
+		"utils":      "Registering utility tools",
+		"k8s":        "Registering Kubernetes tools",
+		"helm":       "Registering Helm tools",
+		"argo":       "Registering Argo tools",
+		"cilium":     "Registering Cilium tools",
+		"istio":      "Registering Istio tools",
+		"prometheus": "Registering Prometheus tools",
+	}
+	if msg, ok := messages[tool]; ok {
+		return msg
+	}
+	return "Registering" // fallback for unknown tools
+}
+
 // ToolCategoryTest represents a test case for a specific tool category
 type ToolCategoryTest struct {
 	Name        string
@@ -31,7 +48,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"utils"},
 			Port:  8120,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering utility tools",
 				"utils",
 				"Running KAgent Tools Server",
 			},
@@ -41,7 +58,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"k8s"},
 			Port:  8121,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering Kubernetes tools",
 				"k8s",
 				"Running KAgent Tools Server",
 			},
@@ -51,7 +68,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"helm"},
 			Port:  8122,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering Helm tools",
 				"helm",
 				"Running KAgent Tools Server",
 			},
@@ -61,7 +78,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"argo"},
 			Port:  8123,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering Argo tools",
 				"argo",
 				"Running KAgent Tools Server",
 			},
@@ -71,7 +88,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"cilium"},
 			Port:  8124,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering Cilium tools",
 				"cilium",
 				"Running KAgent Tools Server",
 			},
@@ -81,7 +98,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"istio"},
 			Port:  8125,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering Istio tools",
 				"istio",
 				"Running KAgent Tools Server",
 			},
@@ -91,7 +108,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"prometheus"},
 			Port:  8126,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering Prometheus tools",
 				"prometheus",
 				"Running KAgent Tools Server",
 			},
@@ -101,7 +118,9 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{"utils", "k8s", "helm"},
 			Port:  8127,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering utility tools",
+				"Registering Kubernetes tools",
+				"Registering Helm tools",
 				"utils",
 				"k8s",
 				"helm",
@@ -113,7 +132,7 @@ func TestToolCategoriesRegistration(t *testing.T) {
 			Tools: []string{}, // Empty means all tools
 			Port:  8128,
 			ExpectedLog: []string{
-				"RegisterTools initialized",
+				"Registering",
 				"Running KAgent Tools Server",
 			},
 		},
@@ -195,7 +214,7 @@ func TestToolCategoryCompatibility(t *testing.T) {
 
 			// Verify tool registration in output
 			output := server.GetOutput()
-			assert.Contains(t, output, "RegisterTools initialized", "Should initialize RegisterTools for %s", tool)
+			assert.Contains(t, output, getToolRegistrationMessage(tool), "Should initialize RegisterTools for %s", tool)
 			assert.Contains(t, output, tool, "Should register %s tool", tool)
 			assert.Contains(t, output, "Running KAgent Tools Server", "Should start server for %s", tool)
 
@@ -271,7 +290,9 @@ func TestToolCategoryErrorHandling(t *testing.T) {
 			assert.Contains(t, output, tc.expectError, "Should contain error message for %s", tc.name)
 
 			// Should still register valid tools
-			assert.Contains(t, output, "RegisterTools initialized", "Should initialize RegisterTools for %s", tc.name)
+			for _, validTool := range tc.expectSuccess {
+				assert.Contains(t, output, getToolRegistrationMessage(validTool), "Should initialize RegisterTools for %s", tc.name)
+			}
 			for _, validTool := range tc.expectSuccess {
 				assert.Contains(t, output, validTool, "Should register valid tool %s for %s", validTool, tc.name)
 			}
@@ -346,7 +367,7 @@ func TestToolCategoryPerformance(t *testing.T) {
 
 			// Verify all expected tools are registered
 			output := server.GetOutput()
-			assert.Contains(t, output, "RegisterTools initialized", "Should initialize RegisterTools for %s", tc.name)
+			assert.Contains(t, output, "Registering", "Should initialize RegisterTools for %s", tc.name)
 			assert.Contains(t, output, "Running KAgent Tools Server", "Should start server for %s", tc.name)
 		})
 	}
@@ -398,7 +419,7 @@ func TestToolCategoryMemoryUsage(t *testing.T) {
 
 	// Verify server is still responsive after multiple requests
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "Running KAgent Tools Server")
 
 	// Should not contain any error messages about memory or goroutine issues
@@ -435,7 +456,7 @@ func TestToolCategorySDKIntegration(t *testing.T) {
 
 	// Verify server output shows new SDK usage
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "Running KAgent Tools Server")
 
 	// Should not contain old SDK patterns or error messages

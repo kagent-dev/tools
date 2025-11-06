@@ -80,34 +80,35 @@ test-only: ## Run tests only (without build/lint for faster iteration)
 
 .PHONY: e2e
 e2e: test retag
+	pkill -f "kagent-tools.*--http-port" 2>/dev/null || true
 	go test -v -tags=test -cover ./test/e2e/ -timeout 5m
 
 bin/kagent-tools-linux-amd64:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd/server
 
 bin/kagent-tools-linux-amd64.sha256: bin/kagent-tools-linux-amd64
 	sha256sum bin/kagent-tools-linux-amd64 > bin/kagent-tools-linux-amd64.sha256
 
 bin/kagent-tools-linux-arm64:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-arm64 ./cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-arm64 ./cmd/server
 
 bin/kagent-tools-linux-arm64.sha256: bin/kagent-tools-linux-arm64
 	sha256sum bin/kagent-tools-linux-arm64 > bin/kagent-tools-linux-arm64.sha256
 
 bin/kagent-tools-darwin-amd64:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-amd64 ./cmd
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-amd64 ./cmd/server
 
 bin/kagent-tools-darwin-amd64.sha256: bin/kagent-tools-darwin-amd64
 	sha256sum bin/kagent-tools-darwin-amd64 > bin/kagent-tools-darwin-amd64.sha256
 
 bin/kagent-tools-darwin-arm64:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-arm64 ./cmd
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-arm64 ./cmd/server
 
 bin/kagent-tools-darwin-arm64.sha256: bin/kagent-tools-darwin-arm64
 	sha256sum bin/kagent-tools-darwin-arm64 > bin/kagent-tools-darwin-arm64.sha256
 
 bin/kagent-tools-windows-amd64.exe:
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-windows-amd64.exe ./cmd
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-windows-amd64.exe ./cmd/server
 
 bin/kagent-tools-windows-amd64.exe.sha256: bin/kagent-tools-windows-amd64.exe
 	sha256sum bin/kagent-tools-windows-amd64.exe > bin/kagent-tools-windows-amd64.exe.sha256
@@ -197,6 +198,7 @@ helm-uninstall:
 .PHONY: helm-install
 helm-install: helm-version retag
 	#delete first to allow testing with kagent
+	export ARGOCD_PASSWORD=$$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d) || true
 	helm template kagent-tools ./helm/kagent-tools --namespace kagent | kubectl --namespace kagent delete -f - || :
 	helm $(HELM_ACTION) kagent-tools ./helm/kagent-tools \
 		--namespace kagent \
@@ -205,6 +207,7 @@ helm-install: helm-version retag
 		--timeout 5m       \
 		-f ./scripts/kind/test-values.yaml \
 		--set tools.image.registry=$(RETAGGED_DOCKER_REGISTRY) \
+		--set argocd.apiToken=$$ARGOCD_PASSWORD \
 		--wait
 
 .PHONY: helm-publish
@@ -232,8 +235,13 @@ otel-local:
 
 .PHONY: install/argocd
 install/argocd:
-	kubectl create namespace argocd
+	kubectl get namespace argocd || kubectl create namespace argocd || true
 	kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+	@echo "Waiting for ArgoCD deployments to be created..."
+	kubectl wait --for=condition=available --timeout=5m deployment/argocd-applicationset-controller -n argocd
+	@echo "ArgoCD is ready!"
+	@ARGOCD_PASSWORD=$$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d); \
+	echo "ArgoCD Admin Password: $$ARGOCD_PASSWORD"
 
 .PHONY: install/istio
 install/istio:
@@ -248,8 +256,12 @@ install/kagent:
 .PHONY: install/tools
 install/tools: clean
 	mkdir -p $(HOME)/.local/bin
-	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools ./cmd
-	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd
+	echo "Building go-mcp-client..."
+	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/go-mcp-client ./cmd/client
+	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/go-mcp-client ./cmd/client
+	echo "Building kagent-tools..."
+	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools  ./cmd/server
+	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd/server
 	$(HOME)/.local/bin/kagent-tools --version
 
 .PHONY: docker-build install

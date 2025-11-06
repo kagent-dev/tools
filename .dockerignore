@@ -1,0 +1,64 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Build artifacts
+bin/
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+*_coverage.out
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# Documentation and specs (not needed in image)
+docs/
+specs/
+*.md
+!README.md
+
+# Test files
+test/
+*_test.go
+
+# Reports
+reports/
+
+# Helm charts source (not needed)
+helm/kagent-tools/
+
+# Dagger
+.dagger/
+
+# Go vendor (not used, but ignore if present)
+vendor/
+
+# Scripts (not needed in image)
+scripts/
+
+# Dist artifacts
+dist/
+
+helm/

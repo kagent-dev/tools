@@ -109,6 +109,145 @@ func handleShellTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 	}, nil
 }
 
+// handleEchoTool handles the echo tool MCP request
+func handleEchoTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	message, ok := args["message"].(string)
+	if !ok {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "message parameter is required and must be a string"}},
+			IsError: true,
+		}, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: message}},
+	}, nil
+}
+
+// handleSleepTool handles the sleep tool MCP request
+func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
+
+	// Handle both float64 and int types for duration
+	var durationSeconds float64
+	switch v := args["duration"].(type) {
+	case float64:
+		durationSeconds = v
+	case int:
+		durationSeconds = float64(v)
+	case int64:
+		durationSeconds = float64(v)
+	default:
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "duration parameter is required and must be a number"}},
+			IsError: true,
+		}, nil
+	}
+
+	if durationSeconds < 0 {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "duration must be non-negative"}},
+			IsError: true,
+		}, nil
+	}
+
+	// Convert to duration and sleep with context cancellation support
+	duration := time.Duration(durationSeconds * float64(time.Second))
+
+	// For durations less than 1 second, just sleep without progress updates
+	if durationSeconds < 1.0 {
+		timer := time.NewTimer(duration)
+		defer timer.Stop()
+
+		select {
+		case <-ctx.Done():
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "sleep cancelled after context cancellation"}},
+				IsError: true,
+			}, nil
+		case <-timer.C:
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("slept for %.2f seconds", durationSeconds)}},
+			}, nil
+		}
+	}
+
+	// Emit progress updates every second for longer durations
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	startTime := time.Now()
+	elapsedSeconds := 0
+
+	// Create a timer for the total duration
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	// Send initial progress message
+	if request.Session != nil {
+		logger.Get().Info("Sleeping", "duration_seconds", durationSeconds)
+		_ = request.Session.Log(ctx, &mcp.LoggingMessageParams{
+			Data:  fmt.Sprintf("Sleep started for %.2f seconds", durationSeconds),
+			Level: "info",
+		})
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			if request.Session != nil {
+				_ = request.Session.Log(ctx, &mcp.LoggingMessageParams{
+					Data:  "Sleep cancelled",
+					Level: "warning",
+				})
+			}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "sleep cancelled after context cancellation"}},
+				IsError: true,
+			}, nil
+		case <-ticker.C:
+			elapsedSeconds++
+			elapsed := time.Since(startTime)
+			remaining := duration - elapsed
+			if remaining < 0 {
+				remaining = 0
+			}
+			progressMsg := fmt.Sprintf("Sleep progress: %d/%d seconds elapsed (%.2f remaining)",
+				elapsedSeconds, int(durationSeconds), remaining.Seconds())
+			if request.Session != nil {
+				_ = request.Session.Log(ctx, &mcp.LoggingMessageParams{
+					Data:  progressMsg,
+					Level: "info",
+				})
+			}
+		case <-timer.C:
+			if request.Session != nil {
+				_ = request.Session.Log(ctx, &mcp.LoggingMessageParams{
+					Data:  fmt.Sprintf("Sleep completed: slept for %.2f seconds", durationSeconds),
+					Level: "info",
+				})
+			}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("slept for %.2f seconds", durationSeconds)}},
+			}, nil
+		}
+	}
+}
+
 // ToolRegistry is an interface for tool registration (to avoid import cycles)
 type ToolRegistry interface {
 	Register(tool *mcp.Tool, handler mcp.ToolHandler)
@@ -120,7 +259,7 @@ func RegisterTools(s *mcp.Server) error {
 
 // RegisterToolsWithRegistry registers all utility tools with the MCP server and optionally with a tool registry
 func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
-	logger.Get().Info("RegisterTools initialized")
+	logger.Get().Info("Registering utility tools")
 
 	// Define tools
 	shellTool := &mcp.Tool{
@@ -147,6 +286,37 @@ func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 		},
 	}
 
+	echoTool := &mcp.Tool{
+		Name:        "echo",
+		Description: "Echo back the provided message",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"message": {
+					Type:        "string",
+					Description: "The message to echo back",
+				},
+			},
+			Required: []string{"message"},
+		},
+	}
+
+	sleepTool := &mcp.Tool{
+		Name:        "sleep",
+		Description: "Sleep for the specified duration in seconds",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"duration": {
+					Type:        "number",
+					Description: "Duration to sleep in seconds (can be a decimal)",
+					Minimum:     jsonschema.Ptr(0.0),
+				},
+			},
+			Required: []string{"duration"},
+		},
+	}
+
 	// Register shell tool
 	s.AddTool(shellTool, handleShellTool)
 	if registry != nil {
@@ -157,6 +327,18 @@ func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	s.AddTool(datetimeTool, handleGetCurrentDateTimeTool)
 	if registry != nil {
 		registry.Register(datetimeTool, handleGetCurrentDateTimeTool)
+	}
+
+	// Register echo tool
+	s.AddTool(echoTool, handleEchoTool)
+	if registry != nil {
+		registry.Register(echoTool, handleEchoTool)
+	}
+
+	// Register sleep tool
+	s.AddTool(sleepTool, handleSleepTool)
+	if registry != nil {
+		registry.Register(sleepTool, handleSleepTool)
 	}
 
 	return nil

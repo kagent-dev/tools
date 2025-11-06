@@ -75,7 +75,7 @@ pkg/
 ├── k8s/        # Kubernetes operations
 ├── helm/       # Helm package management
 ├── istio/      # Istio service mesh
-├── argo/       # Argo Rollouts
+├── argo/       # Argo Rollouts and ArgoCD
 ├── cilium/     # Cilium CNI
 ├── prometheus/ # Prometheus monitoring
 └── utils/      # Common utilities
@@ -131,16 +131,39 @@ Provides Istio service mesh management:
 - **istio_waypoint_status**: Get waypoint proxy status
 - **istio_ztunnel_config**: Get ztunnel configuration
 
-### 4. Argo Rollouts Tools (`argo.go`)
-Provides Argo Rollouts progressive delivery functionality:
+### 4. Argo Tools (`argo.go`)
+Provides Argo Rollouts progressive delivery and ArgoCD GitOps functionality:
 
-- **verify_argo_rollouts_controller_install**: Verify controller installation
-- **verify_kubectl_plugin_install**: Verify kubectl plugin installation
-- **promote_rollout**: Promote rollouts
-- **pause_rollout**: Pause rollouts
-- **set_rollout_image**: Set rollout images
-- **verify_gateway_plugin**: Verify Gateway API plugin
-- **check_plugin_logs**: Check plugin installation logs
+**Argo Rollouts Tools:**
+- **argo_verify_argo_rollouts_controller_install**: Verify controller installation
+- **argo_verify_kubectl_plugin_install**: Verify kubectl plugin installation
+- **argo_rollouts_list**: List rollouts or experiments
+- **argo_promote_rollout**: Promote a paused rollout
+- **argo_pause_rollout**: Pause a rollout
+- **argo_set_rollout_image**: Set rollout container image
+- **argo_verify_gateway_plugin**: Verify Gateway API plugin installation
+- **argo_check_plugin_logs**: Check plugin logs
+
+**ArgoCD Tools (GitOps):**
+- **argocd_list_applications**: List ArgoCD applications with search, limit, and offset
+- **argocd_get_application**: Get ArgoCD application details
+- **argocd_get_application_resource_tree**: Get resource tree for an application
+- **argocd_get_application_managed_resources**: Get managed resources with filtering
+- **argocd_get_application_workload_logs**: Get logs for application workloads
+- **argocd_get_application_events**: Get events for an application
+- **argocd_get_resource_events**: Get events for a specific resource
+- **argocd_get_resources**: Get resource manifests
+- **argocd_get_resource_actions**: Get available actions for a resource
+- **argocd_create_application**: Create a new ArgoCD application (write mode)
+- **argocd_update_application**: Update an ArgoCD application (write mode)
+- **argocd_delete_application**: Delete an ArgoCD application (write mode)
+- **argocd_sync_application**: Sync an ArgoCD application (write mode)
+- **argocd_run_resource_action**: Run an action on a resource (write mode)
+
+**Configuration:**
+- Set `ARGOCD_BASE_URL` environment variable to ArgoCD server URL (e.g., `https://argocd.example.com`)
+- Set `ARGOCD_API_TOKEN` environment variable to ArgoCD API token
+- Set `MCP_READ_ONLY=true` to disable write operations (create, update, delete, sync, run_resource_action)
 
 ### 5. Cilium Tools (`cilium.go`)
 Provides Cilium CNI and networking functionality:
@@ -277,10 +300,14 @@ This Go implementation provides feature parity with the original Python tools wh
 ## Configuration
 
 Tools can be configured through environment variables:
+
 - `KUBECONFIG`: Kubernetes configuration file path
 - `PROMETHEUS_URL`: Default Prometheus server URL (default: http://localhost:9090)
 - `GRAFANA_URL`: Default Grafana server URL
 - `GRAFANA_API_KEY`: Default Grafana API key
+- `ARGOCD_BASE_URL`: ArgoCD server base URL (required for ArgoCD tools)
+- `ARGOCD_API_TOKEN`: ArgoCD API authentication token (required for ArgoCD tools)
+- `MCP_READ_ONLY`: Set to `true` to disable write operations for ArgoCD tools (default: false)
 - `LOG_LEVEL`: Logging level (debug, info, warn, error)
 
 ## Example Usage
@@ -314,11 +341,26 @@ curl http://localhost:8084/health
 # Get server metrics
 curl http://localhost:8084/metrics
 
-# List available tools (when MCP endpoint is implemented)
-curl -X POST http://localhost:8084/mcp \
+# List available tools
+curl -X POST http://localhost:8084/mcp/tools/list \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+
+# Execute a tool
+curl -X POST http://localhost:8084/mcp/tools/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "datetime_get_current_time",
+      "arguments": {}
+    },
+    "id": 1
+  }'
 ```
+
+All tool providers (k8s, helm, istio, argo, cilium, prometheus, utils) are fully supported via HTTP transport endpoints `/mcp/tools/list` and `/mcp/tools/call`.
 
 ## Error Handling and Debugging
 

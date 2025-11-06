@@ -127,14 +127,14 @@ func TestValidateHTTPConfig_Invalid(t *testing.T) {
 			errMsg: "http-read-timeout must be positive",
 		},
 		{
-			name: "write timeout zero",
+			name: "write timeout negative",
 			config: HTTPConfig{
 				Port:            8080,
 				ReadTimeout:     30,
-				WriteTimeout:    0,
+				WriteTimeout:    -1,
 				ShutdownTimeout: 10,
 			},
-			errMsg: "http-write-timeout must be positive",
+			errMsg: "http-write-timeout must be zero or positive",
 		},
 		{
 			name: "shutdown timeout zero",
@@ -186,7 +186,7 @@ func TestExtractHTTPConfig_DefaultValues(t *testing.T) {
 
 	assert.Equal(t, 8080, cfg.Port)
 	assert.Equal(t, 30, cfg.ReadTimeout)
-	assert.Equal(t, 30, cfg.WriteTimeout)
+	assert.Equal(t, 0, cfg.WriteTimeout)
 	assert.Equal(t, 10, cfg.ShutdownTimeout)
 }
 

@@ -21,6 +21,38 @@ import (
 	"github.com/kagent-dev/tools/pkg/utils"
 )
 
+// getArgoCDClient gets or creates an ArgoCD client instance
+var getArgoCDClient = func() (*ArgoCDClient, error) {
+	return GetArgoCDClientFromEnv()
+}
+
+// isReadOnlyMode checks if the server is in read-only mode
+func isReadOnlyMode() bool {
+	return strings.ToLower(strings.TrimSpace(os.Getenv("MCP_READ_ONLY"))) == "true"
+}
+
+// returnJSONResult returns a JSON result as text content
+func returnJSONResult(data interface{}) (*mcp.CallToolResult, error) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to marshal result: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonData)}},
+	}, nil
+}
+
+// returnErrorResult returns an error result
+func returnErrorResult(message string) (*mcp.CallToolResult, error) {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: message}},
+		IsError: true,
+	}, nil
+}
+
 // Argo Rollouts tools
 
 func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -543,6 +575,610 @@ func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest) (*mcp
 	}, nil
 }
 
+// ArgoCD tools
+
+// handleArgoCDListApplications lists ArgoCD applications
+func handleArgoCDListApplications(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	opts := &ListApplicationsOptions{}
+	if search, ok := args["search"].(string); ok && search != "" {
+		opts.Search = search
+	}
+	if limit, ok := args["limit"].(float64); ok {
+		limitInt := int(limit)
+		opts.Limit = &limitInt
+	}
+	if offset, ok := args["offset"].(float64); ok {
+		offsetInt := int(offset)
+		opts.Offset = &offsetInt
+	}
+
+	result, err := client.ListApplications(ctx, opts)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to list applications: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDGetApplication gets an ArgoCD application by name
+func handleArgoCDGetApplication(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	var namespace *string
+	if ns, ok := args["applicationNamespace"].(string); ok && ns != "" {
+		namespace = &ns
+	}
+
+	result, err := client.GetApplication(ctx, appName, namespace)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to get application: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDGetApplicationResourceTree gets the resource tree for an application
+func handleArgoCDGetApplicationResourceTree(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.GetApplicationResourceTree(ctx, appName)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to get application resource tree: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDGetApplicationManagedResources gets managed resources for an application
+func handleArgoCDGetApplicationManagedResources(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	filters := &ManagedResourcesFilters{}
+	if kind, ok := args["kind"].(string); ok && kind != "" {
+		filters.Kind = &kind
+	}
+	if ns, ok := args["namespace"].(string); ok && ns != "" {
+		filters.Namespace = &ns
+	}
+	if name, ok := args["name"].(string); ok && name != "" {
+		filters.Name = &name
+	}
+	if version, ok := args["version"].(string); ok && version != "" {
+		filters.Version = &version
+	}
+	if group, ok := args["group"].(string); ok && group != "" {
+		filters.Group = &group
+	}
+	if appNs, ok := args["appNamespace"].(string); ok && appNs != "" {
+		filters.AppNamespace = &appNs
+	}
+	if project, ok := args["project"].(string); ok && project != "" {
+		filters.Project = &project
+	}
+
+	var filtersToUse *ManagedResourcesFilters
+	if filters.Kind != nil || filters.Namespace != nil || filters.Name != nil || filters.Version != nil || filters.Group != nil || filters.AppNamespace != nil || filters.Project != nil {
+		filtersToUse = filters
+	}
+
+	result, err := client.GetApplicationManagedResources(ctx, appName, filtersToUse)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to get application managed resources: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDGetApplicationWorkloadLogs gets logs for application workload
+func handleArgoCDGetApplicationWorkloadLogs(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	appNamespace, ok := args["applicationNamespace"].(string)
+	if !ok || appNamespace == "" {
+		return returnErrorResult("applicationNamespace parameter is required")
+	}
+
+	container, ok := args["container"].(string)
+	if !ok || container == "" {
+		return returnErrorResult("container parameter is required")
+	}
+
+	resourceRefRaw, ok := args["resourceRef"]
+	if !ok {
+		return returnErrorResult("resourceRef parameter is required")
+	}
+
+	resourceRefJSON, err := json.Marshal(resourceRefRaw)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to marshal resourceRef: %v", err))
+	}
+
+	var resourceRef ResourceRef
+	if err := json.Unmarshal(resourceRefJSON, &resourceRef); err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to unmarshal resourceRef: %v", err))
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.GetWorkloadLogs(ctx, appName, appNamespace, resourceRef, container)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to get workload logs: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDGetApplicationEvents gets events for an application
+func handleArgoCDGetApplicationEvents(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.GetApplicationEvents(ctx, appName)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to get application events: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDGetResourceEvents gets events for a resource
+func handleArgoCDGetResourceEvents(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	appNamespace, ok := args["applicationNamespace"].(string)
+	if !ok || appNamespace == "" {
+		return returnErrorResult("applicationNamespace parameter is required")
+	}
+
+	resourceUID, ok := args["resourceUID"].(string)
+	if !ok || resourceUID == "" {
+		return returnErrorResult("resourceUID parameter is required")
+	}
+
+	resourceNamespace, ok := args["resourceNamespace"].(string)
+	if !ok || resourceNamespace == "" {
+		return returnErrorResult("resourceNamespace parameter is required")
+	}
+
+	resourceName, ok := args["resourceName"].(string)
+	if !ok || resourceName == "" {
+		return returnErrorResult("resourceName parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.GetResourceEvents(ctx, appName, appNamespace, resourceUID, resourceNamespace, resourceName)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to get resource events: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDGetResources gets resource manifests
+func handleArgoCDGetResources(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	appNamespace, ok := args["applicationNamespace"].(string)
+	if !ok || appNamespace == "" {
+		return returnErrorResult("applicationNamespace parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	var resourceRefs []ResourceRef
+	if resourceRefsRaw, ok := args["resourceRefs"]; ok && resourceRefsRaw != nil {
+		resourceRefsJSON, err := json.Marshal(resourceRefsRaw)
+		if err != nil {
+			return returnErrorResult(fmt.Sprintf("failed to marshal resourceRefs: %v", err))
+		}
+
+		if err := json.Unmarshal(resourceRefsJSON, &resourceRefs); err != nil {
+			return returnErrorResult(fmt.Sprintf("failed to unmarshal resourceRefs: %v", err))
+		}
+	}
+
+	// If no resourceRefs provided, get all resources from resource tree
+	if len(resourceRefs) == 0 {
+		tree, err := client.GetApplicationResourceTree(ctx, appName)
+		if err != nil {
+			return returnErrorResult(fmt.Sprintf("failed to get resource tree: %v", err))
+		}
+
+		// Parse tree to extract resource references
+		treeJSON, err := json.Marshal(tree)
+		if err != nil {
+			return returnErrorResult(fmt.Sprintf("failed to marshal resource tree: %v", err))
+		}
+
+		var treeData map[string]interface{}
+		if err := json.Unmarshal(treeJSON, &treeData); err != nil {
+			return returnErrorResult(fmt.Sprintf("failed to unmarshal resource tree: %v", err))
+		}
+
+		if nodes, ok := treeData["nodes"].([]interface{}); ok {
+			for _, nodeRaw := range nodes {
+				if node, ok := nodeRaw.(map[string]interface{}); ok {
+					ref := ResourceRef{}
+					if uid, ok := node["uid"].(string); ok {
+						ref.UID = uid
+					}
+					if version, ok := node["version"].(string); ok {
+						ref.Version = version
+					}
+					if group, ok := node["group"].(string); ok {
+						ref.Group = group
+					}
+					if kind, ok := node["kind"].(string); ok {
+						ref.Kind = kind
+					}
+					if name, ok := node["name"].(string); ok {
+						ref.Name = name
+					}
+					if ns, ok := node["namespace"].(string); ok {
+						ref.Namespace = ns
+					}
+					if ref.UID != "" && ref.Name != "" && ref.Kind != "" {
+						resourceRefs = append(resourceRefs, ref)
+					}
+				}
+			}
+		}
+	}
+
+	// Get all resources
+	results := make([]interface{}, 0, len(resourceRefs))
+	for _, ref := range resourceRefs {
+		result, err := client.GetResource(ctx, appName, appNamespace, ref)
+		if err != nil {
+			return returnErrorResult(fmt.Sprintf("failed to get resource: %v", err))
+		}
+		results = append(results, result)
+	}
+
+	return returnJSONResult(results)
+}
+
+// handleArgoCDGetResourceActions gets available actions for a resource
+func handleArgoCDGetResourceActions(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	appNamespace, ok := args["applicationNamespace"].(string)
+	if !ok || appNamespace == "" {
+		return returnErrorResult("applicationNamespace parameter is required")
+	}
+
+	resourceRefRaw, ok := args["resourceRef"]
+	if !ok {
+		return returnErrorResult("resourceRef parameter is required")
+	}
+
+	resourceRefJSON, err := json.Marshal(resourceRefRaw)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to marshal resourceRef: %v", err))
+	}
+
+	var resourceRef ResourceRef
+	if err := json.Unmarshal(resourceRefJSON, &resourceRef); err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to unmarshal resourceRef: %v", err))
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.GetResourceActions(ctx, appName, appNamespace, resourceRef)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to get resource actions: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDCreateApplication creates a new ArgoCD application
+func handleArgoCDCreateApplication(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	applicationRaw, ok := args["application"]
+	if !ok {
+		return returnErrorResult("application parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.CreateApplication(ctx, applicationRaw)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create application: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDUpdateApplication updates an ArgoCD application
+func handleArgoCDUpdateApplication(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	applicationRaw, ok := args["application"]
+	if !ok {
+		return returnErrorResult("application parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.UpdateApplication(ctx, appName, applicationRaw)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to update application: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDDeleteApplication deletes an ArgoCD application
+func handleArgoCDDeleteApplication(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	options := &DeleteApplicationOptions{}
+	if appNs, ok := args["applicationNamespace"].(string); ok && appNs != "" {
+		options.AppNamespace = &appNs
+	}
+	if cascade, ok := args["cascade"].(bool); ok {
+		options.Cascade = &cascade
+	}
+	if propagationPolicy, ok := args["propagationPolicy"].(string); ok && propagationPolicy != "" {
+		options.PropagationPolicy = &propagationPolicy
+	}
+
+	var optionsToUse *DeleteApplicationOptions
+	if options.AppNamespace != nil || options.Cascade != nil || options.PropagationPolicy != nil {
+		optionsToUse = options
+	}
+
+	result, err := client.DeleteApplication(ctx, appName, optionsToUse)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to delete application: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDSyncApplication syncs an ArgoCD application
+func handleArgoCDSyncApplication(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	options := &SyncApplicationOptions{}
+	if appNs, ok := args["applicationNamespace"].(string); ok && appNs != "" {
+		options.AppNamespace = &appNs
+	}
+	if dryRun, ok := args["dryRun"].(bool); ok {
+		options.DryRun = &dryRun
+	}
+	if prune, ok := args["prune"].(bool); ok {
+		options.Prune = &prune
+	}
+	if revision, ok := args["revision"].(string); ok && revision != "" {
+		options.Revision = &revision
+	}
+	if syncOptionsRaw, ok := args["syncOptions"].([]interface{}); ok {
+		syncOptions := make([]string, 0, len(syncOptionsRaw))
+		for _, opt := range syncOptionsRaw {
+			if optStr, ok := opt.(string); ok {
+				syncOptions = append(syncOptions, optStr)
+			}
+		}
+		if len(syncOptions) > 0 {
+			options.SyncOptions = syncOptions
+		}
+	}
+
+	var optionsToUse *SyncApplicationOptions
+	if options.AppNamespace != nil || options.DryRun != nil || options.Prune != nil || options.Revision != nil || options.SyncOptions != nil {
+		optionsToUse = options
+	}
+
+	result, err := client.SyncApplication(ctx, appName, optionsToUse)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to sync application: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
+// handleArgoCDRunResourceAction runs an action on a resource
+func handleArgoCDRunResourceAction(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return returnErrorResult("failed to parse arguments")
+	}
+
+	appName, ok := args["applicationName"].(string)
+	if !ok || appName == "" {
+		return returnErrorResult("applicationName parameter is required")
+	}
+
+	appNamespace, ok := args["applicationNamespace"].(string)
+	if !ok || appNamespace == "" {
+		return returnErrorResult("applicationNamespace parameter is required")
+	}
+
+	action, ok := args["action"].(string)
+	if !ok || action == "" {
+		return returnErrorResult("action parameter is required")
+	}
+
+	resourceRefRaw, ok := args["resourceRef"]
+	if !ok {
+		return returnErrorResult("resourceRef parameter is required")
+	}
+
+	resourceRefJSON, err := json.Marshal(resourceRefRaw)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to marshal resourceRef: %v", err))
+	}
+
+	var resourceRef ResourceRef
+	if err := json.Unmarshal(resourceRefJSON, &resourceRef); err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to unmarshal resourceRef: %v", err))
+	}
+
+	client, err := getArgoCDClient()
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to create ArgoCD client: %v", err))
+	}
+
+	result, err := client.RunResourceAction(ctx, appName, appNamespace, resourceRef, action)
+	if err != nil {
+		return returnErrorResult(fmt.Sprintf("failed to run resource action: %v", err))
+	}
+
+	return returnJSONResult(result)
+}
+
 // ToolRegistry is an interface for tool registration (to avoid import cycles)
 type ToolRegistry interface {
 	Register(tool *mcp.Tool, handler mcp.ToolHandler)
@@ -555,7 +1191,7 @@ func RegisterTools(s *mcp.Server) error {
 
 // RegisterToolsWithRegistry registers Argo tools with the MCP server and optionally with a tool registry
 func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
-	logger.Get().Info("RegisterTools initialized")
+	logger.Get().Info("Registering Argo tools", "modules", []string{"Argo Rollouts", "ArgoCD"})
 
 	// Helper function to register tool with both server and registry
 	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
@@ -720,6 +1356,354 @@ func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 			},
 		},
 	}, handleCheckPluginLogs)
+
+	// Register ArgoCD tools (read-only)
+	registerTool(&mcp.Tool{
+		Name:        "argocd_list_applications",
+		Description: "List ArgoCD applications with optional search, limit, and offset parameters",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"search": {
+					Type:        "string",
+					Description: "Search applications by name. This is a partial match on the application name and does not support glob patterns (e.g. \"*\"). Optional.",
+				},
+				"limit": {
+					Type:        "number",
+					Description: "Maximum number of applications to return. Use this to reduce token usage when there are many applications. Optional.",
+				},
+				"offset": {
+					Type:        "number",
+					Description: "Number of applications to skip before returning results. Use with limit for pagination. Optional.",
+				},
+			},
+		},
+	}, handleArgoCDListApplications)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_application",
+		Description: "Get ArgoCD application by application name. Optionally specify the application namespace to get applications from non-default namespaces.",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+				"applicationNamespace": {
+					Type:        "string",
+					Description: "The namespace where the application is located. Optional if application is in the default namespace.",
+				},
+			},
+			Required: []string{"applicationName"},
+		},
+	}, handleArgoCDGetApplication)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_application_resource_tree",
+		Description: "Get resource tree for ArgoCD application by application name",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+			},
+			Required: []string{"applicationName"},
+		},
+	}, handleArgoCDGetApplicationResourceTree)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_application_managed_resources",
+		Description: "Get managed resources for ArgoCD application by application name with optional filtering. Use filters to avoid token limits with large applications. Examples: kind=\"ConfigMap\" for config maps only, namespace=\"production\" for specific namespace, or combine multiple filters.",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+				"kind": {
+					Type:        "string",
+					Description: "Filter by Kubernetes resource kind (e.g., \"ConfigMap\", \"Secret\", \"Deployment\")",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "Filter by Kubernetes namespace",
+				},
+				"name": {
+					Type:        "string",
+					Description: "Filter by resource name",
+				},
+				"version": {
+					Type:        "string",
+					Description: "Filter by resource API version",
+				},
+				"group": {
+					Type:        "string",
+					Description: "Filter by API group",
+				},
+				"appNamespace": {
+					Type:        "string",
+					Description: "Filter by Argo CD application namespace",
+				},
+				"project": {
+					Type:        "string",
+					Description: "Filter by Argo CD project",
+				},
+			},
+			Required: []string{"applicationName"},
+		},
+	}, handleArgoCDGetApplicationManagedResources)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_application_workload_logs",
+		Description: "Get logs for ArgoCD application workload (Deployment, StatefulSet, Pod, etc.) by application name and resource ref and optionally container name",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+				"applicationNamespace": {
+					Type:        "string",
+					Description: "The namespace where the application is located",
+				},
+				"resourceRef": {
+					Type:        "object",
+					Description: "Resource reference containing uid, version, group, kind, name, and namespace",
+				},
+				"container": {
+					Type:        "string",
+					Description: "The container name",
+				},
+			},
+			Required: []string{"applicationName", "applicationNamespace", "resourceRef", "container"},
+		},
+	}, handleArgoCDGetApplicationWorkloadLogs)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_application_events",
+		Description: "Get events for ArgoCD application by application name",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+			},
+			Required: []string{"applicationName"},
+		},
+	}, handleArgoCDGetApplicationEvents)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_resource_events",
+		Description: "Get events for a resource that is managed by an ArgoCD application",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+				"applicationNamespace": {
+					Type:        "string",
+					Description: "The namespace where the application is located",
+				},
+				"resourceUID": {
+					Type:        "string",
+					Description: "The UID of the resource",
+				},
+				"resourceNamespace": {
+					Type:        "string",
+					Description: "The namespace of the resource",
+				},
+				"resourceName": {
+					Type:        "string",
+					Description: "The name of the resource",
+				},
+			},
+			Required: []string{"applicationName", "applicationNamespace", "resourceUID", "resourceNamespace", "resourceName"},
+		},
+	}, handleArgoCDGetResourceEvents)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_resources",
+		Description: "Get manifests for resources specified by resourceRefs. If resourceRefs is empty or not provided, fetches all resources managed by the application.",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+				"applicationNamespace": {
+					Type:        "string",
+					Description: "The namespace where the application is located",
+				},
+				"resourceRefs": {
+					Type:        "array",
+					Description: "Array of resource references. If empty, fetches all resources from the application.",
+				},
+			},
+			Required: []string{"applicationName", "applicationNamespace"},
+		},
+	}, handleArgoCDGetResources)
+
+	registerTool(&mcp.Tool{
+		Name:        "argocd_get_resource_actions",
+		Description: "Get actions for a resource that is managed by an ArgoCD application",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"applicationName": {
+					Type:        "string",
+					Description: "The name of the application",
+				},
+				"applicationNamespace": {
+					Type:        "string",
+					Description: "The namespace where the application is located",
+				},
+				"resourceRef": {
+					Type:        "object",
+					Description: "Resource reference containing uid, version, group, kind, name, and namespace",
+				},
+			},
+			Required: []string{"applicationName", "applicationNamespace", "resourceRef"},
+		},
+	}, handleArgoCDGetResourceActions)
+
+	// Register write tools only if not in read-only mode
+	if !isReadOnlyMode() {
+		registerTool(&mcp.Tool{
+			Name:        "argocd_create_application",
+			Description: "Create a new ArgoCD application in the specified namespace. The application.metadata.namespace field determines where the Application resource will be created (e.g., \"argocd\", \"argocd-apps\", or any custom namespace).",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"application": {
+						Type:        "object",
+						Description: "The ArgoCD Application resource definition",
+					},
+				},
+				Required: []string{"application"},
+			},
+		}, handleArgoCDCreateApplication)
+
+		registerTool(&mcp.Tool{
+			Name:        "argocd_update_application",
+			Description: "Update an ArgoCD application",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"applicationName": {
+						Type:        "string",
+						Description: "The name of the application to update",
+					},
+					"application": {
+						Type:        "object",
+						Description: "The updated ArgoCD Application resource definition",
+					},
+				},
+				Required: []string{"applicationName", "application"},
+			},
+		}, handleArgoCDUpdateApplication)
+
+		registerTool(&mcp.Tool{
+			Name:        "argocd_delete_application",
+			Description: "Delete an ArgoCD application. Specify applicationNamespace if the application is in a non-default namespace to avoid permission errors.",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"applicationName": {
+						Type:        "string",
+						Description: "The name of the application to delete",
+					},
+					"applicationNamespace": {
+						Type:        "string",
+						Description: "The namespace where the application is located. Required if application is not in the default namespace.",
+					},
+					"cascade": {
+						Type:        "boolean",
+						Description: "Whether to cascade the deletion to child resources",
+					},
+					"propagationPolicy": {
+						Type:        "string",
+						Description: "Deletion propagation policy (e.g., \"Foreground\", \"Background\", \"Orphan\")",
+					},
+				},
+				Required: []string{"applicationName"},
+			},
+		}, handleArgoCDDeleteApplication)
+
+		registerTool(&mcp.Tool{
+			Name:        "argocd_sync_application",
+			Description: "Sync an ArgoCD application. Specify applicationNamespace if the application is in a non-default namespace to avoid permission errors.",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"applicationName": {
+						Type:        "string",
+						Description: "The name of the application to sync",
+					},
+					"applicationNamespace": {
+						Type:        "string",
+						Description: "The namespace where the application is located. Required if application is not in the default namespace.",
+					},
+					"dryRun": {
+						Type:        "boolean",
+						Description: "Perform a dry run sync without applying changes",
+					},
+					"prune": {
+						Type:        "boolean",
+						Description: "Remove resources that are no longer defined in the source",
+					},
+					"revision": {
+						Type:        "string",
+						Description: "Sync to a specific revision instead of the latest",
+					},
+					"syncOptions": {
+						Type:        "array",
+						Description: "Additional sync options (e.g., [\"CreateNamespace=true\", \"PrunePropagationPolicy=foreground\"])",
+						Items: &jsonschema.Schema{
+							Type: "string",
+						},
+					},
+				},
+				Required: []string{"applicationName"},
+			},
+		}, handleArgoCDSyncApplication)
+
+		registerTool(&mcp.Tool{
+			Name:        "argocd_run_resource_action",
+			Description: "Run an action on a resource managed by an ArgoCD application",
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"applicationName": {
+						Type:        "string",
+						Description: "The name of the application",
+					},
+					"applicationNamespace": {
+						Type:        "string",
+						Description: "The namespace where the application is located",
+					},
+					"resourceRef": {
+						Type:        "object",
+						Description: "Resource reference containing uid, version, group, kind, name, and namespace",
+					},
+					"action": {
+						Type:        "string",
+						Description: "The action to run on the resource",
+					},
+				},
+				Required: []string{"applicationName", "applicationNamespace", "resourceRef", "action"},
+			},
+		}, handleArgoCDRunResourceAction)
+	}
 
 	return nil
 }

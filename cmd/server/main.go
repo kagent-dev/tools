@@ -33,7 +33,7 @@ import (
 var (
 	port        int
 	httpPort    int
-	stdio       bool
+	stdio       bool = true // Default to stdio mode
 	tools       []string
 	kubeconfig  *string
 	logLevel    string
@@ -55,7 +55,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8084, "Port to run the server on (deprecated, use --http-port)")
 	rootCmd.Flags().StringVarP(&logLevel, "log-level", "l", "info", "Log level")
-	rootCmd.Flags().BoolVar(&stdio, "stdio", false, "Use stdio for communication instead of HTTP")
+	rootCmd.Flags().BoolVar(&stdio, "stdio", true, "Use stdio for communication (default: true). Set --http-port to automatically use HTTP mode, or --stdio=false to force HTTP mode")
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
 	kubeconfig = rootCmd.Flags().String("kubeconfig", "", "kubeconfig file path (optional, defaults to in-cluster config)")
@@ -71,7 +71,9 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		logger.Get().Error("Failed to start tools mcp server", "error", err)
+		// Use stderr directly for error before logger is initialized
+		// This is safe because it's before any stdio transport is started
+		fmt.Fprintf(os.Stderr, "Failed to start tools mcp server: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -86,7 +88,7 @@ func printVersion() {
 	fmt.Printf("OS/Arch:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
 }
 
-func run(cmd *cobra.Command, args []string) {
+func run(command *cobra.Command, args []string) {
 	// Handle version flag early, before any initialization
 	if showVersion {
 		printVersion()
@@ -94,13 +96,31 @@ func run(cmd *cobra.Command, args []string) {
 	}
 
 	// Extract HTTP configuration from flags
-	httpCfg, err := cmd.Flags().GetInt("http-port")
+	httpConfig, err := cmd.ExtractHTTPConfig(command)
 	if err != nil {
-		logger.Get().Error("Failed to get http-port flag", "error", err)
+		// Use stderr directly for error before logger is initialized
+		fmt.Fprintf(os.Stderr, "Failed to parse HTTP configuration: %v\n", err)
 		os.Exit(1)
 	}
-	httpPort = httpCfg
+	httpPort = httpConfig.Port
 
+	// Determine transport mode:
+	// 1. If --stdio is explicitly set to false, use HTTP mode
+	// 2. If --http-port is explicitly set to a non-zero value, use HTTP mode
+	// 3. Otherwise, use stdio mode (default)
+	if command.Flags().Changed("stdio") && !stdio {
+		// User explicitly set --stdio=false, use HTTP mode
+		stdio = false
+	} else if command.Flags().Changed("http-port") && httpPort > 0 {
+		// User explicitly set --http-port to a non-zero value, use HTTP mode
+		stdio = false
+	} else {
+		// Default to stdio mode (even if http-port has default value)
+		stdio = true
+	}
+
+	// Initialize logger FIRST, before any logging calls
+	// This ensures all log.Info calls use stderr when stdio mode is enabled
 	logger.Init(stdio, logLevel)
 	defer logger.Sync()
 
@@ -159,9 +179,20 @@ func run(cmd *cobra.Command, args []string) {
 		transport = mcpinternal.NewStdioTransport(mcpServer)
 		logger.Get().Info("Using stdio transport")
 	} else {
-		httpTransport := mcpinternal.NewHTTPTransport(mcpServer, httpPort, toolRegistry)
+		httpTransport, err := mcpinternal.NewHTTPTransport(mcpServer, mcpinternal.HTTPTransportConfig{
+			Port:              httpConfig.Port,
+			ReadTimeout:       time.Duration(httpConfig.ReadTimeout) * time.Second,
+			WriteTimeout:      time.Duration(httpConfig.WriteTimeout) * time.Second,
+			IdleTimeout:       0, // use default behaviour inside transport
+			ReadHeaderTimeout: 0,
+			ShutdownTimeout:   time.Duration(httpConfig.ShutdownTimeout) * time.Second,
+		})
+		if err != nil {
+			logger.Get().Error("Failed to configure HTTP transport", "error", err)
+			os.Exit(1)
+		}
 		transport = httpTransport
-		logger.Get().Info("Using HTTP transport", "port", httpPort)
+		logger.Get().Info("Using HTTP transport", "port", httpConfig.Port)
 	}
 
 	// Create wait group for server goroutines

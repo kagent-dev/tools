@@ -389,7 +389,7 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 
 				// Verify tool registration
 				output := server.GetOutput()
-				assert.Contains(t, output, "RegisterTools initialized")
+				assert.Contains(t, output, "Registering")
 				assert.Contains(t, output, "utils")
 			},
 		},
@@ -406,7 +406,7 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 
 				// Verify all tools are registered
 				output := server.GetOutput()
-				assert.Contains(t, output, "RegisterTools initialized")
+				assert.Contains(t, output, "Registering")
 				for _, tool := range config.Tools {
 					assert.Contains(t, output, tool)
 				}
@@ -425,7 +425,7 @@ func TestComprehensiveHTTPTransport(t *testing.T) {
 
 				// Verify server started with all tools
 				output := server.GetOutput()
-				assert.Contains(t, output, "RegisterTools initialized")
+				assert.Contains(t, output, "Registering")
 				assert.Contains(t, output, "Running KAgent Tools Server")
 
 				// Should contain evidence of multiple tool categories
@@ -503,7 +503,7 @@ func TestComprehensiveStdioTransport(t *testing.T) {
 				// Check stderr for initialization messages
 				output := server.GetOutput()
 				assert.Contains(t, output, "Running KAgent Tools Server STDIO")
-				assert.Contains(t, output, "RegisterTools initialized")
+				assert.Contains(t, output, "Registering")
 				assert.Contains(t, output, "utils")
 
 				// Verify stdio transport is working (should not contain old error message)
@@ -522,7 +522,7 @@ func TestComprehensiveStdioTransport(t *testing.T) {
 				// Check stderr for all tool registrations
 				output := server.GetOutput()
 				assert.Contains(t, output, "Running KAgent Tools Server STDIO")
-				assert.Contains(t, output, "RegisterTools initialized")
+				assert.Contains(t, output, "Registering")
 				for _, tool := range []string{"utils", "k8s", "helm"} {
 					assert.Contains(t, output, tool)
 				}
@@ -541,7 +541,7 @@ func TestComprehensiveStdioTransport(t *testing.T) {
 				assert.Contains(t, output, "invalid-tool")
 				// Valid tools should still be registered
 				assert.Contains(t, output, "utils")
-				assert.Contains(t, output, "RegisterTools initialized")
+				assert.Contains(t, output, "Registering")
 			},
 		},
 	}
@@ -598,7 +598,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 
 			// Verify tool registration
 			output := server.GetOutput()
-			assert.Contains(t, output, "RegisterTools initialized")
+			assert.Contains(t, output, "Registering")
 			assert.Contains(t, output, tool)
 			assert.Contains(t, output, "Running KAgent Tools Server")
 
@@ -648,7 +648,7 @@ func TestComprehensiveToolFunctionality(t *testing.T) {
 			// Verify tool registration in stdio mode
 			output := server.GetOutput()
 			assert.Contains(t, output, "Running KAgent Tools Server STDIO")
-			assert.Contains(t, output, "RegisterTools initialized")
+			assert.Contains(t, output, "Registering")
 			assert.Contains(t, output, tool)
 
 			// Verify stdio transport is working (should not contain old error message)
@@ -1039,7 +1039,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 
 		// Verify server output shows new SDK usage
 		output := server.GetOutput()
-		assert.Contains(t, output, "RegisterTools initialized")
+		assert.Contains(t, output, "Registering")
 		assert.Contains(t, output, "Running KAgent Tools Server")
 
 		// Should not contain old SDK patterns
@@ -1095,7 +1095,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 
 		// Verify all tool categories are registered
 		output := server.GetOutput()
-		assert.Contains(t, output, "RegisterTools initialized")
+		assert.Contains(t, output, "Registering")
 		assert.Contains(t, output, "Running KAgent Tools Server")
 
 		// Check that most tools are registered (some may have specific requirements)
@@ -1141,7 +1141,7 @@ func TestComprehensiveSDKMigration(t *testing.T) {
 		// Verify command-line interface compatibility
 		output := server.GetOutput()
 		assert.Contains(t, output, "Starting kagent-tools-server")
-		assert.Contains(t, output, "RegisterTools initialized")
+		assert.Contains(t, output, "Registering")
 		assert.Contains(t, output, "Running KAgent Tools Server")
 	})
 }

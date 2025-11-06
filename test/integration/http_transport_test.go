@@ -353,7 +353,7 @@ func TestHTTPTransportBasic(t *testing.T) {
 
 	// Verify server output
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "Running KAgent Tools Server")
 }
 
@@ -587,7 +587,7 @@ func TestHTTPTransportMultipleTools(t *testing.T) {
 
 	// Verify server output contains all tool registrations
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "Running KAgent Tools Server")
 
 	// Verify each tool category appears in the output
@@ -665,7 +665,7 @@ func TestHTTPTransportInvalidTools(t *testing.T) {
 	assert.Contains(t, output, "invalid-tool")
 
 	// Valid tools should still be registered
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "utils")
 }
 
@@ -722,7 +722,7 @@ users:
 
 	// Check server output for kubeconfig setting
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "Running KAgent Tools Server")
 }
 

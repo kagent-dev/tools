@@ -398,7 +398,7 @@ func TestMCPIntegrationHTTP(t *testing.T) {
 
 	// Verify server output contains expected tool registrations
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "Running KAgent Tools Server")
 }
 
@@ -424,7 +424,7 @@ func TestMCPIntegrationStdio(t *testing.T) {
 	// Verify server output contains expected stdio mode message
 	output := server.GetOutput()
 	assert.Contains(t, output, "Running KAgent Tools Server STDIO")
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 
 	// Verify stdio transport is working (should not contain old error message)
 	assert.NotContains(t, output, "Stdio transport not yet implemented with new SDK")
@@ -487,7 +487,7 @@ func TestToolRegistration(t *testing.T) {
 
 			// Verify server output contains expected tool registrations
 			output := server.GetOutput()
-			assert.Contains(t, output, "RegisterTools initialized")
+			assert.Contains(t, output, "Registering")
 			assert.Contains(t, output, "Running KAgent Tools Server")
 
 			// If specific tools were requested, verify they appear in output
@@ -620,7 +620,7 @@ func TestErrorHandling(t *testing.T) {
 	assert.Contains(t, output, "invalid-tool")
 
 	// Valid tools should still be registered
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "utils")
 }
 
@@ -692,7 +692,7 @@ func TestUtilsToolFunctionality(t *testing.T) {
 
 	// Verify server output contains utils tool registration
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "utils")
 
 	// Test actual tool calls:
@@ -735,7 +735,7 @@ func TestK8sToolFunctionality(t *testing.T) {
 
 	// Verify server output contains k8s tool registration
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "k8s")
 
 	// Test actual k8s tool calls:
@@ -779,7 +779,7 @@ func TestAllToolCategories(t *testing.T) {
 
 	// Verify server output contains all tool registrations
 	output := server.GetOutput()
-	assert.Contains(t, output, "RegisterTools initialized")
+	assert.Contains(t, output, "Registering")
 	assert.Contains(t, output, "Running KAgent Tools Server")
 
 	// Verify each tool category appears in the output

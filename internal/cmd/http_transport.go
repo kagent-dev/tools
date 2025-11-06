@@ -22,8 +22,8 @@ func RegisterHTTPFlags(cmd *cobra.Command) {
 	cmd.Flags().IntP("http-read-timeout", "", 30,
 		"HTTP request read timeout in seconds. Default: 30")
 
-	cmd.Flags().IntP("http-write-timeout", "", 30,
-		"HTTP response write timeout in seconds. Default: 30")
+	cmd.Flags().IntP("http-write-timeout", "", 0,
+		"HTTP response write timeout in seconds. Default: 0 (disabled for SSE streaming)")
 
 	cmd.Flags().IntP("http-shutdown-timeout", "", 10,
 		"HTTP server graceful shutdown timeout in seconds. Default: 10")
@@ -39,8 +39,8 @@ func ValidateHTTPConfig(cfg HTTPConfig) error {
 		return fmt.Errorf("http-read-timeout must be positive, got %d", cfg.ReadTimeout)
 	}
 
-	if cfg.WriteTimeout <= 0 {
-		return fmt.Errorf("http-write-timeout must be positive, got %d", cfg.WriteTimeout)
+	if cfg.WriteTimeout < 0 {
+		return fmt.Errorf("http-write-timeout must be zero or positive, got %d", cfg.WriteTimeout)
 	}
 
 	if cfg.ShutdownTimeout <= 0 {

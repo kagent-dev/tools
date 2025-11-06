@@ -217,7 +217,7 @@ func TestStdioTransportBasic(t *testing.T) {
 	if err == nil {
 		// Check for expected initialization messages
 		assert.Contains(t, stderr, "Running KAgent Tools Server STDIO")
-		assert.Contains(t, stderr, "RegisterTools initialized")
+		assert.Contains(t, stderr, "Registering")
 	}
 
 	// Test actual MCP communication:
@@ -264,7 +264,7 @@ func TestStdioTransportToolListing(t *testing.T) {
 	// Read stderr to verify tools are registered
 	stderr, err := server.ReadStderr(5 * time.Second)
 	if err == nil {
-		assert.Contains(t, stderr, "RegisterTools initialized")
+		assert.Contains(t, stderr, "Registering")
 		assert.Contains(t, stderr, "utils")
 		assert.Contains(t, stderr, "k8s")
 	}
@@ -397,7 +397,7 @@ func TestStdioTransportMultipleTools(t *testing.T) {
 	// Read stderr to verify all tools are registered
 	stderr, err := server.ReadStderr(5 * time.Second)
 	if err == nil {
-		assert.Contains(t, stderr, "RegisterTools initialized")
+		assert.Contains(t, stderr, "Registering")
 		for _, tool := range allTools {
 			assert.Contains(t, stderr, tool, "Tool %s should be registered", tool)
 		}
@@ -444,7 +444,7 @@ func TestStdioTransportInvalidTools(t *testing.T) {
 		assert.Contains(t, stderr, "Unknown tool specified")
 		assert.Contains(t, stderr, "invalid-tool")
 		// Valid tools should still be registered
-		assert.Contains(t, stderr, "RegisterTools initialized")
+		assert.Contains(t, stderr, "Registering")
 		assert.Contains(t, stderr, "utils")
 	}
 }

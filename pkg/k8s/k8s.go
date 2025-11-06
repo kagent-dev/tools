@@ -234,7 +234,7 @@ func RegisterTools(server *mcp.Server, llm llms.Model, kubeconfig string) error 
 
 // RegisterToolsWithRegistry registers all k8s tools with the MCP server and optionally with a tool registry
 func RegisterToolsWithRegistry(server *mcp.Server, registry ToolRegistry, llm llms.Model, kubeconfig string) error {
-	logger.Get().Info("RegisterTools initialized")
+	logger.Get().Info("Registering Kubernetes tools")
 	k8sTool := NewK8sToolWithConfig(kubeconfig, llm)
 
 	// Helper function to register tool with both server and registry
