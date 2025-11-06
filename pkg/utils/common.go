@@ -219,10 +219,13 @@ func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 			totalSeconds := int(durationSeconds)
 
 			if request.Session != nil {
+
+				// Send progress notification
 				progressParams := &mcp.ProgressNotificationParams{
-					Message:  fmt.Sprintf("Sleep progress: %d/%d seconds (%.1fs remaining)", elapsedSeconds, totalSeconds, remaining.Seconds()),
-					Progress: elapsed.Seconds(),
-					Total:    duration.Seconds(),
+					ProgressToken: request.Params.GetProgressToken(),
+					Message:       fmt.Sprintf("Sleep progress: %d/%d seconds (%.1fs remaining)", elapsedSeconds, totalSeconds, remaining.Seconds()),
+					Progress:      elapsed.Seconds(),
+					Total:         duration.Seconds(),
 				}
 
 				if err := request.Session.NotifyProgress(ctx, progressParams); err != nil {
