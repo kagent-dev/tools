@@ -1,3 +1,18 @@
+// Package cilium provides Cilium CNI and network policy operations.
+//
+// This package implements MCP tools for Cilium, providing operations such as:
+//   - Cilium installation and upgrades
+//   - Network policy management
+//   - Cluster connectivity and remote cluster operations
+//   - Hubble observability and network visibility
+//
+// All tools require Cilium to be properly installed in the cluster.
+// Tools support eBPF networking, security policies, and multi-cluster operations.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	err := RegisterTools(server)
 package cilium
 
 import (

@@ -1,3 +1,19 @@
+// Package k8s provides Kubernetes operations via kubectl.
+//
+// This package implements MCP tools for Kubernetes, providing operations such as:
+//   - Pod management and inspection
+//   - Resource querying and retrieval
+//   - Manifest application and management
+//   - Namespace and resource operations
+//
+// All tools require proper Kubernetes authentication via kubeconfig.
+// Tools that modify cluster state will invalidate caches automatically.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	tool := NewK8sTool(llmModel)
+//	err := tool.RegisterTools(server)
 package k8s
 
 import (
@@ -16,6 +32,20 @@ import (
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/security"
+)
+
+const (
+	// DefaultOutputFormat is the default kubectl output format for resource queries
+	DefaultOutputFormat = "wide"
+
+	// DefaultLogTailLines is the default number of log lines to retrieve
+	DefaultLogTailLines = 50
+
+	// DefaultNamespace is the default Kubernetes namespace
+	DefaultNamespace = "default"
+
+	// JSONOutputFormat is the JSON output format for kubectl
+	JSONOutputFormat = "json"
 )
 
 // K8sTool struct to hold the LLM model
@@ -54,7 +84,7 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *mcp.Cal
 	resourceName := parseString(request, "resource_name", "")
 	namespace := parseString(request, "namespace", "")
 	allNamespaces := parseString(request, "all_namespaces", "") == "true"
-	output := parseString(request, "output", "wide")
+	output := parseString(request, "output", DefaultOutputFormat)
 
 	if resourceType == "" {
 		return newToolResultError("resource_type parameter is required"), nil
@@ -75,7 +105,7 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *mcp.Cal
 	if output != "" {
 		args = append(args, "-o", output)
 	} else {
-		args = append(args, "-o", "json")
+		args = append(args, "-o", JSONOutputFormat)
 	}
 
 	return k.runKubectlCommand(ctx, args...)
@@ -84,9 +114,9 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *mcp.Cal
 // Get pod logs
 func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	podName := parseString(request, "pod_name", "")
-	namespace := parseString(request, "namespace", "default")
+	namespace := parseString(request, "namespace", DefaultNamespace)
 	container := parseString(request, "container", "")
-	tailLines := parseInt(request, "tail_lines", 50)
+	tailLines := parseInt(request, "tail_lines", DefaultLogTailLines)
 
 	if podName == "" {
 		return newToolResultError("pod_name parameter is required"), nil

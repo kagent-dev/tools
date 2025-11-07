@@ -1,3 +1,18 @@
+// Package helm provides Helm package management operations.
+//
+// This package implements MCP tools for Helm, providing operations such as:
+//   - Chart listing and searching
+//   - Release installation and upgrades
+//   - Release removal and rollback
+//   - Repository management
+//
+// All tools require proper Helm configuration and cluster access.
+// Tools that modify releases will invalidate caches automatically.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	err := RegisterTools(server)
 package helm
 
 import (

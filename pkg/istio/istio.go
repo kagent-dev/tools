@@ -1,3 +1,18 @@
+// Package istio provides Istio service mesh configuration and management.
+//
+// This package implements MCP tools for Istio, providing operations such as:
+//   - Proxy status and configuration queries
+//   - Virtual service and gateway management
+//   - Security policy configuration
+//   - Waypoint and ztunnel operations
+//
+// All tools require Istio to be properly installed and configured.
+// Tools support both ambient and sidecar injection modes.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	err := RegisterTools(server)
 package istio
 
 import (

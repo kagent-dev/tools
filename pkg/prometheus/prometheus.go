@@ -1,3 +1,18 @@
+// Package prometheus provides Prometheus query and monitoring operations.
+//
+// This package implements MCP tools for Prometheus, providing operations such as:
+//   - PromQL query execution
+//   - Range queries for time-series data
+//   - Label and metadata queries
+//   - Alert rule management
+//
+// All tools require proper Prometheus server URL configuration.
+// Tools support custom PromQL queries with automatic validation.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	err := RegisterTools(server)
 package prometheus
 
 import (
@@ -13,6 +28,17 @@ import (
 	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const (
+	// DefaultPrometheusURL is the default Prometheus server URL
+	DefaultPrometheusURL = "http://localhost:9090"
+
+	// DefaultRangeStep is the default step for range queries
+	DefaultRangeStep = "15s"
+
+	// DefaultHTTPTimeout is the default timeout for HTTP requests
+	DefaultHTTPTimeout = 30 * time.Second
 )
 
 // clientKey is the context key for the http client.
@@ -36,7 +62,7 @@ func handlePrometheusQueryTool(ctx context.Context, request *mcp.CallToolRequest
 		}, nil
 	}
 
-	prometheusURL := "http://localhost:9090"
+	prometheusURL := DefaultPrometheusURL
 	query := ""
 
 	if val, ok := args["prometheus_url"].(string); ok && val != "" {

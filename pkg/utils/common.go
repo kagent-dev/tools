@@ -1,8 +1,22 @@
+// Package utils provides common utility functions and tools.
+//
+// This package implements MCP tools for general utilities, providing operations such as:
+//   - Shell command execution
+//   - DateTime queries
+//   - Echo and message utilities
+//   - Sleep operations with progress tracking
+//
+// Tools provide foundational capabilities for integration with other systems.
+// Kubeconfig management and multi-cluster support are provided through global configuration.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	err := RegisterTools(server)
 package utils
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,6 +25,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/kagent-dev/tools/pkg/common"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -79,67 +94,45 @@ func handleGetCurrentDateTimeTool(ctx context.Context, request *mcp.CallToolRequ
 
 // handleShellTool handles the shell tool MCP request
 func handleShellTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var args map[string]interface{}
-	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
-			IsError: true,
-		}, nil
+	args, errResult, _ := common.ParseMCPArguments(request)
+	if errResult != nil {
+		return errResult, nil
 	}
 
-	command, ok := args["command"].(string)
-	if !ok || command == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "command parameter is required"}},
-			IsError: true,
-		}, nil
+	command, errResult := common.RequireStringArg(args, "command")
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	params := shellParams{Command: command}
 	result, err := shellTool(ctx, params)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
-			IsError: true,
-		}, nil
+		return common.NewErrorResult(err.Error()), nil
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: result}},
-	}, nil
+	return common.NewTextResult(result), nil
 }
 
 // handleEchoTool handles the echo tool MCP request
 func handleEchoTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var args map[string]interface{}
-	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
-			IsError: true,
-		}, nil
+	args, errResult, _ := common.ParseMCPArguments(request)
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	message, ok := args["message"].(string)
 	if !ok {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "message parameter is required and must be a string"}},
-			IsError: true,
-		}, nil
+		return common.NewErrorResult("message parameter is required and must be a string"), nil
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: message}},
-	}, nil
+	return common.NewTextResult(message), nil
 }
 
 // handleSleepTool handles the sleep tool MCP request
 func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var args map[string]interface{}
-	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
-			IsError: true,
-		}, nil
+	args, errResult, _ := common.ParseMCPArguments(request)
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	// Handle both float64 and int types for duration
@@ -152,17 +145,11 @@ func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 	case int64:
 		durationSeconds = float64(v)
 	default:
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "duration parameter is required and must be a number"}},
-			IsError: true,
-		}, nil
+		return common.NewErrorResult("duration parameter is required and must be a number"), nil
 	}
 
 	if durationSeconds < 0 {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "duration must be non-negative"}},
-			IsError: true,
-		}, nil
+		return common.NewErrorResult("duration must be non-negative"), nil
 	}
 
 	// Convert to duration and sleep with context cancellation support
@@ -175,14 +162,9 @@ func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 
 		select {
 		case <-ctx.Done():
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: "sleep cancelled after context cancellation"}},
-				IsError: true,
-			}, nil
+			return common.NewErrorResult("sleep cancelled after context cancellation"), nil
 		case <-timer.C:
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("slept for %.2f seconds", durationSeconds)}},
-			}, nil
+			return common.NewTextResult(fmt.Sprintf("slept for %.2f seconds", durationSeconds)), nil
 		}
 	}
 
@@ -203,12 +185,7 @@ func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 			log.Info("Sleep operation cancelled",
 				"elapsed_seconds", elapsed.Seconds(),
 				"total_seconds", durationSeconds)
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{
-					Text: fmt.Sprintf("sleep cancelled after %.2f seconds (requested %.2f seconds)", elapsed.Seconds(), durationSeconds),
-				}},
-				IsError: true,
-			}, nil
+			return common.NewErrorResult(fmt.Sprintf("sleep cancelled after %.2f seconds (requested %.2f seconds)", elapsed.Seconds(), durationSeconds)), nil
 		case <-ticker.C:
 			elapsed := time.Since(startTime)
 			remaining := duration - elapsed
@@ -246,9 +223,7 @@ func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 			log.Info("Sleep operation completed",
 				"requested_seconds", durationSeconds,
 				"actual_seconds", actualDuration)
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("slept for %.2f seconds", durationSeconds)}},
-			}, nil
+			return common.NewTextResult(fmt.Sprintf("slept for %.2f seconds", durationSeconds)), nil
 		}
 	}
 }

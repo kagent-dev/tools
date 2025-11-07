@@ -1,3 +1,18 @@
+// Package argo provides Argo Rollouts and ArgoCD operations.
+//
+// This package implements MCP tools for Argo, providing operations such as:
+//   - Argo Rollouts analysis and promotion
+//   - ArgoCD application management
+//   - Rollout status tracking and management
+//   - Gateway plugin operations
+//
+// All tools require Argo Rollouts and/or ArgoCD to be properly installed.
+// Tools support analysis runs, automatic promotions, and rollback operations.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	err := RegisterTools(server)
 package argo
 
 import (
