@@ -200,7 +200,7 @@ func handleSleepTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Ca
 				// Send progress notification
 				progressParams := &mcp.ProgressNotificationParams{
 					ProgressToken: request.Params.GetProgressToken(),
-					Message:       fmt.Sprintf("Sleep progress: %d/%d seconds (%.1fs remaining)", elapsedSeconds, totalSeconds, remaining.Seconds()),
+					Message:       fmt.Sprintf("Sleep progress: %d/%d seconds (%ds remaining)", elapsedSeconds, totalSeconds, int64(remaining.Seconds())),
 					Progress:      elapsed.Seconds(),
 					Total:         duration.Seconds(),
 				}
@@ -243,7 +243,7 @@ func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 
 	// Define tools
 	shellTool := &mcp.Tool{
-		Name:        "shell_tools",
+		Name:        "shell_tool",
 		Description: "Execute shell commands",
 		InputSchema: &jsonschema.Schema{
 			Type: "object",
