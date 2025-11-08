@@ -243,7 +243,7 @@ func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 
 	// Define tools
 	shellTool := &mcp.Tool{
-		Name:        "shell",
+		Name:        "shell_tools",
 		Description: "Execute shell commands",
 		InputSchema: &jsonschema.Schema{
 			Type: "object",
@@ -282,7 +282,7 @@ func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
 	}
 
 	sleepTool := &mcp.Tool{
-		Name:        "sleep",
+		Name:        "sleep_tool",
 		Description: "Sleep for the specified duration in seconds",
 		InputSchema: &jsonschema.Schema{
 			Type: "object",
