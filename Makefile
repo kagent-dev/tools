@@ -80,7 +80,6 @@ test-only: ## Run tests only (without build/lint for faster iteration)
 
 .PHONY: e2e
 e2e: test retag
-	pkill -f "kagent-tools.*--http-port" 2>/dev/null || true
 	go test -v -tags=test -cover ./test/e2e/ -timeout 5m
 
 bin/kagent-tools-linux-amd64:
