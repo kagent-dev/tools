@@ -492,7 +492,7 @@ var _ = Describe("HTTP Tools E2E Tests", func() {
 			startTime := time.Now()
 
 			params := &mcp.CallToolParams{
-				Name: "sleep",
+				Name: "sleep_tool",
 				Arguments: map[string]interface{}{
 					"duration": sleepDuration,
 				},
@@ -676,12 +676,12 @@ var _ = Describe("HTTP Tools E2E Tests", func() {
 
 			// Verify only utils tools are present
 			for _, tool := range tools {
-				// Should only have utils tools (datetime_, shell, echo, sleep)
+				// Should only have utils tools (datetime_get_current_time, shell_tool, echo, sleep_tool)
 				Expect(tool.Name).To(Or(
-					MatchRegexp(`^datetime_`),
-					Equal("shell"),
+					Equal("datetime_get_current_time"),
+					Equal("shell_tool"),
 					Equal("echo"),
-					Equal("sleep"),
+					Equal("sleep_tool"),
 				), "Tool %s should be from utils provider", tool.Name)
 			}
 
