@@ -10,12 +10,30 @@ import (
 
 var globalLogger *slog.Logger
 
+// parseLogLevel converts a string log level to slog.Level
+func parseLogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 // Init initializes the global logger
 // If useStderr is true, logs will be written to stderr (for stdio mode)
 // If useStderr is false, logs will be written to stdout (for HTTP mode)
-func Init(useStderr bool) {
+// logLevel can be "debug", "info", "warn", or "error"
+func Init(useStderr bool, logLevel string) {
+	level := parseLogLevel(logLevel)
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: level,
 	}
 
 	// Choose output destination based on mode
@@ -37,7 +55,11 @@ func Init(useStderr bool) {
 // This is a convenience function that defaults to stdout unless KAGENT_USE_STDERR is set
 func InitWithEnv() {
 	useStderr := os.Getenv("KAGENT_USE_STDERR") == "true"
-	Init(useStderr)
+	logLevel := os.Getenv("KAGENT_LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	Init(useStderr, logLevel)
 }
 
 func Get() *slog.Logger {

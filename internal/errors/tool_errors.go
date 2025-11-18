@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ToolError represents a structured error with context and recovery suggestions
@@ -67,7 +67,10 @@ func (e *ToolError) ToMCPResult() *mcp.CallToolResult {
 		}
 	}
 
-	return mcp.NewToolResultError(message.String())
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: message.String()}},
+		IsError: true,
+	}
 }
 
 // NewToolError creates a new structured tool error

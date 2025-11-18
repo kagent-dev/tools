@@ -1,76 +1,139 @@
+// Package helm provides Helm package management operations.
+//
+// This package implements MCP tools for Helm, providing operations such as:
+//   - Chart listing and searching
+//   - Release installation and upgrades
+//   - Release removal and rollback
+//   - Repository management
+//
+// All tools require proper Helm configuration and cluster access.
+// Tools that modify releases will invalidate caches automatically.
+//
+// Example usage:
+//
+//	server := mcp.NewServer(...)
+//	err := RegisterTools(server)
 package helm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/errors"
+	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/security"
-	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Helm list releases
-func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
-	all := mcp.ParseString(request, "all", "") == "true"
-	uninstalled := mcp.ParseString(request, "uninstalled", "") == "true"
-	uninstalling := mcp.ParseString(request, "uninstalling", "") == "true"
-	failed := mcp.ParseString(request, "failed", "") == "true"
-	deployed := mcp.ParseString(request, "deployed", "") == "true"
-	pending := mcp.ParseString(request, "pending", "") == "true"
-	filter := mcp.ParseString(request, "filter", "")
-	output := mcp.ParseString(request, "output", "")
+func handleHelmListReleases(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	args := []string{"list"}
+	namespace := ""
+	if ns, ok := args["namespace"].(string); ok {
+		namespace = ns
+	}
+
+	allNamespaces := false
+	if allNs, ok := args["all_namespaces"].(string); ok {
+		allNamespaces = allNs == "true"
+	}
+
+	all := false
+	if allArg, ok := args["all"].(string); ok {
+		all = allArg == "true"
+	}
+
+	uninstalled := false
+	if uninst, ok := args["uninstalled"].(string); ok {
+		uninstalled = uninst == "true"
+	}
+
+	uninstalling := false
+	if uninsting, ok := args["uninstalling"].(string); ok {
+		uninstalling = uninsting == "true"
+	}
+
+	failed := false
+	if failedArg, ok := args["failed"].(string); ok {
+		failed = failedArg == "true"
+	}
+
+	deployed := false
+	if deployedArg, ok := args["deployed"].(string); ok {
+		deployed = deployedArg == "true"
+	}
+
+	pending := false
+	if pendingArg, ok := args["pending"].(string); ok {
+		pending = pendingArg == "true"
+	}
+
+	filter := ""
+	if filterArg, ok := args["filter"].(string); ok {
+		filter = filterArg
+	}
+
+	output := ""
+	if outputArg, ok := args["output"].(string); ok {
+		output = outputArg
+	}
+
+	cmdArgs := []string{"list"}
 
 	if namespace != "" {
-		args = append(args, "-n", namespace)
+		cmdArgs = append(cmdArgs, "-n", namespace)
 	}
 
 	if allNamespaces {
-		args = append(args, "-A")
+		cmdArgs = append(cmdArgs, "-A")
 	}
 
 	if all {
-		args = append(args, "-a")
+		cmdArgs = append(cmdArgs, "-a")
 	}
 
 	if uninstalled {
-		args = append(args, "--uninstalled")
+		cmdArgs = append(cmdArgs, "--uninstalled")
 	}
 
 	if uninstalling {
-		args = append(args, "--uninstalling")
+		cmdArgs = append(cmdArgs, "--uninstalling")
 	}
 
 	if failed {
-		args = append(args, "--failed")
+		cmdArgs = append(cmdArgs, "--failed")
 	}
 
 	if deployed {
-		args = append(args, "--deployed")
+		cmdArgs = append(cmdArgs, "--deployed")
 	}
 
 	if pending {
-		args = append(args, "--pending")
+		cmdArgs = append(cmdArgs, "--pending")
 	}
 
 	if filter != "" {
-		args = append(args, "-f", filter)
+		cmdArgs = append(cmdArgs, "-f", filter)
 	}
 
 	if output != "" {
-		args = append(args, "-o", output)
+		cmdArgs = append(cmdArgs, "-o", output)
 	}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, cmdArgs)
 	if err != nil {
 		// Check if it's a structured error
 		if toolErr, ok := err.(*errors.ToolError); ok {
@@ -78,13 +141,21 @@ func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*
 			if namespace != "" {
 				toolErr = toolErr.WithContext("namespace", namespace)
 			}
-			return toolErr.ToMCPResult(), nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: toolErr.Error()}},
+				IsError: true,
+			}, nil
 		}
 		// Fallback for non-structured errors
-		return mcp.NewToolResultError(fmt.Sprintf("Helm list command failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm list command failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 func runHelmCommand(ctx context.Context, args []string) (string, error) {
@@ -117,228 +188,634 @@ func runHelmCommand(ctx context.Context, args []string) (string, error) {
 }
 
 // Helm get release
-func handleHelmGetRelease(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	resource := mcp.ParseString(request, "resource", "all")
-
-	if name == "" {
-		return mcp.NewToolResultError("name parameter is required"), nil
+func handleHelmGetRelease(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
 	}
 
-	if namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "name parameter is required"}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"get", resource, name, "-n", namespace}
+	namespace, ok := args["namespace"].(string)
+	if !ok || namespace == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "namespace parameter is required"}},
+			IsError: true,
+		}, nil
+	}
 
-	result, err := runHelmCommand(ctx, args)
+	resource := "all"
+	if res, ok := args["resource"].(string); ok && res != "" {
+		resource = res
+	}
+
+	cmdArgs := []string{"get", resource, name, "-n", namespace}
+
+	result, err := runHelmCommand(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm get command failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm get command failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Helm upgrade release
-func handleHelmUpgradeRelease(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	chart := mcp.ParseString(request, "chart", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	version := mcp.ParseString(request, "version", "")
-	values := mcp.ParseString(request, "values", "")
-	setValues := mcp.ParseString(request, "set", "")
-	install := mcp.ParseString(request, "install", "") == "true"
-	dryRun := mcp.ParseString(request, "dry_run", "") == "true"
-	wait := mcp.ParseString(request, "wait", "") == "true"
+func handleHelmUpgradeRelease(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	if name == "" || chart == "" {
-		return mcp.NewToolResultError("name and chart parameters are required"), nil
+	name, nameOk := args["name"].(string)
+	chart, chartOk := args["chart"].(string)
+	if !nameOk || name == "" || !chartOk || chart == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "name and chart parameters are required"}},
+			IsError: true,
+		}, nil
 	}
 
 	// Validate release name
 	if err := security.ValidateHelmReleaseName(name); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid release name: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid release name: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	namespace := ""
+	if ns, ok := args["namespace"].(string); ok {
+		namespace = ns
 	}
 
 	// Validate namespace if provided
 	if namespace != "" {
 		if err := security.ValidateNamespace(namespace); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid namespace: %v", err)}},
+				IsError: true,
+			}, nil
 		}
+	}
+
+	version := ""
+	if ver, ok := args["version"].(string); ok {
+		version = ver
+	}
+
+	values := ""
+	if val, ok := args["values"].(string); ok {
+		values = val
 	}
 
 	// Validate values file path if provided
 	if values != "" {
 		if err := security.ValidateFilePath(values); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid values file path: %v", err)), nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid values file path: %v", err)}},
+				IsError: true,
+			}, nil
 		}
 	}
 
-	args := []string{"upgrade", name, chart}
+	setValues := ""
+	if set, ok := args["set"].(string); ok {
+		setValues = set
+	}
+
+	install := false
+	if inst, ok := args["install"].(string); ok {
+		install = inst == "true"
+	}
+
+	dryRun := false
+	if dry, ok := args["dry_run"].(string); ok {
+		dryRun = dry == "true"
+	}
+
+	wait := false
+	if waitArg, ok := args["wait"].(string); ok {
+		wait = waitArg == "true"
+	}
+
+	cmdArgs := []string{"upgrade", name, chart}
 
 	if namespace != "" {
-		args = append(args, "-n", namespace)
+		cmdArgs = append(cmdArgs, "-n", namespace)
 	}
 
 	if version != "" {
-		args = append(args, "--version", version)
+		cmdArgs = append(cmdArgs, "--version", version)
 	}
 
 	if values != "" {
-		args = append(args, "-f", values)
+		cmdArgs = append(cmdArgs, "-f", values)
 	}
 
 	if setValues != "" {
 		// Split multiple set values by comma
 		setValuesList := strings.Split(setValues, ",")
 		for _, setValue := range setValuesList {
-			args = append(args, "--set", strings.TrimSpace(setValue))
+			cmdArgs = append(cmdArgs, "--set", strings.TrimSpace(setValue))
 		}
 	}
 
 	if install {
-		args = append(args, "--install")
+		cmdArgs = append(cmdArgs, "--install")
 	}
 
 	if dryRun {
-		args = append(args, "--dry-run")
+		cmdArgs = append(cmdArgs, "--dry-run")
 	}
 
 	if wait {
-		args = append(args, "--wait")
+		cmdArgs = append(cmdArgs, "--wait")
 	}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm upgrade command failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm upgrade command failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Helm uninstall release
-func handleHelmUninstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	dryRun := mcp.ParseString(request, "dry_run", "") == "true"
-	wait := mcp.ParseString(request, "wait", "") == "true"
-
-	if name == "" || namespace == "" {
-		return mcp.NewToolResultError("name and namespace parameters are required"), nil
+func handleHelmUninstall(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"uninstall", name, "-n", namespace}
+	name, nameOk := args["name"].(string)
+	namespace, nsOk := args["namespace"].(string)
+	if !nameOk || name == "" || !nsOk || namespace == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "name and namespace parameters are required"}},
+			IsError: true,
+		}, nil
+	}
+
+	dryRun := false
+	if dry, ok := args["dry_run"].(string); ok {
+		dryRun = dry == "true"
+	}
+
+	wait := false
+	if waitArg, ok := args["wait"].(string); ok {
+		wait = waitArg == "true"
+	}
+
+	cmdArgs := []string{"uninstall", name, "-n", namespace}
 
 	if dryRun {
-		args = append(args, "--dry-run")
+		cmdArgs = append(cmdArgs, "--dry-run")
 	}
 
 	if wait {
-		args = append(args, "--wait")
+		cmdArgs = append(cmdArgs, "--wait")
 	}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm uninstall command failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm uninstall command failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Helm repo add
-func handleHelmRepoAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	url := mcp.ParseString(request, "url", "")
+func handleHelmRepoAdd(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	if name == "" || url == "" {
-		return mcp.NewToolResultError("name and url parameters are required"), nil
+	name, nameOk := args["name"].(string)
+	url, urlOk := args["url"].(string)
+	if !nameOk || name == "" || !urlOk || url == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "name and url parameters are required"}},
+			IsError: true,
+		}, nil
 	}
 
 	// Validate repository name
 	if err := security.ValidateHelmReleaseName(name); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid repository name: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid repository name: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
 	// Validate repository URL
 	if err := security.ValidateURL(url); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid repository URL: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid repository URL: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	args := []string{"repo", "add", name, url}
+	cmdArgs := []string{"repo", "add", name, url}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm repo add command failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm repo add command failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
 // Helm repo update
-func handleHelmRepoUpdate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := []string{"repo", "update"}
+func handleHelmRepoUpdate(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	cmdArgs := []string{"repo", "update"}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, cmdArgs)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm repo update command failed: %v", err)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm repo update command failed: %v", err)}},
+			IsError: true,
+		}, nil
 	}
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
 }
 
-// Register Helm tools
-func RegisterTools(s *server.MCPServer) {
+// Helm template
+func handleHelmTemplate(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var args map[string]interface{}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "failed to parse arguments"}},
+			IsError: true,
+		}, nil
+	}
 
-	s.AddTool(mcp.NewTool("helm_list_releases",
-		mcp.WithDescription("List Helm releases in a namespace"),
-		mcp.WithString("namespace", mcp.Description("The namespace to list releases from")),
-		mcp.WithString("all_namespaces", mcp.Description("List releases from all namespaces")),
-		mcp.WithString("all", mcp.Description("Show all releases without any filter applied")),
-		mcp.WithString("uninstalled", mcp.Description("List uninstalled releases")),
-		mcp.WithString("uninstalling", mcp.Description("List uninstalling releases")),
-		mcp.WithString("failed", mcp.Description("List failed releases")),
-		mcp.WithString("deployed", mcp.Description("List deployed releases")),
-		mcp.WithString("pending", mcp.Description("List pending releases")),
-		mcp.WithString("filter", mcp.Description("A regular expression to filter releases by")),
-		mcp.WithString("output", mcp.Description("The output format (e.g., 'json', 'yaml', 'table')")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_list_releases", handleHelmListReleases)))
+	name, nameOk := args["name"].(string)
+	chart, chartOk := args["chart"].(string)
+	if !nameOk || name == "" || !chartOk || chart == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "name and chart parameters are required"}},
+			IsError: true,
+		}, nil
+	}
 
-	s.AddTool(mcp.NewTool("helm_get_release",
-		mcp.WithDescription("Get extended information about a Helm release"),
-		mcp.WithString("name", mcp.Description("The name of the release"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the release"), mcp.Required()),
-		mcp.WithString("resource", mcp.Description("The resource to get (all, hooks, manifest, notes, values)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_get_release", handleHelmGetRelease)))
+	// Validate release name
+	if err := security.ValidateHelmReleaseName(name); err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid release name: %v", err)}},
+			IsError: true,
+		}, nil
+	}
 
-	s.AddTool(mcp.NewTool("helm_upgrade",
-		mcp.WithDescription("Upgrade or install a Helm release"),
-		mcp.WithString("name", mcp.Description("The name of the release"), mcp.Required()),
-		mcp.WithString("chart", mcp.Description("The chart to install or upgrade to"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the release")),
-		mcp.WithString("version", mcp.Description("The version of the chart to upgrade to")),
-		mcp.WithString("values", mcp.Description("Path to a values file")),
-		mcp.WithString("set", mcp.Description("Set values on the command line (e.g., 'key1=val1,key2=val2')")),
-		mcp.WithString("install", mcp.Description("Run an install if the release is not present")),
-		mcp.WithString("dry_run", mcp.Description("Simulate an upgrade")),
-		mcp.WithString("wait", mcp.Description("Wait for the upgrade to complete")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_upgrade", handleHelmUpgradeRelease)))
+	namespace := ""
+	if ns, ok := args["namespace"].(string); ok {
+		namespace = ns
+	}
 
-	s.AddTool(mcp.NewTool("helm_uninstall",
-		mcp.WithDescription("Uninstall a Helm release"),
-		mcp.WithString("name", mcp.Description("The name of the release to uninstall"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the release"), mcp.Required()),
-		mcp.WithString("dry_run", mcp.Description("Simulate an uninstall")),
-		mcp.WithString("wait", mcp.Description("Wait for the uninstall to complete")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_uninstall", handleHelmUninstall)))
+	// Validate namespace if provided
+	if namespace != "" {
+		if err := security.ValidateNamespace(namespace); err != nil {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid namespace: %v", err)}},
+				IsError: true,
+			}, nil
+		}
+	}
 
-	s.AddTool(mcp.NewTool("helm_repo_add",
-		mcp.WithDescription("Add a Helm repository"),
-		mcp.WithString("name", mcp.Description("The name of the repository"), mcp.Required()),
-		mcp.WithString("url", mcp.Description("The URL of the repository"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_repo_add", handleHelmRepoAdd)))
+	version := ""
+	if ver, ok := args["version"].(string); ok {
+		version = ver
+	}
 
-	s.AddTool(mcp.NewTool("helm_repo_update",
-		mcp.WithDescription("Update information of available charts locally from chart repositories"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("helm_repo_update", handleHelmRepoUpdate)))
+	values := ""
+	if val, ok := args["values"].(string); ok {
+		values = val
+	}
+
+	// Validate values file path if provided
+	if values != "" {
+		if err := security.ValidateFilePath(values); err != nil {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid values file path: %v", err)}},
+				IsError: true,
+			}, nil
+		}
+	}
+
+	setValues := ""
+	if set, ok := args["set"].(string); ok {
+		setValues = set
+	}
+
+	cmdArgs := []string{"template", name, chart}
+
+	if namespace != "" {
+		cmdArgs = append(cmdArgs, "-n", namespace)
+	}
+
+	if version != "" {
+		cmdArgs = append(cmdArgs, "--version", version)
+	}
+
+	if values != "" {
+		cmdArgs = append(cmdArgs, "-f", values)
+	}
+
+	if setValues != "" {
+		// Split multiple set values by comma
+		setValuesList := strings.Split(setValues, ",")
+		for _, setValue := range setValuesList {
+			cmdArgs = append(cmdArgs, "--set", strings.TrimSpace(setValue))
+		}
+	}
+
+	result, err := runHelmCommand(ctx, cmdArgs)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Helm template command failed: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: result}},
+	}, nil
+}
+
+// ToolRegistry is an interface for tool registration (to avoid import cycles)
+type ToolRegistry interface {
+	Register(tool *mcp.Tool, handler mcp.ToolHandler)
+}
+
+// RegisterTools registers Helm tools with the MCP server
+func RegisterTools(s *mcp.Server) error {
+	return RegisterToolsWithRegistry(s, nil)
+}
+
+// RegisterToolsWithRegistry registers Helm tools with the MCP server and optionally with a tool registry
+func RegisterToolsWithRegistry(s *mcp.Server, registry ToolRegistry) error {
+	logger.Get().Info("Registering Helm tools")
+
+	// Helper function to register tool with both server and registry
+	registerTool := func(tool *mcp.Tool, handler mcp.ToolHandler) {
+		s.AddTool(tool, handler)
+		if registry != nil {
+			registry.Register(tool, handler)
+		}
+	}
+
+	// Register helm_list_releases tool
+	registerTool(&mcp.Tool{
+		Name:        "helm_list_releases",
+		Description: "List Helm releases in a namespace",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace to list releases from",
+				},
+				"all_namespaces": {
+					Type:        "string",
+					Description: "List releases from all namespaces",
+				},
+				"all": {
+					Type:        "string",
+					Description: "Show all releases without any filter applied",
+				},
+				"uninstalled": {
+					Type:        "string",
+					Description: "List uninstalled releases",
+				},
+				"uninstalling": {
+					Type:        "string",
+					Description: "List uninstalling releases",
+				},
+				"failed": {
+					Type:        "string",
+					Description: "List failed releases",
+				},
+				"deployed": {
+					Type:        "string",
+					Description: "List deployed releases",
+				},
+				"pending": {
+					Type:        "string",
+					Description: "List pending releases",
+				},
+				"filter": {
+					Type:        "string",
+					Description: "A regular expression to filter releases by",
+				},
+				"output": {
+					Type:        "string",
+					Description: "The output format (e.g., 'json', 'yaml', 'table')",
+				},
+			},
+		},
+	}, handleHelmListReleases)
+
+	// Register helm_get_release tool
+	registerTool(&mcp.Tool{
+		Name:        "helm_get_release",
+		Description: "Get extended information about a Helm release",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"name": {
+					Type:        "string",
+					Description: "The name of the release",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the release",
+				},
+				"resource": {
+					Type:        "string",
+					Description: "The resource to get (all, hooks, manifest, notes, values)",
+				},
+			},
+			Required: []string{"name", "namespace"},
+		},
+	}, handleHelmGetRelease)
+
+	// Register helm_upgrade tool
+	registerTool(&mcp.Tool{
+		Name:        "helm_upgrade",
+		Description: "Upgrade or install a Helm release",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"name": {
+					Type:        "string",
+					Description: "The name of the release",
+				},
+				"chart": {
+					Type:        "string",
+					Description: "The chart to install or upgrade to",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the release",
+				},
+				"version": {
+					Type:        "string",
+					Description: "The version of the chart to upgrade to",
+				},
+				"values": {
+					Type:        "string",
+					Description: "Path to a values file",
+				},
+				"set": {
+					Type:        "string",
+					Description: "Set values on the command line (e.g., 'key1=val1,key2=val2')",
+				},
+				"install": {
+					Type:        "string",
+					Description: "Run an install if the release is not present",
+				},
+				"dry_run": {
+					Type:        "string",
+					Description: "Simulate an upgrade",
+				},
+				"wait": {
+					Type:        "string",
+					Description: "Wait for the upgrade to complete",
+				},
+			},
+			Required: []string{"name", "chart"},
+		},
+	}, handleHelmUpgradeRelease)
+
+	// Register helm_uninstall tool
+	registerTool(&mcp.Tool{
+		Name:        "helm_uninstall",
+		Description: "Uninstall a Helm release",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"name": {
+					Type:        "string",
+					Description: "The name of the release to uninstall",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the release",
+				},
+				"dry_run": {
+					Type:        "string",
+					Description: "Simulate an uninstall",
+				},
+				"wait": {
+					Type:        "string",
+					Description: "Wait for the uninstall to complete",
+				},
+			},
+			Required: []string{"name", "namespace"},
+		},
+	}, handleHelmUninstall)
+
+	// Register helm_repo_add tool
+	registerTool(&mcp.Tool{
+		Name:        "helm_repo_add",
+		Description: "Add a Helm repository",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"name": {
+					Type:        "string",
+					Description: "The name of the repository",
+				},
+				"url": {
+					Type:        "string",
+					Description: "The URL of the repository",
+				},
+			},
+			Required: []string{"name", "url"},
+		},
+	}, handleHelmRepoAdd)
+
+	// Register helm_repo_update tool
+	registerTool(&mcp.Tool{
+		Name:        "helm_repo_update",
+		Description: "Update information of available charts locally from chart repositories",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+		},
+	}, handleHelmRepoUpdate)
+
+	// Register helm_template tool
+	registerTool(&mcp.Tool{
+		Name:        "helm_template",
+		Description: "Render Helm chart templates locally",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"name": {
+					Type:        "string",
+					Description: "The name of the release",
+				},
+				"chart": {
+					Type:        "string",
+					Description: "The chart to template",
+				},
+				"namespace": {
+					Type:        "string",
+					Description: "The namespace of the release",
+				},
+				"version": {
+					Type:        "string",
+					Description: "The version of the chart to template",
+				},
+				"set": {
+					Type:        "string",
+					Description: "Set values on the command line (e.g., 'key1=val1,key2=val2')",
+				},
+			},
+			Required: []string{"name", "chart"},
+		},
+	}, handleHelmTemplate)
+
+	return nil
 }

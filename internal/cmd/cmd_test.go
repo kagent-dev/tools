@@ -56,3 +56,65 @@ func TestContextShellExecutor(t *testing.T) {
 		assert.Equal(t, mock, executor, "should return the mock executor from context")
 	})
 }
+
+func TestDefaultShellExecutorWithContext(t *testing.T) {
+	executor := &DefaultShellExecutor{}
+
+	t.Run("cancelled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		_, err := executor.Exec(ctx, "sleep", "10")
+		assert.Error(t, err)
+	})
+
+	t.Run("successful command with context", func(t *testing.T) {
+		ctx := context.Background()
+		output, err := executor.Exec(ctx, "echo", "test")
+		assert.NoError(t, err)
+		assert.Contains(t, string(output), "test")
+	})
+
+	t.Run("command with multiple args", func(t *testing.T) {
+		ctx := context.Background()
+		output, err := executor.Exec(ctx, "echo", "arg1", "arg2", "arg3")
+		assert.NoError(t, err)
+		assert.Contains(t, string(output), "arg1")
+		assert.Contains(t, string(output), "arg2")
+		assert.Contains(t, string(output), "arg3")
+	})
+
+	t.Run("command that fails", func(t *testing.T) {
+		ctx := context.Background()
+		_, err := executor.Exec(ctx, "false") // 'false' always exits with error code 1
+		assert.Error(t, err)
+	})
+}
+
+func TestWithShellExecutor(t *testing.T) {
+	mock := NewMockShellExecutor()
+	ctx := WithShellExecutor(context.Background(), mock)
+
+	// Verify the executor is in the context
+	value := ctx.Value(shellExecutorKey)
+	assert.NotNil(t, value)
+	assert.Equal(t, mock, value)
+}
+
+func TestGetShellExecutorReturnsDefault(t *testing.T) {
+	// Create a context without a shell executor
+	ctx := context.Background()
+	executor := GetShellExecutor(ctx)
+
+	// Should return DefaultShellExecutor
+	_, ok := executor.(*DefaultShellExecutor)
+	assert.True(t, ok)
+}
+
+func TestShellExecutorInterface(t *testing.T) {
+	// Verify DefaultShellExecutor implements ShellExecutor interface
+	var _ ShellExecutor = (*DefaultShellExecutor)(nil)
+
+	// Verify MockShellExecutor implements ShellExecutor interface
+	var _ ShellExecutor = (*MockShellExecutor)(nil)
+}
