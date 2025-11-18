@@ -13,11 +13,11 @@ func TestLoad(t *testing.T) {
 	once = sync.Once{}
 	config = nil
 
-	os.Setenv("OTEL_SERVICE_NAME", "test-service")
-	os.Setenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE", "true")
+	_ = os.Setenv("OTEL_SERVICE_NAME", "test-service")
+	_ = os.Setenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE", "true")
 	defer func() {
-		os.Unsetenv("OTEL_SERVICE_NAME")
-		os.Unsetenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE")
+		_ = os.Unsetenv("OTEL_SERVICE_NAME")
+		_ = os.Unsetenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE")
 	}()
 
 	cfg := LoadOtelCfg()
@@ -41,8 +41,8 @@ func TestLoadDevelopmentSampling(t *testing.T) {
 	once = sync.Once{}
 	config = nil
 
-	os.Setenv("OTEL_ENVIRONMENT", "development")
-	defer os.Unsetenv("OTEL_ENVIRONMENT")
+	_ = os.Setenv("OTEL_ENVIRONMENT", "development")
+	defer func() { _ = os.Unsetenv("OTEL_ENVIRONMENT") }()
 
 	cfg := LoadOtelCfg()
 	assert.Equal(t, 1.0, cfg.Telemetry.SamplingRatio)

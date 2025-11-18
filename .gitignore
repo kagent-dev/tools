@@ -14,3 +14,25 @@ bin/
 /helm/kagent-tools/Chart.yaml
 /reports/tools-cve.csv
 .dagger/
+
+# Go build artifacts
+*.exe
+*.test
+vendor/
+
+# Test coverage
+coverage.out
+coverage.html
+*_coverage.out
+e2e_coverage.out
+integration_coverage.out
+telemetry_coverage.out
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# IDE
+*.iml
+Thumbs.db

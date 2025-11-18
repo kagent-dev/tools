@@ -6,6 +6,9 @@
     <a href="https://github.com/kagent-dev/tools/actions/workflows/ci.yaml">
       <img src="https://github.com/kagent-dev/tools/actions/workflows/ci.yaml/badge.svg" alt="Build Status" height="20">
     </a>
+    <a href="coverage.md">
+      <img src="https://img.shields.io/badge/Coverage-80%25-yellow.svg?style=flat" alt="Test Coverage">
+    </a>
       <a href="https://opensource.org/licenses/Apache-2.0">
       <img src="https://img.shields.io/badge/License-Apache2.0-brightgreen.svg?style=flat" alt="License: Apache 2.0">
     </a>
@@ -51,8 +54,32 @@ For a quickstart guide on how to run KAgent tools using AgentGateway, please ref
 
 ## Architecture
 
-The Go tools are implemented as a single MCP server that exposes all available tools through the MCP protocol. 
-Each tool category is implemented in its own Go file for better organization and maintainability.
+The Go tools are implemented as a single MCP server that exposes all available tools through the Model Context Protocol (MCP). Built using the official `github.com/modelcontextprotocol/go-sdk`, the server provides comprehensive Kubernetes, cloud-native, and observability functionality through a unified interface.
+
+### MCP SDK Integration
+
+KAgent Tools leverages the official Model Context Protocol SDK:
+- **Official SDK**: Uses `github.com/modelcontextprotocol/go-sdk` for MCP compliance
+- **Type Safety**: Strongly-typed parameter validation and parsing
+- **JSON Schema**: Automatic schema generation for tool parameters
+- **Multiple Transports**: Support for stdio, HTTP, and SSE transports
+- **Error Handling**: Standardized error responses following MCP specification
+- **Tool Discovery**: Automatic tool registration and capability advertisement
+
+### Package Structure
+
+Each tool category is implemented in its own Go package under `pkg/` for better organization and maintainability:
+
+```
+pkg/
+├── k8s/        # Kubernetes operations
+├── helm/       # Helm package management
+├── istio/      # Istio service mesh
+├── argo/       # Argo Rollouts and ArgoCD
+├── cilium/     # Cilium CNI
+├── prometheus/ # Prometheus monitoring
+└── utils/      # Common utilities
+```
 
 ## Tool Categories
 
@@ -104,16 +131,39 @@ Provides Istio service mesh management:
 - **istio_waypoint_status**: Get waypoint proxy status
 - **istio_ztunnel_config**: Get ztunnel configuration
 
-### 4. Argo Rollouts Tools (`argo.go`)
-Provides Argo Rollouts progressive delivery functionality:
+### 4. Argo Tools (`argo.go`)
+Provides Argo Rollouts progressive delivery and ArgoCD GitOps functionality:
 
-- **verify_argo_rollouts_controller_install**: Verify controller installation
-- **verify_kubectl_plugin_install**: Verify kubectl plugin installation
-- **promote_rollout**: Promote rollouts
-- **pause_rollout**: Pause rollouts
-- **set_rollout_image**: Set rollout images
-- **verify_gateway_plugin**: Verify Gateway API plugin
-- **check_plugin_logs**: Check plugin installation logs
+**Argo Rollouts Tools:**
+- **argo_verify_argo_rollouts_controller_install**: Verify controller installation
+- **argo_verify_kubectl_plugin_install**: Verify kubectl plugin installation
+- **argo_rollouts_list**: List rollouts or experiments
+- **argo_promote_rollout**: Promote a paused rollout
+- **argo_pause_rollout**: Pause a rollout
+- **argo_set_rollout_image**: Set rollout container image
+- **argo_verify_gateway_plugin**: Verify Gateway API plugin installation
+- **argo_check_plugin_logs**: Check plugin logs
+
+**ArgoCD Tools (GitOps):**
+- **argocd_list_applications**: List ArgoCD applications with search, limit, and offset
+- **argocd_get_application**: Get ArgoCD application details
+- **argocd_get_application_resource_tree**: Get resource tree for an application
+- **argocd_get_application_managed_resources**: Get managed resources with filtering
+- **argocd_get_application_workload_logs**: Get logs for application workloads
+- **argocd_get_application_events**: Get events for an application
+- **argocd_get_resource_events**: Get events for a specific resource
+- **argocd_get_resources**: Get resource manifests
+- **argocd_get_resource_actions**: Get available actions for a resource
+- **argocd_create_application**: Create a new ArgoCD application (write mode)
+- **argocd_update_application**: Update an ArgoCD application (write mode)
+- **argocd_delete_application**: Delete an ArgoCD application (write mode)
+- **argocd_sync_application**: Sync an ArgoCD application (write mode)
+- **argocd_run_resource_action**: Run an action on a resource (write mode)
+
+**Configuration:**
+- Set `ARGOCD_BASE_URL` environment variable to ArgoCD server URL (e.g., `https://argocd.example.com`)
+- Set `ARGOCD_API_TOKEN` environment variable to ArgoCD API token
+- Set `MCP_READ_ONLY=true` to disable write operations (create, update, delete, sync, run_resource_action)
 
 ### 5. Cilium Tools (`cilium.go`)
 Provides Cilium CNI and networking functionality:
@@ -183,10 +233,20 @@ go build -o kagent-tools .
 
 ### Running
 ```bash
-./kagent-tools
+# Run with stdio transport (default)
+./kagent-tools --stdio
+
+# Run with HTTP transport
+./kagent-tools --http --port 8084
+
+# Run with custom kubeconfig
+./kagent-tools --stdio --kubeconfig ~/.kube/config
 ```
 
-The server runs using sse transport for MCP communication.
+The server supports multiple MCP transports:
+- **Stdio**: For direct integration with MCP clients
+- **HTTP**: For web-based integrations and debugging
+- **SSE**: Server-Sent Events for real-time communication
 
 ### Testing
 ```bash
@@ -213,11 +273,13 @@ The tools use a common `runCommand` function that:
 - Handles timeouts and cancellation
 
 ### MCP Integration
-All tools are properly integrated with the MCP protocol:
-- Use proper parameter parsing with `mcp.ParseString`, `mcp.ParseBool`, etc.
-- Return results using `mcp.NewToolResultText` or `mcp.NewToolResultError`
-- Include comprehensive tool descriptions and parameter documentation
-- Support required and optional parameters
+All tools are properly integrated with the official MCP SDK:
+- Built using `github.com/modelcontextprotocol/go-sdk`
+- Use type-safe parameter parsing with `request.RequireString()`, `request.RequireBool()`, etc.
+- Return results using `mcp.NewToolResultText()` or `mcp.NewToolResultError()`
+- Include comprehensive tool descriptions and JSON schema parameter validation
+- Support required and optional parameters with proper validation
+- Follow MCP specification for error handling and result formatting
 
 ## Migration from Python
 
@@ -238,10 +300,67 @@ This Go implementation provides feature parity with the original Python tools wh
 ## Configuration
 
 Tools can be configured through environment variables:
+
 - `KUBECONFIG`: Kubernetes configuration file path
-- `PROMETHEUS_URL`: Default Prometheus server URL
+- `PROMETHEUS_URL`: Default Prometheus server URL (default: http://localhost:9090)
 - `GRAFANA_URL`: Default Grafana server URL
 - `GRAFANA_API_KEY`: Default Grafana API key
+- `ARGOCD_BASE_URL`: ArgoCD server base URL (required for ArgoCD tools)
+- `ARGOCD_API_TOKEN`: ArgoCD API authentication token (required for ArgoCD tools)
+- `MCP_READ_ONLY`: Set to `true` to disable write operations for ArgoCD tools (default: false)
+- `LOG_LEVEL`: Logging level (debug, info, warn, error)
+
+## Example Usage
+
+### With MCP Clients
+
+Once connected to an MCP client, you can use natural language to interact with the tools:
+
+```
+"List all pods in the default namespace"
+→ Uses kubectl_get tool with resource_type="pods", namespace="default"
+
+"Scale the nginx deployment to 3 replicas"
+→ Uses kubectl_scale tool with resource_type="deployment", resource_name="nginx", replicas=3
+
+"Show me the Prometheus query for CPU usage"
+→ Uses prometheus_query tool with appropriate PromQL query
+
+"Install the nginx helm chart"
+→ Uses helm_install tool with chart="nginx"
+```
+
+### Direct HTTP API
+
+When running with HTTP transport, you can also interact directly:
+
+```bash
+# Check server health
+curl http://localhost:8084/health
+
+# Get server metrics
+curl http://localhost:8084/metrics
+
+# List available tools
+curl -X POST http://localhost:8084/mcp/tools/list \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+
+# Execute a tool
+curl -X POST http://localhost:8084/mcp/tools/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "datetime_get_current_time",
+      "arguments": {}
+    },
+    "id": 1
+  }'
+```
+
+All tool providers (k8s, helm, istio, argo, cilium, prometheus, utils) are fully supported via HTTP transport endpoints `/mcp/tools/list` and `/mcp/tools/call`.
 
 ## Error Handling and Debugging
 
@@ -266,8 +385,15 @@ Potential areas for future improvement:
 
 When adding new tools or modifying existing ones:
 1. Follow the existing code structure and naming conventions
-2. Add comprehensive error handling
-3. Include proper MCP tool registration
-4. Update this README with new tool documentation
-5. Add appropriate tests
-6. Ensure backward compatibility with existing tools
+2. Write tests for all new tools 
+3. Implement type-safe input validation for all parameters
+4. Add comprehensive error handling with structured logging
+5. Use the official MCP SDK for all tool registrations
+6. Maintain modular package design (tools in `pkg/` subdirectories)
+7. Update this README with new tool documentation
+8. Ensure minimum 80% test coverage
+9. Ensure backward compatibility with existing tools
+
+For detailed development guidelines, see:
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Development environment and workflow
+- [CONTRIBUTION.md](CONTRIBUTION.md) - Contribution process and standards

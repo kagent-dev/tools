@@ -108,14 +108,11 @@ func SetupOTelSDK(ctx context.Context) error {
 	}
 	otel.SetTracerProvider(tracerProvider)
 
-	log.Info("OpenTelemetry SDK successfully initialized")
 	//start goroutine and wait for ctx cancellation
 	go func() {
 		<-ctx.Done()
 		if err := tracerProvider.Shutdown(ctx); err != nil {
 			log.Error("failed to shutdown tracer provider", "error", err)
-		} else {
-			log.Info("OpenTelemetry SDK shutdown successfully")
 		}
 	}()
 	return nil

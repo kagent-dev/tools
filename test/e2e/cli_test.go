@@ -27,22 +27,22 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 		ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
 
 		// Set OTEL environment variables for testing
-		os.Setenv("OTEL_SERVICE_NAME", "kagent-tools-e2e-test")
-		os.Setenv("LOG_LEVEL", "debug")
+		_ = os.Setenv("OTEL_SERVICE_NAME", "kagent-tools-e2e-test")
+		_ = os.Setenv("LOG_LEVEL", "debug")
 	})
 
 	AfterEach(func() {
 		if cancel != nil {
 			cancel()
 		}
-		os.Unsetenv("OTEL_SERVICE_NAME")
-		os.Unsetenv("LOG_LEVEL")
+		_ = os.Unsetenv("OTEL_SERVICE_NAME")
+		_ = os.Unsetenv("LOG_LEVEL")
 	})
 
 	Describe("HTTP Server Tests", func() {
 		It("should start and stop HTTP server successfully", func() {
 			config := TestServerConfig{
-				Port:    8085,
+				Port:    18085, // Use high port to avoid conflicts
 				Stdio:   false,
 				Timeout: 60 * time.Second,
 			}
@@ -57,7 +57,10 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
+
+			// Wait a moment for logs to be flushed
+			time.Sleep(100 * time.Millisecond)
 
 			// Check server output
 			output := server.GetOutput()
@@ -95,9 +98,9 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 
 			// Check server output for tool registration
 			output := server.GetOutput()
-			Expect(output).To(ContainSubstring("RegisterTools initialized"))
-			Expect(output).To(ContainSubstring("utils"))
-			Expect(output).To(ContainSubstring("k8s"))
+			Expect(output).To(ContainSubstring("Registering"))
+			Expect(output).To(Or(ContainSubstring("utility tools"), ContainSubstring("utils")))
+			Expect(output).To(Or(ContainSubstring("Kubernetes tools"), ContainSubstring("k8s")))
 
 			// Stop server
 			err = server.Stop()
@@ -122,7 +125,7 @@ var _ = Describe("KAgent Tools E2E Tests", func() {
 
 			// Check server output for all tools registration
 			output := server.GetOutput()
-			Expect(output).To(ContainSubstring("RegisterTools initialized"))
+			Expect(output).To(ContainSubstring("Registering"))
 			Expect(output).To(ContainSubstring("Running KAgent Tools Server"))
 
 			// Stop server
@@ -174,7 +177,7 @@ users:
 
 			// Check server output for kubeconfig setting
 			output := server.GetOutput()
-			Expect(output).To(ContainSubstring("RegisterTools initialized"))
+			Expect(output).To(ContainSubstring("Registering"))
 			Expect(output).To(ContainSubstring("Running KAgent Tools Server"))
 
 			// Stop server
@@ -205,8 +208,8 @@ users:
 			Expect(output).To(ContainSubstring("invalid-tool"))
 
 			// Valid tools should still be registered
-			Expect(output).To(ContainSubstring("RegisterTools initialized"))
-			Expect(output).To(ContainSubstring("utils"))
+			Expect(output).To(ContainSubstring("Registering"))
+			Expect(output).To(Or(ContainSubstring("utility tools"), ContainSubstring("utils")))
 
 			// Stop server
 			err = server.Stop()
@@ -215,7 +218,7 @@ users:
 
 		It("should handle graceful shutdown", func() {
 			config := TestServerConfig{
-				Port:    8100,
+				Port:    18100, // Use high port to avoid conflicts
 				Stdio:   false,
 				Timeout: 30 * time.Second,
 			}
@@ -230,7 +233,10 @@ users:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
+
+			// Wait a moment for logs to be flushed
+			time.Sleep(100 * time.Millisecond)
 
 			// Stop server and measure shutdown time
 			start := time.Now()
@@ -276,7 +282,7 @@ users:
 					resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 					Expect(err).NotTo(HaveOccurred(), "Concurrent request %d should succeed", id)
 					Expect(resp.StatusCode).To(Equal(http.StatusOK))
-					resp.Body.Close()
+					_ = resp.Body.Close()
 				}(i)
 			}
 
@@ -308,7 +314,7 @@ users:
 			// Read and verify metrics content
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			metricsContent := string(body)
 			Expect(metricsContent).To(ContainSubstring("go_"))
@@ -363,13 +369,13 @@ users:
 			// Verify registered tools
 			output := server.GetOutput()
 			Expect(output).To(ContainSubstring("Running KAgent Tools Server"))
-			Expect(output).To(ContainSubstring("k8s"))
+			Expect(output).To(Or(ContainSubstring("Kubernetes tools"), ContainSubstring("k8s")))
 
 			// Test health endpoint
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -392,15 +398,16 @@ users:
 			// Verify registered tools
 			output := server.GetOutput()
 			Expect(output).To(ContainSubstring("Running KAgent Tools Server"))
-			for _, tool := range []string{"k8s", "prometheus", "utils"} {
-				Expect(output).To(ContainSubstring(tool))
-			}
+			// Check for tool registration messages
+			Expect(output).To(Or(ContainSubstring("Kubernetes tools"), ContainSubstring("k8s")))
+			Expect(output).To(ContainSubstring("Prometheus tools"))
+			Expect(output).To(Or(ContainSubstring("utility tools"), ContainSubstring("utils")))
 
 			// Test health endpoint
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -422,14 +429,14 @@ users:
 
 			// Verify all tools are registered
 			output := server.GetOutput()
-			Expect(output).To(ContainSubstring("RegisterTools initialized"))
+			Expect(output).To(ContainSubstring("Registering"))
 			Expect(output).To(ContainSubstring("Running KAgent Tools Server"))
 
 			// Test health endpoint
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -449,7 +456,7 @@ users:
 			err := server.Start(ctx, config)
 			Expect(err).NotTo(HaveOccurred(), "Server should start successfully")
 
-			// Test malformed request
+			// Test malformed request to non-existent endpoint (should return 404)
 			req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d/nonexistent", config.Port), strings.NewReader("invalid json"))
 			Expect(err).NotTo(HaveOccurred())
 			req.Header.Set("Content-Type", "application/json")
@@ -457,8 +464,9 @@ users:
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-			resp.Body.Close()
+			// Non-existent endpoint should return 404
+			Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+			_ = resp.Body.Close()
 
 			err = server.Stop()
 			Expect(err).NotTo(HaveOccurred(), "Server should stop gracefully")
@@ -474,13 +482,13 @@ users:
 				for _, env := range originalEnv {
 					parts := strings.SplitN(env, "=", 2)
 					if len(parts) == 2 {
-						os.Setenv(parts[0], parts[1])
+						_ = os.Setenv(parts[0], parts[1])
 					}
 				}
 			}()
 
-			os.Setenv("LOG_LEVEL", "info")
-			os.Setenv("OTEL_SERVICE_NAME", "test-kagent-tools")
+			_ = os.Setenv("LOG_LEVEL", "info")
+			_ = os.Setenv("OTEL_SERVICE_NAME", "test-kagent-tools")
 
 			config := TestServerConfig{
 				Port:    18195,
@@ -565,7 +573,7 @@ users:
 					resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 					Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible for server %d", index)
 					if resp != nil {
-						resp.Body.Close()
+						_ = resp.Body.Close()
 					}
 				}(i)
 			}
@@ -605,7 +613,7 @@ users:
 			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
 			Expect(err).NotTo(HaveOccurred(), "Health endpoint should be accessible")
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			// Check server output for successful startup
 			output = server.GetOutput()

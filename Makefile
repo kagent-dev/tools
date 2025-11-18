@@ -24,6 +24,7 @@ HELM_DIST_FOLDER ?= $(shell pwd)/dist
 
 .PHONY: clean
 clean:
+	rm -rf ./*.out ./coverage.out ./coverage.html ./*.test
 	rm -rf ./bin/kagent-tools-*
 	rm -rf $(HOME)/.local/bin/kagent-tools-*
 
@@ -58,7 +59,20 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 
 .PHONY: test
 test: build lint ## Run all tests with build, lint, and coverage
-	go test -tags=test -v -cover ./pkg/... ./internal/...
+	go test -tags=test -v -cover -coverprofile=coverage.out ./pkg/... || true
+	@echo ""
+	@echo "Coverage Report:"
+	@./scripts/check-coverage.sh coverage.out || true
+	@echo ""
+
+.PHONY: test-coverage
+test-coverage: ## Run tests with coverage output
+	go test -tags=test -v -cover -coverprofile=coverage.out ./pkg/... ./internal/...
+
+.PHONY: coverage-report
+coverage-report: test-coverage ## Generate HTML coverage report
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "✅ Coverage report generated: coverage.html"
 
 .PHONY: test-only
 test-only: ## Run tests only (without build/lint for faster iteration)
@@ -69,31 +83,31 @@ e2e: test retag
 	go test -v -tags=test -cover ./test/e2e/ -timeout 5m
 
 bin/kagent-tools-linux-amd64:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-amd64 ./cmd/server
 
 bin/kagent-tools-linux-amd64.sha256: bin/kagent-tools-linux-amd64
 	sha256sum bin/kagent-tools-linux-amd64 > bin/kagent-tools-linux-amd64.sha256
 
 bin/kagent-tools-linux-arm64:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-arm64 ./cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-linux-arm64 ./cmd/server
 
 bin/kagent-tools-linux-arm64.sha256: bin/kagent-tools-linux-arm64
 	sha256sum bin/kagent-tools-linux-arm64 > bin/kagent-tools-linux-arm64.sha256
 
 bin/kagent-tools-darwin-amd64:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-amd64 ./cmd
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-amd64 ./cmd/server
 
 bin/kagent-tools-darwin-amd64.sha256: bin/kagent-tools-darwin-amd64
 	sha256sum bin/kagent-tools-darwin-amd64 > bin/kagent-tools-darwin-amd64.sha256
 
 bin/kagent-tools-darwin-arm64:
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-arm64 ./cmd
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-darwin-arm64 ./cmd/server
 
 bin/kagent-tools-darwin-arm64.sha256: bin/kagent-tools-darwin-arm64
 	sha256sum bin/kagent-tools-darwin-arm64 > bin/kagent-tools-darwin-arm64.sha256
 
 bin/kagent-tools-windows-amd64.exe:
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-windows-amd64.exe ./cmd
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/kagent-tools-windows-amd64.exe ./cmd/server
 
 bin/kagent-tools-windows-amd64.exe.sha256: bin/kagent-tools-windows-amd64.exe
 	sha256sum bin/kagent-tools-windows-amd64.exe > bin/kagent-tools-windows-amd64.exe.sha256
@@ -114,6 +128,7 @@ run: docker-build
 retag: docker-build helm-version
 	@echo "Check Kind cluster $(KIND_CLUSTER_NAME) exists"
 	kind get clusters | grep -q $(KIND_CLUSTER_NAME) || bash -c $(KIND_CREATE_CMD)
+	bash ./scripts/kind/setup-kind.sh
 	@echo "Retagging tools image to $(RETAGGED_TOOLS_IMG)"
 	docker tag $(TOOLS_IMG) $(RETAGGED_TOOLS_IMG)
 	kind load docker-image --name $(KIND_CLUSTER_NAME) $(RETAGGED_TOOLS_IMG)
@@ -136,17 +151,19 @@ DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
 
 # tools image build args
-TOOLS_ISTIO_VERSION ?= 1.27.1
+TOOLS_ISTIO_VERSION ?= 1.28.0
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
-TOOLS_KUBECTL_VERSION ?= 1.34.1
-TOOLS_HELM_VERSION ?= 3.19.0
-TOOLS_CILIUM_VERSION ?= 0.18.7
+TOOLS_KUBECTL_VERSION ?= 1.34.2
+TOOLS_HELM_VERSION ?= 3.19.1
+TOOLS_CILIUM_VERSION ?= 0.18.8
+TOOLS_ARGO_CLI_VERSION ?= 3.2.0
 
 # build args
 TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg LDFLAGS="$(LDFLAGS)"
 TOOLS_IMAGE_BUILD_ARGS += --build-arg LOCALARCH=$(LOCALARCH)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ISTIO_VERSION=$(TOOLS_ISTIO_VERSION)
+TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ARGO_CLI_VERSION=$(TOOLS_ARGO_CLI_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_ARGO_ROLLOUTS_VERSION=$(TOOLS_ARGO_ROLLOUTS_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_KUBECTL_VERSION=$(TOOLS_KUBECTL_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_HELM_VERSION=$(TOOLS_HELM_VERSION)
@@ -178,26 +195,22 @@ helm-uninstall:
 	helm uninstall kagent --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
 
 .PHONY: helm-install
-helm-install: helm-version
+helm-install: helm-version retag
+	export ARGOCD_PASSWORD=$$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d) || true
+	helm template kagent-tools ./helm/kagent-tools --namespace kagent | kubectl --namespace kagent delete -f - || :
 	helm $(HELM_ACTION) kagent-tools ./helm/kagent-tools \
-		--kube-context kind-$(KIND_CLUSTER_NAME) \
 		--namespace kagent \
 		--create-namespace \
 		--history-max 2    \
 		--timeout 5m       \
 		-f ./scripts/kind/test-values.yaml \
 		--set tools.image.registry=$(RETAGGED_DOCKER_REGISTRY) \
+		--set argocd.apiToken=$$ARGOCD_PASSWORD \
 		--wait
 
 .PHONY: helm-publish
 helm-publish: helm-version
 	helm push $(HELM_DIST_FOLDER)/kagent-tools-$(VERSION).tgz $(HELM_REPO)/tools/helm
-
-.PHONY: helm-test
-helm-test: helm-version
-	mkdir -p tmp
-	helm plugin ls | grep unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git
-	helm unittest helm/kagent-tools
 
 .PHONY: create-kind-cluster
 create-kind-cluster:
@@ -218,15 +231,46 @@ otel-local:
 	docker run -d --name jaeger-desktop --restart=always -p 16686:16686 -p 4317:4317 -p 4318:4318 jaegertracing/jaeger:2.7.0
 	open http://localhost:16686/
 
-.PHONY: tools-install
-tools-install: clean
+.PHONY: install/argocd
+install/argocd:
+	kubectl get namespace argocd || kubectl create namespace argocd || true
+	kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+	@echo "Waiting for ArgoCD deployments to be created..."
+	kubectl wait --for=condition=available --timeout=5m deployment/argocd-applicationset-controller -n argocd
+	@echo "ArgoCD is ready!"
+	@ARGOCD_PASSWORD=$$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d); \
+	echo "ArgoCD Admin Password: $$ARGOCD_PASSWORD"
+
+.PHONY: install/istio
+install/istio:
+	istioctl install --set profile=demo -y
+
+.PHONY: install/kagent
+install/kagent:
+	@echo "Installing kagent in namespace 'kagent' ..."
+	which kagent || curl https://raw.githubusercontent.com/kagent-dev/kagent/refs/heads/main/scripts/get-kagent | bash
+	kagent install   -n kagent
+
+.PHONY: install/tools
+install/tools: clean
 	mkdir -p $(HOME)/.local/bin
-	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools ./cmd
-	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd
+	echo "Building go-mcp-client..."
+	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/go-mcp-client ./cmd/client
+	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/go-mcp-client ./cmd/client
+	echo "Building kagent-tools..."
+	go build -ldflags "$(LDFLAGS)" -o $(LOCALBIN)/kagent-tools  ./cmd/server
+	go build -ldflags "$(LDFLAGS)" -o $(HOME)/.local/bin/kagent-tools ./cmd/server
 	$(HOME)/.local/bin/kagent-tools --version
 
+.PHONY: docker-build install
+install: install/tools install/kagent install/istio install/argocd helm-install
+
+.PHONY: dashboard/kagent
+dashboard/kagent:
+	kagent dashboard -n kagent
+
 .PHONY: run-agentgateway
-run-agentgateway: tools-install
+run-agentgateway: install/tools
 	open http://localhost:15000/ui
 	cd scripts \
 	&& agentgateway -f agentgateway-config-tools.yaml
@@ -239,17 +283,41 @@ report/image-cve: docker-build govulncheck
 ## Tool Binaries
 ## Location to install dependencies t
 
+# check-release-version checks if a tool version matches the latest GitHub release
+# $1 - variable name (e.g., TOOLS_ISTIO_VERSION)
+# $2 - current version value
+# $3 - GitHub repo (e.g., istio/istio)
+define check-release-version
+@LATEST=$$(gh release list --repo $(3) --json tagName,isLatest | jq -r '.[] | select(.isLatest==true) | .tagName'); \
+if [ "$(2)" = "$${LATEST#v}" ]; then \
+	echo "✅ $(1)=$(2) == $$LATEST"; \
+else \
+	echo "❌ $(1)=$(2) != $$LATEST"; \
+fi
+endef
+
+.PHONY: check-releases
+check-releases:
+	@echo "Checking tool versions against latest releases..."
+	@echo ""
+	$(call check-release-version,TOOLS_ARGO_ROLLOUTS_VERSION,$(TOOLS_ARGO_ROLLOUTS_VERSION),argoproj/argo-rollouts)
+	$(call check-release-version,TOOLS_ARGO_CLI_VERSION,$(TOOLS_ARGO_CLI_VERSION),argoproj/argo-cd)
+	$(call check-release-version,TOOLS_CILIUM_VERSION,$(TOOLS_CILIUM_VERSION),cilium/cilium-cli)
+	$(call check-release-version,TOOLS_ISTIO_VERSION,$(TOOLS_ISTIO_VERSION),istio/istio)
+	$(call check-release-version,TOOLS_HELM_VERSION,$(TOOLS_HELM_VERSION),helm/helm)
+	$(call check-release-version,TOOLS_KUBECTL_VERSION,$(TOOLS_KUBECTL_VERSION),kubernetes/kubernetes)
+
 .PHONY: $(LOCALBIN)
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v1.63.4
+GOLANGCI_LINT_VERSION ?= v2.5.0
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

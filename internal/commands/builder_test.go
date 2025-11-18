@@ -394,7 +394,7 @@ func TestDeleteResource(t *testing.T) {
 
 func TestHelmInstall(t *testing.T) {
 	releaseName := "test-release"
-	chart := "bitnami/nginx"
+	chart := "chainguard/nginx"
 	namespace := "default"
 	options := HelmInstallOptions{
 		CreateNamespace: true,

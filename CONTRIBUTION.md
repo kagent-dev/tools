@@ -33,9 +33,15 @@ See the [DEVELOPMENT.md](DEVELOPMENT.md) file for more information.
 
 - **Go Code**:
   - Follow the [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments)
+  - Use the official MCP SDK patterns: `github.com/modelcontextprotocol/go-sdk` (Principle I)
+  - Implement type-safe input validation for all parameters (Principle II)
+  - Write tests BEFORE implementation - TDD is mandatory (Principle III)
+  - Maintain modular package design under `pkg/` (Principle IV)
+  - Use structured logging and sanitize inputs (Principle V)
   - Run `make lint` before submitting your changes
   - Ensure all tests pass with `make test`
-  - Add tests for new functionality
+  - Achieve minimum 80% test coverage
+  - Follow MCP specification for tool implementations
 
 #### Commit Guidelines
 

@@ -57,8 +57,12 @@ spec:
           command:
             - /tool-server
           args:
-          - "--port"
+          - "--log-level"
+          - "{{ .Values.tools.loglevel }}"
+          - "--http-port"
           - "{{ .Values.service.ports.tools.targetPort }}"
+          - "--tools"
+          - "{{ .Values.tools.filter }}"
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.tools.image.registry }}/{{ .Values.tools.image.repository }}:{{ coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version }}"
@@ -77,6 +81,14 @@ spec:
                   name: {{ include "kagent.fullname" . }}-openai
                   key: OPENAI_API_KEY
                   optional: true # if the secret is not found, the tool will not be available
+            - name: ARGOCD_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kagent.fullname" . }}-argocd-secret
+                  key: apiToken
+                  optional: true # if the secret is not found, the tool will not be available
+            - name: ARGOCD_BASE_URL
+              value: {{ .Values.tools.argocd.url | quote }}
             - name: OTEL_TRACING_ENABLED
               value: {{ .Values.otel.tracing.enabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -92,9 +104,14 @@ spec:
             - name: http-tools
               containerPort: {{ .Values.service.ports.tools.targetPort }}
               protocol: TCP
+          volumeMounts:
+            - name: home
+              mountPath: /home/nonroot
           readinessProbe:
             tcpSocket:
               port: http-tools
             initialDelaySeconds: 15
             periodSeconds: 15
-
+      volumes:
+        - name: home
+          emptyDir: {}

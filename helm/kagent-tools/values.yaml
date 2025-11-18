@@ -5,7 +5,10 @@ global:
   tag: ""
 
 tools:
+  # log level
   loglevel: "debug"
+  # comma separated list of tools to filter
+  filter: utils,k8s,argo,helm,istio,cilium,prometheus
   image:
     registry: ghcr.io
     repository: kagent-dev/kagent/tools
@@ -25,6 +28,9 @@ tools:
   grafana: # kubectl port-forward svc/grafana 3000:3000
     url: "http://grafana.kagent.svc.cluster.local:3000"
     apiKey: ""
+  argocd:
+    url: "http://argocd-server.argocd.svc.cluster.local:8080"
+    apiToken: ""
 
 service:
   type: ClusterIP
