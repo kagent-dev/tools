@@ -204,16 +204,11 @@ Provides time and date utilities:
 - **format_time**: Format timestamps with optional timezone
 - **parse_time**: Parse time strings into RFC3339 format
 
-### 9. Documentation Tools (`docs.go`)
-Provides documentation query functionality:
-
-- **query_documentation**: Query documentation for supported products (simplified implementation)
-- **list_supported_products**: List supported products for documentation queries
-
-### 10. Common Tools (`common.go`)
+### 9. Common Tools (`common.go`)
 Provides general utility functions:
 
 - **shell**: Execute shell commands
+- **sleep**: Pause execution for a specified duration
 
 ## Building and Running
 
