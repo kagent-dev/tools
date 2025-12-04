@@ -87,6 +87,58 @@ func TestHandleLinkerdInstall(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
+
+	t.Run("install with advanced flags", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedArgs := []string{"install",
+			"--disable-h2-upgrade",
+			"--enable-endpoint-slices=false",
+			"--admin-port", "5555",
+			"--controller-log-level", "debug",
+			"--default-inbound-policy", "cluster-authenticated",
+			"--identity-trust-anchors-file", "/tmp/anchors",
+			"--proxy-cpu-limit", "500m",
+			"--registry", "registry.example.com/linkerd",
+			"-o", "json",
+			"--set-string", "global.proxy.logLevel=debug",
+			"-f", "overrides1.yaml",
+			"-f", "overrides2.yaml",
+			"--crds",
+		}
+		mock.AddCommandString("linkerd", expectedArgs, "manifest", nil)
+		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"crds_only":                   "true",
+			"disable_h2_upgrade":          "true",
+			"enable_endpoint_slices":      "false",
+			"admin_port":                  "5555",
+			"controller_log_level":        "debug",
+			"default_inbound_policy":      "cluster-authenticated",
+			"identity_trust_anchors_file": "/tmp/anchors",
+			"proxy_cpu_limit":             "500m",
+			"registry":                    "registry.example.com/linkerd",
+			"output":                      "json",
+			"set_string_overrides":        "global.proxy.logLevel=debug",
+			"values":                      "overrides1.yaml,overrides2.yaml",
+		}
+
+		result, err := handleLinkerdInstall(ctx, request)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("invalid boolean flag", func(t *testing.T) {
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"disable_h2_upgrade": "maybe",
+		}
+		result, err := handleLinkerdInstall(ctx, request)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
 }
 
 func TestHandleLinkerdWorkloadInjection(t *testing.T) {
@@ -211,19 +263,63 @@ func TestHandleLinkerdUninstall(t *testing.T) {
 func TestHandleLinkerdVersion(t *testing.T) {
 	ctx := context.Background()
 
-	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"version", "--client", "--short"}, "version", nil)
-	ctx = cmd.WithShellExecutor(ctx, mock)
+	t.Run("client short", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("linkerd", []string{"version", "--client", "--short"}, "version", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
 
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"client_only": "true",
-		"short":       "true",
-	}
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"client_only": "true",
+			"short":       "true",
+		}
 
-	result, err := handleLinkerdVersion(ctx, request)
-	require.NoError(t, err)
-	assert.False(t, result.IsError)
+		result, err := handleLinkerdVersion(ctx, request)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("proxy namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("linkerd", []string{"version", "--proxy", "-n", "linkerd"}, "version", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"proxy":     "true",
+			"namespace": "linkerd",
+		}
+
+		result, err := handleLinkerdVersion(ctx, request)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("explicit false client flag", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("linkerd", []string{"version", "--client=false"}, "version", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"client_only": "false",
+		}
+
+		result, err := handleLinkerdVersion(ctx, request)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("invalid bool flag", func(t *testing.T) {
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"short": "maybe",
+		}
+
+		result, err := handleLinkerdVersion(ctx, request)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
 }
 
 func TestHandleLinkerdAuthz(t *testing.T) {
@@ -252,149 +348,45 @@ func TestHandleLinkerdAuthz(t *testing.T) {
 	})
 }
 
-func TestHandleLinkerdStat(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("missing resource", func(t *testing.T) {
-		result, err := handleLinkerdStat(ctx, mcp.CallToolRequest{})
-		require.NoError(t, err)
-		assert.True(t, result.IsError)
-	})
-
-	t.Run("stat specific namespace", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"stat", "deploy/web", "-n", "default", "--from", "deploy/api", "--time-window", "1m", "-o", "json"}, "stats", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"resource":    "deploy/web",
-			"namespace":   "default",
-			"from":        "deploy/api",
-			"time_window": "1m",
-			"output":      "json",
-		}
-
-		result, err := handleLinkerdStat(ctx, request)
-		require.NoError(t, err)
-		assert.False(t, result.IsError)
-	})
-}
-
-func TestHandleLinkerdTop(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("missing resource", func(t *testing.T) {
-		result, err := handleLinkerdTop(ctx, mcp.CallToolRequest{})
-		require.NoError(t, err)
-		assert.True(t, result.IsError)
-	})
-
-	t.Run("top specific namespace", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"top", "deploy/web", "-n", "default", "--max", "10", "--time-window", "30s"}, "top", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"resource":    "deploy/web",
-			"namespace":   "default",
-			"max_results": "10",
-			"time_window": "30s",
-		}
-
-		result, err := handleLinkerdTop(ctx, request)
-		require.NoError(t, err)
-		assert.False(t, result.IsError)
-	})
-}
-
-func TestHandleLinkerdEdges(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("missing resource", func(t *testing.T) {
-		result, err := handleLinkerdEdges(ctx, mcp.CallToolRequest{})
-		require.NoError(t, err)
-		assert.True(t, result.IsError)
-	})
-
-	t.Run("edges all namespaces", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"edges", "deploy/web", "-A", "-o", "wide"}, "edges", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"resource":       "deploy/web",
-			"all_namespaces": "true",
-			"output":         "wide",
-		}
-
-		result, err := handleLinkerdEdges(ctx, request)
-		require.NoError(t, err)
-		assert.False(t, result.IsError)
-	})
-}
-
-func TestHandleLinkerdRoutes(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("missing resource", func(t *testing.T) {
-		result, err := handleLinkerdRoutes(ctx, mcp.CallToolRequest{})
-		require.NoError(t, err)
-		assert.True(t, result.IsError)
-	})
-
-	t.Run("routes with filters", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"routes", "deploy/web", "-n", "default", "--from", "deploy/api", "--to", "svc/backend"}, "routes", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"resource":  "deploy/web",
-			"namespace": "default",
-			"from":      "deploy/api",
-			"to":        "svc/backend",
-		}
-
-		result, err := handleLinkerdRoutes(ctx, request)
-		require.NoError(t, err)
-		assert.False(t, result.IsError)
-	})
-}
-
 func TestHandleLinkerdDiagnosticsProxyMetrics(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("basic selector", func(t *testing.T) {
+	t.Run("missing resource", func(t *testing.T) {
+		result, err := handleLinkerdDiagnosticsProxyMetrics(ctx, mcp.CallToolRequest{})
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
+
+	t.Run("with namespace and obfuscate", func(t *testing.T) {
+		mockCtx := context.Background()
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"diagnostics", "proxy-metrics", "-A", "--selector", "app=web"}, "metrics", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("linkerd", []string{"diagnostics", "proxy-metrics", "-n", "emojivoto", "--obfuscate", "deploy/web"}, "metrics", nil)
+		mockCtx = cmd.WithShellExecutor(mockCtx, mock)
 
 		request := mcp.CallToolRequest{}
 		request.Params.Arguments = map[string]interface{}{
-			"all_namespaces": "true",
-			"selector":       "app=web",
+			"resource":  "deploy/web",
+			"namespace": "emojivoto",
+			"obfuscate": "true",
 		}
 
-		result, err := handleLinkerdDiagnosticsProxyMetrics(ctx, request)
+		result, err := handleLinkerdDiagnosticsProxyMetrics(mockCtx, request)
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
 
-	t.Run("with namespace and resource", func(t *testing.T) {
+	t.Run("without namespace", func(t *testing.T) {
+		mockCtx := context.Background()
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"diagnostics", "proxy-metrics", "-n", "emojivoto", "deploy/web"}, "metrics", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
+		mock.AddCommandString("linkerd", []string{"diagnostics", "proxy-metrics", "po/pod-foo"}, "metrics", nil)
+		mockCtx = cmd.WithShellExecutor(mockCtx, mock)
 
 		request := mcp.CallToolRequest{}
 		request.Params.Arguments = map[string]interface{}{
-			"namespace": "emojivoto",
-			"resource":  "deploy/web",
+			"resource": "po/pod-foo",
 		}
 
-		result, err := handleLinkerdDiagnosticsProxyMetrics(ctx, request)
+		result, err := handleLinkerdDiagnosticsProxyMetrics(mockCtx, request)
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -404,13 +396,14 @@ func TestHandleLinkerdDiagnosticsControllerMetrics(t *testing.T) {
 	ctx := context.Background()
 
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"diagnostics", "controller-metrics", "-n", "linkerd", "--component", "controller"}, "metrics", nil)
+	mock.AddCommandString("linkerd", []string{"diagnostics", "controller-metrics", "-n", "linkerd", "--component", "controller", "--wait", "45s"}, "metrics", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
 	request := mcp.CallToolRequest{}
 	request.Params.Arguments = map[string]interface{}{
 		"namespace": "linkerd",
 		"component": "controller",
+		"wait":      "45s",
 	}
 
 	result, err := handleLinkerdDiagnosticsControllerMetrics(ctx, request)
@@ -478,99 +471,7 @@ func TestHandleLinkerdDiagnosticsProfile(t *testing.T) {
 	assert.False(t, result.IsError)
 }
 
-func TestHandleLinkerdVizInstall(t *testing.T) {
-	ctx := context.Background()
-
-	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"viz", "install", "--ha", "--skip-checks", "--set", "tap.resources.limits.cpu=200m"}, "manifest", nil)
-	mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
-	ctx = cmd.WithShellExecutor(ctx, mock)
-
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"ha":            "true",
-		"skip_checks":   "true",
-		"set_overrides": "tap.resources.limits.cpu=200m",
-	}
-
-	result, err := handleLinkerdVizInstall(ctx, request)
-	require.NoError(t, err)
-	assert.False(t, result.IsError)
-}
-
-func TestHandleLinkerdVizUninstall(t *testing.T) {
-	ctx := context.Background()
-
-	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"viz", "uninstall", "--force"}, "removed", nil)
-	mock.AddPartialMatcherString("kubectl", []string{"delete", "-f"}, "deleted", nil)
-	ctx = cmd.WithShellExecutor(ctx, mock)
-
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"force": "true",
-	}
-
-	result, err := handleLinkerdVizUninstall(ctx, request)
-	require.NoError(t, err)
-	assert.False(t, result.IsError)
-}
-
-func TestHandleLinkerdVizTop(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("missing resource", func(t *testing.T) {
-		result, err := handleLinkerdVizTop(ctx, mcp.CallToolRequest{})
-		require.NoError(t, err)
-		assert.True(t, result.IsError)
-	})
-
-	t.Run("viz top resource", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"viz", "top", "deploy/web", "-n", "default", "--max", "5"}, "top", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"resource":    "deploy/web",
-			"namespace":   "default",
-			"max_results": "5",
-		}
-
-		result, err := handleLinkerdVizTop(ctx, request)
-		require.NoError(t, err)
-		assert.False(t, result.IsError)
-	})
-}
-
-func TestHandleLinkerdVizStat(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("missing resource", func(t *testing.T) {
-		result, err := handleLinkerdVizStat(ctx, mcp.CallToolRequest{})
-		require.NoError(t, err)
-		assert.True(t, result.IsError)
-	})
-
-	t.Run("viz stat all namespaces", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"viz", "stat", "deploy/web", "-A", "--time-window", "30s"}, "stats", nil)
-		ctx = cmd.WithShellExecutor(ctx, mock)
-
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"resource":       "deploy/web",
-			"all_namespaces": "true",
-			"time_window":    "30s",
-		}
-
-		result, err := handleLinkerdVizStat(ctx, request)
-		require.NoError(t, err)
-		assert.False(t, result.IsError)
-	})
-}
-
-func TestHandleLinkerdFipsAudit(t *testing.T) {
+func TestHandleLinkerdFips(t *testing.T) {
 	ctx := context.Background()
 
 	mock := cmd.NewMockShellExecutor()
@@ -582,26 +483,38 @@ func TestHandleLinkerdFipsAudit(t *testing.T) {
 		"namespace": "default",
 	}
 
-	result, err := handleLinkerdFipsAudit(ctx, request)
+	result, err := handleLinkerdFips(ctx, request)
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 }
 
-func TestHandleLinkerdPolicyGenerate(t *testing.T) {
-	ctx := context.Background()
+func TestHandleLinkerdPolicy(t *testing.T) {
+	t.Run("defaults to generate", func(t *testing.T) {
+		ctx := context.Background()
 
-	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"policy", "generate", "-n", "default", "-o", "yaml", "--timeout", "30s"}, "policy", nil)
-	ctx = cmd.WithShellExecutor(ctx, mock)
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("linkerd", []string{"policy", "generate", "-n", "ns"}, "policy", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
 
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"namespace": "default",
-		"output":    "yaml",
-		"timeout":   "30s",
-	}
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"namespace": "ns",
+		}
 
-	result, err := handleLinkerdPolicyGenerate(ctx, request)
-	require.NoError(t, err)
-	assert.False(t, result.IsError)
+		result, err := handleLinkerdPolicy(ctx, request)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("unsupported command", func(t *testing.T) {
+		ctx := context.Background()
+		request := mcp.CallToolRequest{}
+		request.Params.Arguments = map[string]interface{}{
+			"command": "unknown",
+		}
+
+		result, err := handleLinkerdPolicy(ctx, request)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
 }
