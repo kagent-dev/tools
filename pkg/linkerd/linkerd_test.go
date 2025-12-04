@@ -11,6 +11,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type manifestExecCall struct {
+	args   []string
+	stdout string
+	stderr string
+	err    error
+}
+
+type mockManifestExecutor struct {
+	t     *testing.T
+	calls []manifestExecCall
+	idx   int
+}
+
+func newMockManifestExecutor(t *testing.T, calls []manifestExecCall) *mockManifestExecutor {
+	return &mockManifestExecutor{t: t, calls: calls}
+}
+
+func (m *mockManifestExecutor) Run(ctx context.Context, command string, args []string) (string, string, error) {
+	m.t.Helper()
+	if m.idx >= len(m.calls) {
+		m.t.Fatalf("unexpected manifest command: %s %v", command, args)
+	}
+	call := m.calls[m.idx]
+	m.idx++
+	require.Equal(m.t, "linkerd", command)
+	require.Equal(m.t, call.args, args)
+	return call.stdout, call.stderr, call.err
+}
+
+func (m *mockManifestExecutor) assertDone() {
+	m.t.Helper()
+	if m.idx != len(m.calls) {
+		m.t.Fatalf("expected %d manifest commands, got %d", len(m.calls), m.idx)
+	}
+}
+
 func TestRegisterTools(t *testing.T) {
 	s := server.NewMCPServer("test-server", "v0.0.1")
 	RegisterTools(s)
@@ -58,10 +94,19 @@ func TestHandleLinkerdInstall(t *testing.T) {
 
 	t.Run("default install", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"install", "--crds"}, "crd-manifest", nil)
-		mock.AddCommandString("linkerd", []string{"install"}, "manifest", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		manifestMock := newMockManifestExecutor(t, []manifestExecCall{
+			{args: []string{"install", "--crds"}, stdout: "crd-manifest"},
+			{args: []string{"install"}, stdout: "manifest"},
+		})
+		prev := linkerdManifestExecutor
+		linkerdManifestExecutor = manifestMock
+		t.Cleanup(func() {
+			manifestMock.assertDone()
+			linkerdManifestExecutor = prev
+		})
 
 		result, err := handleLinkerdInstall(ctx, mcp.CallToolRequest{})
 		require.NoError(t, err)
@@ -70,9 +115,18 @@ func TestHandleLinkerdInstall(t *testing.T) {
 
 	t.Run("ha install with overrides", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"install", "--ha", "--skip-checks", "--identity-trust-anchors-pem", "anchors", "--set", "global.proxy.logLevel=debug", "--crds"}, "manifest", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		manifestMock := newMockManifestExecutor(t, []manifestExecCall{
+			{args: []string{"install", "--ha", "--skip-checks", "--identity-trust-anchors-pem", "anchors", "--set", "global.proxy.logLevel=debug", "--crds"}, stdout: "manifest"},
+		})
+		prev := linkerdManifestExecutor
+		linkerdManifestExecutor = manifestMock
+		t.Cleanup(func() {
+			manifestMock.assertDone()
+			linkerdManifestExecutor = prev
+		})
 
 		request := mcp.CallToolRequest{}
 		request.Params.Arguments = map[string]interface{}{
@@ -89,7 +143,6 @@ func TestHandleLinkerdInstall(t *testing.T) {
 	})
 
 	t.Run("install with advanced flags", func(t *testing.T) {
-		mock := cmd.NewMockShellExecutor()
 		expectedArgs := []string{"install",
 			"--disable-h2-upgrade",
 			"--enable-endpoint-slices=false",
@@ -105,9 +158,19 @@ func TestHandleLinkerdInstall(t *testing.T) {
 			"-f", "overrides2.yaml",
 			"--crds",
 		}
-		mock.AddCommandString("linkerd", expectedArgs, "manifest", nil)
+		mock := cmd.NewMockShellExecutor()
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		manifestMock := newMockManifestExecutor(t, []manifestExecCall{
+			{args: expectedArgs, stdout: "manifest"},
+		})
+		prev := linkerdManifestExecutor
+		linkerdManifestExecutor = manifestMock
+		t.Cleanup(func() {
+			manifestMock.assertDone()
+			linkerdManifestExecutor = prev
+		})
 
 		request := mcp.CallToolRequest{}
 		request.Params.Arguments = map[string]interface{}{
@@ -194,9 +257,18 @@ func TestHandleLinkerdInstallCNI(t *testing.T) {
 
 	t.Run("default install-cni", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"install-cni"}, "manifest", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		manifestMock := newMockManifestExecutor(t, []manifestExecCall{
+			{args: []string{"install-cni"}, stdout: "manifest"},
+		})
+		prev := linkerdManifestExecutor
+		linkerdManifestExecutor = manifestMock
+		t.Cleanup(func() {
+			manifestMock.assertDone()
+			linkerdManifestExecutor = prev
+		})
 
 		result, err := handleLinkerdInstallCNI(ctx, mcp.CallToolRequest{})
 		require.NoError(t, err)
@@ -205,9 +277,18 @@ func TestHandleLinkerdInstallCNI(t *testing.T) {
 
 	t.Run("install-cni with overrides", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
-		mock.AddCommandString("linkerd", []string{"install-cni", "--skip-checks", "--set", "cniResourceReadyTimeout=10m"}, "manifest", nil)
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		manifestMock := newMockManifestExecutor(t, []manifestExecCall{
+			{args: []string{"install-cni", "--skip-checks", "--set", "cniResourceReadyTimeout=10m"}, stdout: "manifest"},
+		})
+		prev := linkerdManifestExecutor
+		linkerdManifestExecutor = manifestMock
+		t.Cleanup(func() {
+			manifestMock.assertDone()
+			linkerdManifestExecutor = prev
+		})
 
 		request := mcp.CallToolRequest{}
 		request.Params.Arguments = map[string]interface{}{
@@ -225,9 +306,18 @@ func TestHandleLinkerdUpgrade(t *testing.T) {
 	ctx := context.Background()
 
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"upgrade", "--crds", "--ha", "--skip-checks", "--set", "global.proxy.logLevel=debug"}, "manifest", nil)
 	mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "applied", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	manifestMock := newMockManifestExecutor(t, []manifestExecCall{
+		{args: []string{"upgrade", "--crds", "--ha", "--skip-checks", "--set", "global.proxy.logLevel=debug"}, stdout: "manifest"},
+	})
+	prev := linkerdManifestExecutor
+	linkerdManifestExecutor = manifestMock
+	t.Cleanup(func() {
+		manifestMock.assertDone()
+		linkerdManifestExecutor = prev
+	})
 
 	request := mcp.CallToolRequest{}
 	request.Params.Arguments = map[string]interface{}{
@@ -246,9 +336,18 @@ func TestHandleLinkerdUninstall(t *testing.T) {
 	ctx := context.Background()
 
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"uninstall", "--force"}, "removed", nil)
 	mock.AddPartialMatcherString("kubectl", []string{"delete", "-f"}, "deleted", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	manifestMock := newMockManifestExecutor(t, []manifestExecCall{
+		{args: []string{"uninstall", "--force"}, stdout: "removed"},
+	})
+	prev := linkerdManifestExecutor
+	linkerdManifestExecutor = manifestMock
+	t.Cleanup(func() {
+		manifestMock.assertDone()
+		linkerdManifestExecutor = prev
+	})
 
 	request := mcp.CallToolRequest{}
 	request.Params.Arguments = map[string]interface{}{
