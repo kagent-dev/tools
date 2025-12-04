@@ -30,6 +30,10 @@ func (e *ToolError) Error() string {
 // ToMCPResult converts the error to an MCP result with rich context
 func (e *ToolError) ToMCPResult() *mcp.CallToolResult {
 	var message strings.Builder
+	commandOutput := ""
+	if output, ok := e.Context["command_output"]; ok {
+		commandOutput = fmt.Sprint(output)
+	}
 
 	// Format the error message with context
 	message.WriteString(fmt.Sprintf("❌ **%s Error**\n\n", e.Component))
@@ -60,10 +64,26 @@ func (e *ToolError) ToMCPResult() *mcp.CallToolResult {
 		}
 	}
 
-	if len(e.Context) > 0 {
+	trimmedCommandOutput := strings.TrimSpace(commandOutput)
+	if trimmedCommandOutput != "" {
+		message.WriteString("\n**📄 Command Output**:\n")
+		message.WriteString("```\n")
+		message.WriteString(trimmedCommandOutput)
+		message.WriteString("\n```\n")
+	}
+
+	contextLines := make([]string, 0, len(e.Context))
+	for key, value := range e.Context {
+		if key == "command_output" {
+			continue
+		}
+		contextLines = append(contextLines, fmt.Sprintf("- %s: %v\n", key, value))
+	}
+
+	if len(contextLines) > 0 {
 		message.WriteString("\n**📋 Context**:\n")
-		for key, value := range e.Context {
-			message.WriteString(fmt.Sprintf("- %s: %v\n", key, value))
+		for _, line := range contextLines {
+			message.WriteString(line)
 		}
 	}
 

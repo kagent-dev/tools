@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"os/exec"
 	"time"
@@ -48,6 +49,48 @@ func (e *DefaultShellExecutor) Exec(ctx context.Context, command string, args ..
 	}
 
 	return output, err
+}
+
+// ExecWithStreams executes a command and captures stdout/stderr separately
+func (e *DefaultShellExecutor) ExecWithStreams(ctx context.Context, command string, args ...string) ([]byte, []byte, error) {
+	log := logger.WithContext(ctx)
+	startTime := time.Now()
+
+	log.Info("executing command",
+		"command", command,
+		"args", args,
+	)
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	duration := time.Since(startTime)
+
+	stdoutStr := stdout.String()
+	stderrStr := stderr.String()
+
+	if err != nil {
+		log.Error("command execution failed",
+			"command", command,
+			"args", args,
+			"error", err,
+			"stdout", stdoutStr,
+			"stderr", stderrStr,
+			"duration", duration.Seconds(),
+		)
+	} else {
+		log.Info("command execution successful",
+			"command", command,
+			"args", args,
+			"duration", duration.Seconds(),
+		)
+	}
+
+	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 // Context key for shell executor injection

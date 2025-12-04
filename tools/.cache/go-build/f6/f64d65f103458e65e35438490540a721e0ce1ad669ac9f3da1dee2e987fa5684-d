@@ -1,0 +1,19 @@
+# test log
+getenv KAGENT_USE_STDERR
+getenv KAGENT_LOG_FORMAT
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-3347751131.yaml
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-2185368266.yaml
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-3695097515.yaml
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-3896272047.yaml
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-3568229855.yaml
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-196256739.yaml
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-2277428207.yaml
+getenv TMPDIR
+open /var/folders/_j/dcf2mk092857f40j30lsr7ww0000gn/T/linkerd-manifest-199018223.yaml

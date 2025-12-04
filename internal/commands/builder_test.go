@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/kagent-dev/tools/internal/cmd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -147,6 +150,23 @@ func TestCommandBuilderWithFlags(t *testing.T) {
 	assert.True(t, cb.force)
 	assert.True(t, cb.wait)
 	assert.False(t, cb.validate)
+}
+
+func TestCommandBuilderWithStdoutOnly(t *testing.T) {
+	ctx := context.Background()
+	exec := &mockStreamsExecutor{
+		stdout: []byte("stdout-output"),
+		stderr: []byte("warning"),
+	}
+	ctx = cmd.WithShellExecutor(ctx, exec)
+
+	cb := NewCommandBuilder("test").WithStdoutOnly(true)
+
+	output, err := cb.Execute(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "stdout-output", output)
+	assert.True(t, exec.streamsCalled)
+	assert.False(t, exec.execCalled)
 }
 
 func TestCommandBuilderWithCache(t *testing.T) {
@@ -390,6 +410,23 @@ func TestDeleteResource(t *testing.T) {
 	assert.True(t, cb.force)
 	assert.True(t, cb.wait)
 	assert.False(t, cb.cached)
+}
+
+type mockStreamsExecutor struct {
+	stdout        []byte
+	stderr        []byte
+	streamsCalled bool
+	execCalled    bool
+}
+
+func (m *mockStreamsExecutor) Exec(ctx context.Context, command string, args ...string) ([]byte, error) {
+	m.execCalled = true
+	return nil, fmt.Errorf("exec should not be called")
+}
+
+func (m *mockStreamsExecutor) ExecWithStreams(ctx context.Context, command string, args ...string) ([]byte, []byte, error) {
+	m.streamsCalled = true
+	return m.stdout, m.stderr, nil
 }
 
 func TestHelmInstall(t *testing.T) {
