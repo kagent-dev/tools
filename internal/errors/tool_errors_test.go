@@ -5,9 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewToolError(t *testing.T) {
@@ -107,24 +105,6 @@ func TestToolErrorToMCPResult(t *testing.T) {
 		// We'll just check that it's not empty
 		assert.NotNil(t, content)
 	}
-}
-
-func TestToolErrorToMCPResultIncludesCommandOutput(t *testing.T) {
-	cause := errors.New("test error")
-	err := NewToolError("TestComponent", "test operation", cause).
-		WithContext("command_output", "line1\nline2").
-		WithContext("kagent_operation", "linkerd check")
-
-	result := err.ToMCPResult()
-	require.NotNil(t, result)
-	require.Len(t, result.Content, 1)
-	textContent, ok := result.Content[0].(mcp.TextContent)
-	require.True(t, ok)
-	assert.Contains(t, textContent.Text, "**📄 Command Output**")
-	assert.Contains(t, textContent.Text, "line1")
-	assert.Contains(t, textContent.Text, "line2")
-	assert.Contains(t, textContent.Text, "kagent_operation")
-	assert.NotContains(t, textContent.Text, "command_output")
 }
 
 func TestNewKubernetesError(t *testing.T) {

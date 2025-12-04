@@ -70,7 +70,11 @@ func (m *MockShellExecutor) AddPartialMatcherString(command string, args []strin
 	}{command, args, output, err})
 }
 
-func (m *MockShellExecutor) execute(command string, args []string) ([]byte, error) {
+// Exec records the call and returns a mocked output or error
+func (m *MockShellExecutor) Exec(ctx context.Context, command string, args ...string) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.callLog = append(m.callLog, MockCall{Command: command, Args: args})
 
 	// Check for exact match first
@@ -89,22 +93,6 @@ func (m *MockShellExecutor) execute(command string, args []string) ([]byte, erro
 	}
 
 	return nil, fmt.Errorf("no mock found for command: %s %v", command, args)
-}
-
-// Exec records the call and returns a mocked output or error
-func (m *MockShellExecutor) Exec(ctx context.Context, command string, args ...string) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.execute(command, args)
-}
-
-// ExecWithStreams records the call and returns separated stdout/stderr
-func (m *MockShellExecutor) ExecWithStreams(ctx context.Context, command string, args ...string) ([]byte, []byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	output, err := m.execute(command, args)
-	return output, nil, err
 }
 
 // GetCallLog returns the history of commands executed

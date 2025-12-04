@@ -38,7 +38,6 @@ type CommandBuilder struct {
 	force       bool
 	wait        bool
 	validate    bool
-	stdoutOnly  bool
 	cached      bool
 	cacheTTL    time.Duration
 	cacheKey    string
@@ -198,12 +197,6 @@ func (cb *CommandBuilder) WithWait(wait bool) *CommandBuilder {
 // WithValidation enables/disables validation
 func (cb *CommandBuilder) WithValidation(validate bool) *CommandBuilder {
 	cb.validate = validate
-	return cb
-}
-
-// WithStdoutOnly forces the command to only capture stdout on success
-func (cb *CommandBuilder) WithStdoutOnly(stdoutOnly bool) *CommandBuilder {
-	cb.stdoutOnly = stdoutOnly
 	return cb
 }
 
@@ -416,74 +409,26 @@ func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, 
 // executeCommand executes the actual command
 func (cb *CommandBuilder) executeCommand(ctx context.Context, command string, args []string) (string, error) {
 	executor := cmd.GetShellExecutor(ctx)
-
-	if cb.stdoutOnly {
-		if streamExec, ok := executor.(interface {
-			ExecWithStreams(ctx context.Context, command string, args ...string) ([]byte, []byte, error)
-		}); ok {
-			stdout, stderr, err := streamExec.ExecWithStreams(ctx, command, args...)
-			if err != nil {
-				combined := combineCommandOutput(stdout, stderr)
-				return cb.handleCommandError(command, args, combined, err)
-			}
-
-			if len(stderr) > 0 {
-				logger.WithContext(ctx).Warn("command produced stderr output",
-					"command", command,
-					"args", args,
-					"stderr", string(stderr),
-				)
-			}
-
-			return string(stdout), nil
-		}
-
-		logger.WithContext(ctx).Warn("stdout-only requested but shell executor does not support split output; falling back to combined output",
-			"command", command,
-			"args", args,
-		)
-	}
-
 	output, err := executor.Exec(ctx, command, args...)
 	if err != nil {
-		return cb.handleCommandError(command, args, string(output), err)
+		// Create appropriate error based on command type
+		var toolError *errors.ToolError
+		switch command {
+		case "kubectl":
+			toolError = errors.NewKubernetesError(strings.Join(args, " "), err)
+		case "helm":
+			toolError = errors.NewHelmError(strings.Join(args, " "), err)
+		case "istioctl":
+			toolError = errors.NewIstioError(strings.Join(args, " "), err)
+		case "cilium":
+			toolError = errors.NewCiliumError(strings.Join(args, " "), err)
+		default:
+			toolError = errors.NewCommandError(command, err)
+		}
+		return string(output), toolError
 	}
 
 	return string(output), nil
-}
-
-func (cb *CommandBuilder) handleCommandError(command string, args []string, output string, err error) (string, error) {
-	var toolError *errors.ToolError
-	switch command {
-	case "kubectl":
-		toolError = errors.NewKubernetesError(strings.Join(args, " "), err)
-	case "helm":
-		toolError = errors.NewHelmError(strings.Join(args, " "), err)
-	case "istioctl":
-		toolError = errors.NewIstioError(strings.Join(args, " "), err)
-	case "cilium":
-		toolError = errors.NewCiliumError(strings.Join(args, " "), err)
-	default:
-		toolError = errors.NewCommandError(command, err)
-	}
-	return output, toolError
-}
-
-func combineCommandOutput(stdout, stderr []byte) string {
-	switch {
-	case len(stdout) == 0:
-		return string(stderr)
-	case len(stderr) == 0:
-		return string(stdout)
-	default:
-		combined := make([]byte, len(stdout), len(stdout)+1+len(stderr))
-		copy(combined, stdout)
-		if combined[len(combined)-1] != '\n' {
-			combined = append(combined, '\n')
-		}
-		combined = append(combined, stderr...)
-		return string(combined)
-	}
 }
 
 // Common command patterns as helper functions
