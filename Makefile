@@ -136,11 +136,11 @@ DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
 
 # tools image build args
-TOOLS_ISTIO_VERSION ?= 1.27.1
+TOOLS_ISTIO_VERSION ?= 1.28.1
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
-TOOLS_KUBECTL_VERSION ?= 1.34.1
+TOOLS_KUBECTL_VERSION ?= 1.34.2
 TOOLS_HELM_VERSION ?= 3.19.0
-TOOLS_CILIUM_VERSION ?= 0.18.7
+TOOLS_CILIUM_VERSION ?= 0.18.9
 
 # build args
 TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
@@ -238,6 +238,40 @@ report/image-cve: docker-build govulncheck
 
 ## Tool Binaries
 ## Location to install dependencies t
+
+# check-release-version checks if a tool version matches the latest GitHub release
+# $1 - variable name (e.g., TOOLS_ISTIO_VERSION)
+# $2 - current version value
+# $3 - GitHub repo (e.g., istio/istio)
+define check-release-version
+@LATEST=$$(gh release list --repo $(3) --json tagName,isLatest | jq -r '.[] | select(.isLatest==true) | .tagName'); \
+if [ "$(2)" = "$${LATEST#v}" ]; then \
+	echo "✅ $(1)=$(2) == $$LATEST"; \
+else \
+	echo "❌ $(1)=$(2) != $$LATEST"; \
+fi
+endef
+
+define check-go-version
+@CURRENT_GO=$$(awk '/^go / { print $$2 }' go.mod); \
+LATEST_GO=$$(curl -ks 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1 | sed 's/^go//' || echo "unknown"); \
+if [ "$$CURRENT_GO" = "$$LATEST_GO" ]; then \
+	echo "✅ GO_VERSION=$$CURRENT_GO == $$LATEST_GO"; \
+else \
+	echo "❌ GO_VERSION=$$CURRENT_GO != $$LATEST_GO"; \
+fi
+endef
+
+.PHONY: check-releases
+check-releases:
+	@echo "Checking tool versions against latest releases..."
+	@echo ""
+	$(call check-go-version)
+	$(call check-release-version,TOOLS_ARGO_ROLLOUTS_VERSION,$(TOOLS_ARGO_ROLLOUTS_VERSION),argoproj/argo-rollouts)
+	$(call check-release-version,TOOLS_CILIUM_VERSION,$(TOOLS_CILIUM_VERSION),cilium/cilium-cli)
+	$(call check-release-version,TOOLS_ISTIO_VERSION,$(TOOLS_ISTIO_VERSION),istio/istio)
+	$(call check-release-version,TOOLS_HELM_VERSION,$(TOOLS_HELM_VERSION),helm/helm)
+	$(call check-release-version,TOOLS_KUBECTL_VERSION,$(TOOLS_KUBECTL_VERSION),kubernetes/kubernetes)
 
 .PHONY: $(LOCALBIN)
 $(LOCALBIN):
