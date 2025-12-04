@@ -22,6 +22,7 @@ import (
 	"github.com/kagent-dev/tools/pkg/helm"
 	"github.com/kagent-dev/tools/pkg/istio"
 	"github.com/kagent-dev/tools/pkg/k8s"
+	"github.com/kagent-dev/tools/pkg/linkerd"
 	"github.com/kagent-dev/tools/pkg/prometheus"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/spf13/cobra"
@@ -291,6 +292,7 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 		"cilium":     cilium.RegisterTools,
 		"helm":       helm.RegisterTools,
 		"istio":      istio.RegisterTools,
+		"linkerd":    linkerd.RegisterTools,
 		"k8s":        func(s *server.MCPServer) { k8s.RegisterTools(s, nil, kubeconfig) },
 		"prometheus": prometheus.RegisterTools,
 		"utils":      utils.RegisterTools,
