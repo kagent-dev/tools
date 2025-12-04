@@ -1,16 +1,20 @@
 package linkerd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	goerrors "errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
 	toolerrors "github.com/kagent-dev/tools/internal/errors"
+	"github.com/kagent-dev/tools/internal/logger"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
@@ -41,6 +45,45 @@ var linkerdWorkloadTypes = map[string]linkerdWorkloadTypeConfig{
 	"job":                   {annotationsPath: []string{"spec", "template", "metadata", "annotations"}, namespaced: true},
 	"cronjob":               {annotationsPath: []string{"spec", "jobTemplate", "spec", "template", "metadata", "annotations"}, namespaced: true},
 	"pod":                   {annotationsPath: []string{"metadata", "annotations"}, namespaced: true},
+}
+
+type manifestCommandExecutor interface {
+	Run(ctx context.Context, command string, args []string) (stdout string, stderr string, err error)
+}
+
+var linkerdManifestExecutor manifestCommandExecutor = &execManifestCommandExecutor{}
+
+type execManifestCommandExecutor struct{}
+
+func (e *execManifestCommandExecutor) Run(ctx context.Context, command string, args []string) (string, string, error) {
+	log := logger.WithContext(ctx)
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, command, args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	duration := time.Since(start)
+	if err != nil {
+		log.Error("linkerd manifest command failed",
+			"command", command,
+			"args", args,
+			"error", err,
+			"stderr", strings.TrimSpace(stderr.String()),
+			"duration", duration.String(),
+		)
+	} else {
+		log.Info("linkerd manifest command executed",
+			"command", command,
+			"args", args,
+			"stderr_length", stderr.Len(),
+			"duration", duration.String(),
+		)
+	}
+
+	return stdout.String(), stderr.String(), err
 }
 
 // =================================
@@ -98,7 +141,35 @@ func runLinkerdCommand(ctx context.Context, args []string) (string, error) {
 }
 
 func runLinkerdManifestCommand(ctx context.Context, args []string) (string, error) {
-	return executeLinkerdCommand(ctx, args)
+	kubeconfigPath := utils.GetKubeconfig()
+	builder := commands.NewCommandBuilder("linkerd").
+		WithArgs(args...).
+		WithKubeconfig(kubeconfigPath)
+
+	command, builtArgs, err := builder.Build()
+	if err != nil {
+		return "", err
+	}
+
+	stdout, stderr, execErr := linkerdManifestExecutor.Run(ctx, command, builtArgs)
+	if execErr != nil {
+		trimmed := strings.TrimSpace(stderr)
+		combinedErr := execErr
+		if trimmed != "" {
+			combinedErr = fmt.Errorf("%w: %s", execErr, trimmed)
+		}
+		return stdout, toolerrors.NewCommandError(command, combinedErr)
+	}
+
+	if trimmed := strings.TrimSpace(stderr); trimmed != "" {
+		logger.WithContext(ctx).Warn("linkerd manifest command produced stderr output",
+			"command", command,
+			"args", builtArgs,
+			"stderr", trimmed,
+		)
+	}
+
+	return stdout, nil
 }
 
 func executeLinkerdCommand(ctx context.Context, args []string) (string, error) {
