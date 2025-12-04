@@ -828,6 +828,7 @@ func handleLinkerdWorkloadInjection(ctx context.Context, request mcp.CallToolReq
 	if config.namespaced {
 		args = append(args, "-n", namespace)
 	}
+
 	var patch string
 	var operation string
 	if removeAnnotation {
