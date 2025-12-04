@@ -829,7 +829,7 @@ func handleLinkerdWorkloadInjection(ctx context.Context, request mcp.CallToolReq
 		args = append(args, "-n", namespace)
 	}
 	var patch string
-	operation := fmt.Sprintf("kubectl patch %s %s for linkerd injection", workloadType, workloadName)
+	var operation string
 	if removeAnnotation {
 		patch = buildAnnotationRemovePatch(config.annotationsPath, linkerdInjectionAnnotationKey)
 		args = append(args, "--type=json", "-p", patch)
