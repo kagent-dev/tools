@@ -252,10 +252,21 @@ else \
 fi
 endef
 
+define check-go-version
+@CURRENT_GO=$$(awk '/^go / { print $$2 }' go.mod); \
+LATEST_GO=$$(curl -ks 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1 | sed 's/^go//' || echo "unknown"); \
+if [ "$$CURRENT_GO" = "$$LATEST_GO" ]; then \
+	echo "✅ GO_VERSION=$$CURRENT_GO == $$LATEST_GO"; \
+else \
+	echo "❌ GO_VERSION=$$CURRENT_GO != $$LATEST_GO"; \
+fi
+endef
+
 .PHONY: check-releases
 check-releases:
 	@echo "Checking tool versions against latest releases..."
 	@echo ""
+	$(call check-go-version)
 	$(call check-release-version,TOOLS_ARGO_ROLLOUTS_VERSION,$(TOOLS_ARGO_ROLLOUTS_VERSION),argoproj/argo-rollouts)
 	$(call check-release-version,TOOLS_CILIUM_VERSION,$(TOOLS_CILIUM_VERSION),cilium/cilium-cli)
 	$(call check-release-version,TOOLS_ISTIO_VERSION,$(TOOLS_ISTIO_VERSION),istio/istio)
