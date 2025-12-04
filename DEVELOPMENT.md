@@ -18,6 +18,7 @@ These tools enhance functionality but aren't required for basic development:
 - `kubectl` - Kubernetes CLI for k8s tools
 - `helm` - Helm package manager for helm tools  
 - `istioctl` - Istio service mesh CLI for istio tools
+- `linkerd` - Linkerd service mesh CLI for linkerd tools
 - `cilium` - Cilium CLI for cilium tools
 
 ## Project Structure
@@ -32,6 +33,7 @@ These tools enhance functionality but aren't required for basic development:
 │   ├── k8s/                 # Kubernetes tools
 │   ├── helm/                # Helm package manager tools
 │   ├── istio/               # Istio service mesh tools
+│   ├── linkerd/             # Linkerd service mesh tools
 │   ├── cilium/              # Cilium CNI tools
 │   ├── argo/                # Argo Rollouts tools
 │   ├── prometheus/          # Prometheus monitoring tools
