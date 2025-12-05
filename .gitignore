@@ -16,3 +16,4 @@ bin/
 .dagger/
 /tools/.cache/
 .gocache/
+/dist/*

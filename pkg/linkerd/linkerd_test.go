@@ -2,9 +2,11 @@ package linkerd
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
+	toolerrors "github.com/kagent-dev/tools/internal/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
@@ -50,6 +52,53 @@ func (m *mockManifestExecutor) assertDone() {
 func TestRegisterTools(t *testing.T) {
 	s := server.NewMCPServer("test-server", "v0.0.1")
 	RegisterTools(s)
+}
+
+func TestFormatLinkerdCommandResultIncludesCommandOutput(t *testing.T) {
+	output := "Error: invalid resource type deploy/simple-app-v1; must be one of Pod or Service"
+	cmdErr := toolerrors.NewCommandError("linkerd", &commandExecutionError{err: errors.New("exit status 1"), output: output})
+
+	result, err := formatLinkerdCommandResult("linkerd diagnostics policy", output, cmdErr)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsError)
+
+	require.Len(t, result.Content, 1)
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	require.True(t, ok)
+	assert.Contains(t, textContent.Text, output)
+	assert.Contains(t, textContent.Text, "failed")
+
+	assert.Equal(t, output, cmdErr.Context["command_output"])
+	assert.Contains(t, cmdErr.Cause.Error(), output)
+}
+
+func TestFormatLinkerdCommandResultExtractsOutputFromError(t *testing.T) {
+	output := "Error: invalid resource type deploy/simple-app-v1; must be one of Pod or Service"
+	cmdErr := toolerrors.NewCommandError("linkerd", &commandExecutionError{err: errors.New("exit status 1"), output: output})
+
+	result, err := formatLinkerdCommandResult("linkerd diagnostics policy", "", cmdErr)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsError)
+
+	require.Len(t, result.Content, 1)
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	require.True(t, ok)
+	assert.Contains(t, textContent.Text, output)
+	assert.Equal(t, output, cmdErr.Context["command_output"])
+}
+
+func TestFormatLinkerdCommandResultSuccessResult(t *testing.T) {
+	result, err := formatLinkerdCommandResult("linkerd version", "Client version: stable", nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+	require.Len(t, result.Content, 1)
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	require.True(t, ok)
+	assert.Contains(t, textContent.Text, "succeeded")
+	assert.Contains(t, textContent.Text, "Client version: stable")
 }
 
 func TestHandleLinkerdCheck(t *testing.T) {
@@ -119,7 +168,7 @@ func TestHandleLinkerdInstall(t *testing.T) {
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
 		manifestMock := newMockManifestExecutor(t, []manifestExecCall{
-			{args: []string{"install", "--ha", "--skip-checks", "--identity-trust-anchors-pem", "anchors", "--set", "global.proxy.logLevel=debug", "--crds"}, stdout: "manifest"},
+			{args: []string{"install", "--ha", "--skip-checks", "--identity-trust-anchors-pem", "anchors", "--crds"}, stdout: "manifest"},
 		})
 		prev := linkerdManifestExecutor
 		linkerdManifestExecutor = manifestMock
@@ -134,7 +183,6 @@ func TestHandleLinkerdInstall(t *testing.T) {
 			"crds_only":                  "true",
 			"skip_checks":                "true",
 			"identity_trust_anchors_pem": "anchors",
-			"set_overrides":              "global.proxy.logLevel=debug",
 		}
 
 		result, err := handleLinkerdInstall(ctx, request)
@@ -153,9 +201,6 @@ func TestHandleLinkerdInstall(t *testing.T) {
 			"--proxy-cpu-limit", "500m",
 			"--registry", "registry.example.com/linkerd",
 			"-o", "json",
-			"--set-string", "global.proxy.logLevel=debug",
-			"-f", "overrides1.yaml",
-			"-f", "overrides2.yaml",
 			"--crds",
 		}
 		mock := cmd.NewMockShellExecutor()
@@ -184,8 +229,6 @@ func TestHandleLinkerdInstall(t *testing.T) {
 			"proxy_cpu_limit":             "500m",
 			"registry":                    "registry.example.com/linkerd",
 			"output":                      "json",
-			"set_string_overrides":        "global.proxy.logLevel=debug",
-			"values":                      "overrides1.yaml,overrides2.yaml",
 		}
 
 		result, err := handleLinkerdInstall(ctx, request)
@@ -281,7 +324,7 @@ func TestHandleLinkerdInstallCNI(t *testing.T) {
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
 		manifestMock := newMockManifestExecutor(t, []manifestExecCall{
-			{args: []string{"install-cni", "--skip-checks", "--set", "cniResourceReadyTimeout=10m"}, stdout: "manifest"},
+			{args: []string{"install-cni", "--skip-checks"}, stdout: "manifest"},
 		})
 		prev := linkerdManifestExecutor
 		linkerdManifestExecutor = manifestMock
@@ -292,8 +335,7 @@ func TestHandleLinkerdInstallCNI(t *testing.T) {
 
 		request := mcp.CallToolRequest{}
 		request.Params.Arguments = map[string]interface{}{
-			"skip_checks":   "true",
-			"set_overrides": "cniResourceReadyTimeout=10m",
+			"skip_checks": "true",
 		}
 
 		result, err := handleLinkerdInstallCNI(ctx, request)
@@ -310,7 +352,7 @@ func TestHandleLinkerdUpgrade(t *testing.T) {
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
 	manifestMock := newMockManifestExecutor(t, []manifestExecCall{
-		{args: []string{"upgrade", "--crds", "--ha", "--skip-checks", "--set", "global.proxy.logLevel=debug"}, stdout: "manifest"},
+		{args: []string{"upgrade", "--crds", "--ha", "--skip-checks"}, stdout: "manifest"},
 	})
 	prev := linkerdManifestExecutor
 	linkerdManifestExecutor = manifestMock
@@ -321,10 +363,9 @@ func TestHandleLinkerdUpgrade(t *testing.T) {
 
 	request := mcp.CallToolRequest{}
 	request.Params.Arguments = map[string]interface{}{
-		"ha":            "true",
-		"crds_only":     "true",
-		"skip_checks":   "true",
-		"set_overrides": "global.proxy.logLevel=debug",
+		"ha":          "true",
+		"crds_only":   "true",
+		"skip_checks": "true",
 	}
 
 	result, err := handleLinkerdUpgrade(ctx, request)
@@ -539,12 +580,13 @@ func TestHandleLinkerdDiagnosticsPolicy(t *testing.T) {
 	ctx := context.Background()
 
 	mock := cmd.NewMockShellExecutor()
-	mock.AddCommandString("linkerd", []string{"diagnostics", "policy", "-n", "default", "web.linkerd-viz.svc.cluster.local:8084"}, "policy", nil)
+	mock.AddCommandString("linkerd", []string{"diagnostics", "policy", "-n", "default", "po/web-123", "8084"}, "policy", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
 	request := mcp.CallToolRequest{}
 	request.Params.Arguments = map[string]interface{}{
-		"authority": "web.linkerd-viz.svc.cluster.local:8084",
+		"resource":  "po/web-123",
+		"port":      "8084",
 		"namespace": "default",
 	}
 
