@@ -46,6 +46,12 @@ RUN curl -Lo cilium.tar.gz https://github.com/cilium/cilium-cli/releases/downloa
     && rm -rf cilium.tar.gz \
     && /downloads/cilium version
 
+# Install Linkerd CLI
+ARG TOOLS_LINKERD_VERSION
+RUN curl -Lo /downloads/linkerd https://github.com/linkerd/linkerd2/releases/download/${TOOLS_LINKERD_VERSION}/linkerd2-cli-${TOOLS_LINKERD_VERSION}-linux-${TARGETARCH} \
+    && chmod +x /downloads/linkerd \
+    && /downloads/linkerd version --client
+
 ### STAGE 2: build-tools MCP
 ARG BASE_IMAGE_REGISTRY=cgr.dev
 ARG BUILDARCH=amd64
@@ -96,6 +102,7 @@ COPY --from=tools --chown=65532:65532 /downloads/istioctl              /bin/isti
 COPY --from=tools --chown=65532:65532 /downloads/helm                  /bin/helm
 COPY --from=tools --chown=65532:65532 /downloads/kubectl-argo-rollouts /bin/kubectl-argo-rollouts
 COPY --from=tools --chown=65532:65532 /downloads/cilium                /bin/cilium
+COPY --from=tools --chown=65532:65532 /downloads/linkerd               /bin/linkerd
 # Copy the tool-server binary
 COPY --from=builder --chown=65532:65532 /workspace/tool-server           /tool-server
 
