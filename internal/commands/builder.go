@@ -29,6 +29,7 @@ type CommandBuilder struct {
 	namespace   string
 	context     string
 	kubeconfig  string
+	token       string
 	output      string
 	labels      map[string]string
 	annotations map[string]string
@@ -116,6 +117,14 @@ func (cb *CommandBuilder) WithKubeconfig(kubeconfig string) *CommandBuilder {
 			return cb
 		}
 		cb.kubeconfig = kubeconfig
+	}
+	return cb
+}
+
+// WithToken sets the authentication token for kubectl commands
+func (cb *CommandBuilder) WithToken(token string) *CommandBuilder {
+	if token != "" {
+		cb.token = token
 	}
 	return cb
 }
@@ -238,6 +247,11 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 	// Add kubeconfig if specified
 	if cb.kubeconfig != "" {
 		args = append(args, "--kubeconfig", cb.kubeconfig)
+	}
+
+	// Add token if specified
+	if cb.token != "" {
+		args = append(args, "--token", cb.token)
 	}
 
 	// Add output format
