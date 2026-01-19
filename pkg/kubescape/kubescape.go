@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/errors"
@@ -28,6 +29,9 @@ const (
 	// CRD names
 	vulnerabilityManifestsCRD     = "vulnerabilitymanifests.spdx.softwarecomposition.kubescape.io"
 	workloadConfigurationScansCRD = "workloadconfigurationscans.spdx.softwarecomposition.kubescape.io"
+	applicationProfilesCRD        = "applicationprofiles.spdx.softwarecomposition.kubescape.io"
+	networkNeighborhoodsCRD       = "networkneighborhoods.spdx.softwarecomposition.kubescape.io"
+	sbomSyftsCRD                  = "sbomsyfts.spdx.softwarecomposition.kubescape.io"
 
 	// Pod labels
 	operatorPodLabel = "app.kubernetes.io/name=kubescape-operator"
@@ -335,6 +339,113 @@ func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallT
 		}
 	}
 
+	// Check 8: ApplicationProfiles CRD exists (runtime observability)
+	_, err = k.apiExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, applicationProfilesCRD, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			result.Checks["application_profiles_crd"] = CheckStatus{
+				Status:  "warning",
+				Message: "ApplicationProfiles CRD not installed - runtime observability may not be enabled",
+			}
+			recommendations = append(recommendations,
+				"Enable runtime observability for workload behavior analysis: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.runtimeObservability=enable")
+		} else {
+			result.Checks["application_profiles_crd"] = CheckStatus{
+				Status:  "error",
+				Message: fmt.Sprintf("Failed to check CRD: %v", err),
+			}
+		}
+	} else {
+		result.Checks["application_profiles_crd"] = CheckStatus{
+			Status:  "ok",
+			Message: "CRD installed",
+		}
+
+		// Check for ApplicationProfile data
+		profiles, listErr := k.spdxClient.ApplicationProfiles(metav1.NamespaceAll).List(ctx, metav1.ListOptions{Limit: 1})
+		if listErr != nil {
+			result.Checks["application_profiles_data"] = CheckStatus{
+				Status:  "warning",
+				Message: fmt.Sprintf("Failed to list application profiles: %v", listErr),
+			}
+		} else if len(profiles.Items) == 0 {
+			result.Checks["application_profiles_data"] = CheckStatus{
+				Status:  "warning",
+				Message: "No application profiles found - runtime learning may not have completed yet",
+			}
+		} else {
+			allProfiles, _ := k.spdxClient.ApplicationProfiles(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+			count := 0
+			if allProfiles != nil {
+				count = len(allProfiles.Items)
+			}
+			result.Checks["application_profiles_data"] = CheckStatus{
+				Status:  "ok",
+				Message: fmt.Sprintf("%d application profiles found", count),
+			}
+		}
+	}
+
+	// Check 9: NetworkNeighborhoods CRD exists (runtime observability)
+	_, err = k.apiExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, networkNeighborhoodsCRD, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			result.Checks["network_neighborhoods_crd"] = CheckStatus{
+				Status:  "warning",
+				Message: "NetworkNeighborhoods CRD not installed - runtime observability may not be enabled",
+			}
+			// Only add recommendation if not already added from ApplicationProfiles check
+			hasRuntimeRecommendation := false
+			for _, r := range recommendations {
+				if strings.Contains(r, "runtimeObservability") {
+					hasRuntimeRecommendation = true
+					break
+				}
+			}
+			if !hasRuntimeRecommendation {
+				recommendations = append(recommendations,
+					"Enable runtime observability for network analysis: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.runtimeObservability=enable")
+			}
+		} else {
+			result.Checks["network_neighborhoods_crd"] = CheckStatus{
+				Status:  "error",
+				Message: fmt.Sprintf("Failed to check CRD: %v", err),
+			}
+		}
+	} else {
+		result.Checks["network_neighborhoods_crd"] = CheckStatus{
+			Status:  "ok",
+			Message: "CRD installed",
+		}
+
+		// Check for NetworkNeighborhood data
+		neighborhoods, listErr := k.spdxClient.NetworkNeighborhoods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{Limit: 1})
+		if listErr != nil {
+			result.Checks["network_neighborhoods_data"] = CheckStatus{
+				Status:  "warning",
+				Message: fmt.Sprintf("Failed to list network neighborhoods: %v", listErr),
+			}
+		} else if len(neighborhoods.Items) == 0 {
+			result.Checks["network_neighborhoods_data"] = CheckStatus{
+				Status:  "warning",
+				Message: "No network neighborhoods found - runtime learning may not have completed yet",
+			}
+		} else {
+			allNeighborhoods, _ := k.spdxClient.NetworkNeighborhoods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+			count := 0
+			if allNeighborhoods != nil {
+				count = len(allNeighborhoods.Items)
+			}
+			result.Checks["network_neighborhoods_data"] = CheckStatus{
+				Status:  "ok",
+				Message: fmt.Sprintf("%d network neighborhoods found", count),
+			}
+		}
+	}
+
+	// NOTE: SBOM checks are disabled as SBOM tools are disabled (too large for LLM context)
+	// Check 10: SBOMSyfts CRD exists - DISABLED
+
 	// Set summary
 	if result.Healthy {
 		result.Summary = "Kubescape is fully operational"
@@ -613,6 +724,456 @@ func (k *KubescapeTool) handleGetConfigurationScan(ctx context.Context, request 
 	return mcp.NewToolResultText(string(content)), nil
 }
 
+// handleListApplicationProfiles lists application profiles showing runtime behavior data
+func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("list_application_profiles", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+
+	queryNamespace := metav1.NamespaceAll
+	if namespace != "" {
+		queryNamespace = namespace
+	}
+
+	profiles, err := k.spdxClient.ApplicationProfiles(queryNamespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		toolErr := errors.NewKubescapeError("list_application_profiles", err).
+			WithContext("namespace", namespace)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	profileList := []map[string]interface{}{}
+	for _, profile := range profiles.Items {
+		// Summarize what data is captured per container
+		containersCount := len(profile.Spec.Containers)
+		initContainersCount := len(profile.Spec.InitContainers)
+		ephemeralContainersCount := len(profile.Spec.EphemeralContainers)
+
+		totalExecs := 0
+		totalOpens := 0
+		totalSyscalls := 0
+		totalCapabilities := 0
+		totalEndpoints := 0
+
+		for _, c := range profile.Spec.Containers {
+			totalExecs += len(c.Execs)
+			totalOpens += len(c.Opens)
+			totalSyscalls += len(c.Syscalls)
+			totalCapabilities += len(c.Capabilities)
+			totalEndpoints += len(c.Endpoints)
+		}
+
+		profileMap := map[string]interface{}{
+			"namespace":                  profile.Namespace,
+			"name":                       profile.Name,
+			"containers_count":           containersCount,
+			"init_containers_count":      initContainersCount,
+			"ephemeral_containers_count": ephemeralContainersCount,
+			"total_execs":                totalExecs,
+			"total_opens":                totalOpens,
+			"total_syscalls":             totalSyscalls,
+			"total_capabilities":         totalCapabilities,
+			"total_endpoints":            totalEndpoints,
+			"created_at":                 profile.CreationTimestamp.Format(time.RFC3339),
+		}
+		profileList = append(profileList, profileMap)
+	}
+
+	result := map[string]interface{}{
+		"application_profiles": profileList,
+		"total_count":          len(profileList),
+		"description": "ApplicationProfiles capture runtime behavior of workloads including: " +
+			"executed processes (Execs), file access patterns (Opens), system calls (Syscalls), " +
+			"Linux capabilities used, and HTTP endpoints accessed. " +
+			"Use this data to prioritize vulnerabilities - a CVE in an unused package is lower priority than one in an actively running process.",
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(content)), nil
+}
+
+// handleGetApplicationProfile gets detailed runtime behavior for a specific workload
+func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("get_application_profile", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+	name := mcp.ParseString(request, "name", "")
+
+	if name == "" {
+		return mcp.NewToolResultError("name parameter is required"), nil
+	}
+	if namespace == "" {
+		return mcp.NewToolResultError("namespace parameter is required"), nil
+	}
+
+	profile, err := k.spdxClient.ApplicationProfiles(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		toolErr := errors.NewKubescapeError("get_application_profile", err).
+			WithContext("namespace", namespace).
+			WithContext("name", name)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	// Build detailed response with container behaviors
+	containers := []map[string]interface{}{}
+	for _, c := range profile.Spec.Containers {
+		containerInfo := map[string]interface{}{
+			"name":         c.Name,
+			"execs":        c.Execs,
+			"opens":        c.Opens,
+			"syscalls":     c.Syscalls,
+			"capabilities": c.Capabilities,
+			"endpoints":    c.Endpoints,
+		}
+		if c.SeccompProfile.Name != "" || c.SeccompProfile.Path != "" {
+			containerInfo["seccomp_profile"] = c.SeccompProfile
+		}
+		containers = append(containers, containerInfo)
+	}
+
+	initContainers := []map[string]interface{}{}
+	for _, c := range profile.Spec.InitContainers {
+		containerInfo := map[string]interface{}{
+			"name":         c.Name,
+			"execs":        c.Execs,
+			"opens":        c.Opens,
+			"syscalls":     c.Syscalls,
+			"capabilities": c.Capabilities,
+			"endpoints":    c.Endpoints,
+		}
+		initContainers = append(initContainers, containerInfo)
+	}
+
+	result := map[string]interface{}{
+		"namespace":       namespace,
+		"name":            name,
+		"containers":      containers,
+		"init_containers": initContainers,
+		"annotations":     profile.Annotations,
+		"labels":          profile.Labels,
+		"description": "This ApplicationProfile shows what the workload containers actually execute at runtime. " +
+			"Execs: processes that run; Opens: files read/written; Syscalls: kernel-level operations; " +
+			"Capabilities: special Linux privileges; Endpoints: HTTP APIs called. " +
+			"Compare this with vulnerability findings to prioritize remediation - focus on CVEs affecting actively used components.",
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(content)), nil
+}
+
+// handleListNetworkNeighborhoods lists network communication patterns for workloads
+func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("list_network_neighborhoods", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+
+	queryNamespace := metav1.NamespaceAll
+	if namespace != "" {
+		queryNamespace = namespace
+	}
+
+	neighborhoods, err := k.spdxClient.NetworkNeighborhoods(queryNamespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		toolErr := errors.NewKubescapeError("list_network_neighborhoods", err).
+			WithContext("namespace", namespace)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	neighborhoodList := []map[string]interface{}{}
+	for _, nn := range neighborhoods.Items {
+		totalIngress := 0
+		totalEgress := 0
+		for _, c := range nn.Spec.Containers {
+			totalIngress += len(c.Ingress)
+			totalEgress += len(c.Egress)
+		}
+
+		nnMap := map[string]interface{}{
+			"namespace":        nn.Namespace,
+			"name":             nn.Name,
+			"containers_count": len(nn.Spec.Containers),
+			"total_ingress":    totalIngress,
+			"total_egress":     totalEgress,
+			"created_at":       nn.CreationTimestamp.Format(time.RFC3339),
+		}
+		neighborhoodList = append(neighborhoodList, nnMap)
+	}
+
+	result := map[string]interface{}{
+		"network_neighborhoods": neighborhoodList,
+		"total_count":           len(neighborhoodList),
+		"description": "NetworkNeighborhoods capture actual network communication patterns of workloads. " +
+			"Ingress: connections coming INTO the workload; Egress: connections going OUT from the workload. " +
+			"Includes DNS names, IP addresses, ports, and protocols. " +
+			"Use this data to understand attack surface and prioritize network-related security findings.",
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(content)), nil
+}
+
+// handleGetNetworkNeighborhood gets detailed network connections for a specific workload
+func (k *KubescapeTool) handleGetNetworkNeighborhood(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("get_network_neighborhood", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+	name := mcp.ParseString(request, "name", "")
+
+	if name == "" {
+		return mcp.NewToolResultError("name parameter is required"), nil
+	}
+	if namespace == "" {
+		return mcp.NewToolResultError("namespace parameter is required"), nil
+	}
+
+	nn, err := k.spdxClient.NetworkNeighborhoods(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		toolErr := errors.NewKubescapeError("get_network_neighborhood", err).
+			WithContext("namespace", namespace).
+			WithContext("name", name)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	// Build detailed response with container network data
+	containers := []map[string]interface{}{}
+	for _, c := range nn.Spec.Containers {
+		// Format ingress connections
+		ingressList := []map[string]interface{}{}
+		for _, ing := range c.Ingress {
+			ingressInfo := map[string]interface{}{
+				"identifier": ing.Identifier,
+				"type":       ing.Type,
+			}
+			if ing.DNS != "" {
+				ingressInfo["dns"] = ing.DNS
+			}
+			if len(ing.Ports) > 0 {
+				ingressInfo["ports"] = ing.Ports
+			}
+			if len(ing.IPAddress) > 0 {
+				ingressInfo["ip_address"] = ing.IPAddress
+			}
+			if ing.PodSelector != nil {
+				ingressInfo["pod_selector"] = ing.PodSelector
+			}
+			if ing.NamespaceSelector != nil {
+				ingressInfo["namespace_selector"] = ing.NamespaceSelector
+			}
+			ingressList = append(ingressList, ingressInfo)
+		}
+
+		// Format egress connections
+		egressList := []map[string]interface{}{}
+		for _, egr := range c.Egress {
+			egressInfo := map[string]interface{}{
+				"identifier": egr.Identifier,
+				"type":       egr.Type,
+			}
+			if egr.DNS != "" {
+				egressInfo["dns"] = egr.DNS
+			}
+			if len(egr.Ports) > 0 {
+				egressInfo["ports"] = egr.Ports
+			}
+			if len(egr.IPAddress) > 0 {
+				egressInfo["ip_address"] = egr.IPAddress
+			}
+			if egr.PodSelector != nil {
+				egressInfo["pod_selector"] = egr.PodSelector
+			}
+			if egr.NamespaceSelector != nil {
+				egressInfo["namespace_selector"] = egr.NamespaceSelector
+			}
+			egressList = append(egressList, egressInfo)
+		}
+
+		containerInfo := map[string]interface{}{
+			"name":    c.Name,
+			"ingress": ingressList,
+			"egress":  egressList,
+		}
+		containers = append(containers, containerInfo)
+	}
+
+	result := map[string]interface{}{
+		"namespace":   namespace,
+		"name":        name,
+		"containers":  containers,
+		"annotations": nn.Annotations,
+		"labels":      nn.Labels,
+		"description": "This NetworkNeighborhood shows actual network connections observed for this workload. " +
+			"Ingress connections show what talks TO this workload. Egress connections show what this workload talks TO. " +
+			"Use this to verify if a workload with a vulnerability is actually exposed to the network.",
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(content)), nil
+}
+
+// handleListSBOMs lists Software Bill of Materials documents
+func (k *KubescapeTool) handleListSBOMs(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("list_sboms", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+
+	queryNamespace := metav1.NamespaceAll
+	if namespace != "" {
+		queryNamespace = namespace
+	}
+
+	sboms, err := k.spdxClient.SBOMSyfts(queryNamespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		toolErr := errors.NewKubescapeError("list_sboms", err).
+			WithContext("namespace", namespace)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	sbomList := []map[string]interface{}{}
+	for _, sbom := range sboms.Items {
+		packagesCount := 0
+		if sbom.Spec.Syft.Artifacts != nil {
+			packagesCount = len(sbom.Spec.Syft.Artifacts)
+		}
+
+		sbomMap := map[string]interface{}{
+			"namespace":      sbom.Namespace,
+			"name":           sbom.Name,
+			"packages_count": packagesCount,
+			"created_at":     sbom.CreationTimestamp.Format(time.RFC3339),
+		}
+
+		// Add tool info if available in metadata
+		if sbom.Spec.Metadata.Tool.Name != "" {
+			sbomMap["tool_name"] = sbom.Spec.Metadata.Tool.Name
+			sbomMap["tool_version"] = sbom.Spec.Metadata.Tool.Version
+		}
+
+		sbomList = append(sbomList, sbomMap)
+	}
+
+	result := map[string]interface{}{
+		"sboms":       sbomList,
+		"total_count": len(sbomList),
+		"description": "SBOMs (Software Bill of Materials) list all software packages installed in container images. " +
+			"Each SBOM contains detailed information about packages, their versions, and dependencies. " +
+			"Use SBOMs to correlate CVE findings with actual installed packages and verify if vulnerable packages exist in your images.",
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(content)), nil
+}
+
+// handleGetSBOM gets detailed SBOM information for a specific image
+func (k *KubescapeTool) handleGetSBOM(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("get_sbom", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+	name := mcp.ParseString(request, "name", "")
+
+	if name == "" {
+		return mcp.NewToolResultError("name parameter is required"), nil
+	}
+	if namespace == "" {
+		return mcp.NewToolResultError("namespace parameter is required"), nil
+	}
+
+	sbom, err := k.spdxClient.SBOMSyfts(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		toolErr := errors.NewKubescapeError("get_sbom", err).
+			WithContext("namespace", namespace).
+			WithContext("name", name)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	// Build detailed package list
+	packages := []map[string]interface{}{}
+	if sbom.Spec.Syft.Artifacts != nil {
+		for _, pkg := range sbom.Spec.Syft.Artifacts {
+			pkgInfo := map[string]interface{}{
+				"name":     pkg.Name,
+				"version":  pkg.Version,
+				"type":     pkg.Type,
+				"language": pkg.Language,
+			}
+			if len(pkg.Licenses) > 0 {
+				pkgInfo["licenses"] = pkg.Licenses
+			}
+			if pkg.CPEs != nil && len(pkg.CPEs) > 0 {
+				pkgInfo["cpes"] = pkg.CPEs
+			}
+			if pkg.PURL != "" {
+				pkgInfo["purl"] = pkg.PURL
+			}
+			packages = append(packages, pkgInfo)
+		}
+	}
+
+	result := map[string]interface{}{
+		"namespace":      namespace,
+		"name":           name,
+		"packages":       packages,
+		"packages_count": len(packages),
+		"annotations":    sbom.Annotations,
+		"labels":         sbom.Labels,
+		"description": "This SBOM lists all software packages found in the container image. " +
+			"Each package includes name, version, type (e.g., deb, npm, go-module), and identifiers like CPE and PURL. " +
+			"Use this to verify if a reported CVE actually affects an installed package version.",
+	}
+
+	// Add source info if available
+	if sbom.Spec.Syft.SyftSource.Type != "" {
+		result["source"] = map[string]interface{}{
+			"type": sbom.Spec.Syft.SyftSource.Type,
+			"name": sbom.Spec.Syft.SyftSource.Name,
+		}
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(content)), nil
+}
+
 // Helper function to truncate strings
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -665,6 +1226,49 @@ func RegisterTools(s *server.MCPServer, kubeconfig string) {
 		mcp.WithString("namespace", mcp.Description("Namespace of the scan (default: kubescape)")),
 		mcp.WithString("manifest_name", mcp.Description("Name of the configuration scan manifest"), mcp.Required()),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_get_configuration_scan", tool.handleGetConfigurationScan)))
+
+	// List application profiles (runtime observability)
+	s.AddTool(mcp.NewTool("kubescape_list_application_profiles",
+		mcp.WithDescription("List ApplicationProfiles showing runtime behavior of workloads. These profiles capture: "+
+			"executed processes (Execs), file access patterns (Opens), system calls (Syscalls), Linux capabilities used, and HTTP endpoints. "+
+			"Use this data to prioritize vulnerability findings - a CVE in an unused package is lower priority than one in an actively running process. "+
+			"Requires 'capabilities.runtimeObservability=enable' in Kubescape Helm chart."),
+		mcp.WithString("namespace", mcp.Description("Filter by namespace (optional, defaults to all namespaces)")),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_application_profiles", tool.handleListApplicationProfiles)))
+
+	// Get application profile details
+	s.AddTool(mcp.NewTool("kubescape_get_application_profile",
+		mcp.WithDescription("Get detailed runtime behavior profile for a specific workload. Shows what processes run, what files are accessed, "+
+			"what system calls are made, and what capabilities are used per container. "+
+			"Compare with CVE findings to prioritize remediation - focus on vulnerabilities affecting actively used components."),
+		mcp.WithString("namespace", mcp.Description("Namespace of the profile"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Name of the application profile"), mcp.Required()),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_get_application_profile", tool.handleGetApplicationProfile)))
+
+	// List network neighborhoods (runtime observability)
+	s.AddTool(mcp.NewTool("kubescape_list_network_neighborhoods",
+		mcp.WithDescription("List NetworkNeighborhoods showing actual network communication patterns of workloads. "+
+			"These capture: ingress connections (who talks TO the workload), egress connections (who the workload talks TO), "+
+			"including DNS names, IP addresses, ports, and protocols. "+
+			"Use this to understand attack surface and prioritize network-related security findings. "+
+			"Requires 'capabilities.runtimeObservability=enable' in Kubescape Helm chart."),
+		mcp.WithString("namespace", mcp.Description("Filter by namespace (optional, defaults to all namespaces)")),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_network_neighborhoods", tool.handleListNetworkNeighborhoods)))
+
+	// Get network neighborhood details
+	s.AddTool(mcp.NewTool("kubescape_get_network_neighborhood",
+		mcp.WithDescription("Get detailed network connections for a specific workload. Shows all observed ingress and egress traffic "+
+			"with DNS names, IPs, ports, and protocols. Use this to verify if a workload with a vulnerability is actually exposed to the network."),
+		mcp.WithString("namespace", mcp.Description("Namespace of the network neighborhood"), mcp.Required()),
+		mcp.WithString("name", mcp.Description("Name of the network neighborhood"), mcp.Required()),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_get_network_neighborhood", tool.handleGetNetworkNeighborhood)))
+
+	// NOTE: SBOM tools are disabled as they return too much data for LLM context windows.
+	// SBOMs contain detailed package information that can be very large.
+	// To enable in the future, uncomment the handlers and tool registrations below.
+	//
+	// s.AddTool(mcp.NewTool("kubescape_list_sboms", ...))
+	// s.AddTool(mcp.NewTool("kubescape_get_sbom", ...))
 }
 
 // Interfaces for testing - allows mocking the Kubernetes clients
@@ -675,6 +1279,13 @@ type KubescapeToolInterface interface {
 	HandleGetVulnerabilityDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 	HandleListConfigurationScans(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 	HandleGetConfigurationScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	HandleListApplicationProfiles(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	HandleGetApplicationProfile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	HandleListNetworkNeighborhoods(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	HandleGetNetworkNeighborhood(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	// NOTE: SBOM handlers are disabled as they return too much data for LLM context
+	// HandleListSBOMs(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	// HandleGetSBOM(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 }
 
 // Ensure KubescapeTool implements the interface
@@ -704,3 +1315,28 @@ func (k *KubescapeTool) HandleListConfigurationScans(ctx context.Context, reques
 func (k *KubescapeTool) HandleGetConfigurationScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return k.handleGetConfigurationScan(ctx, request)
 }
+
+func (k *KubescapeTool) HandleListApplicationProfiles(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return k.handleListApplicationProfiles(ctx, request)
+}
+
+func (k *KubescapeTool) HandleGetApplicationProfile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return k.handleGetApplicationProfile(ctx, request)
+}
+
+func (k *KubescapeTool) HandleListNetworkNeighborhoods(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return k.handleListNetworkNeighborhoods(ctx, request)
+}
+
+func (k *KubescapeTool) HandleGetNetworkNeighborhood(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return k.handleGetNetworkNeighborhood(ctx, request)
+}
+
+// NOTE: SBOM handlers are disabled as they return too much data for LLM context
+// func (k *KubescapeTool) HandleListSBOMs(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// 	return k.handleListSBOMs(ctx, request)
+// }
+//
+// func (k *KubescapeTool) HandleGetSBOM(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// 	return k.handleGetSBOM(ctx, request)
+// }

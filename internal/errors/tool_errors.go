@@ -307,9 +307,9 @@ func NewKubescapeError(operation string, cause error) *ToolError {
 		// Determine which capability might be missing based on the operation
 		suggestions := []string{
 			"Check if the Kubescape operator is installed in the cluster",
-			"Verify the manifest name and namespace",
+			"Verify the resource name and namespace",
 		}
-		if strings.Contains(operation, "vulnerabilit") {
+		if strings.Contains(operation, "vulnerabilit") || strings.Contains(operation, "sbom") {
 			suggestions = append(suggestions,
 				"Ensure vulnerability scanning is enabled in the Kubescape Helm chart",
 				"Enable with: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.vulnerabilityScan=enable",
@@ -321,11 +321,23 @@ func NewKubescapeError(operation string, cause error) *ToolError {
 				"Enable with: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.continuousScan=enable",
 				"Use 'kubectl get workloadconfigurationscans -A' to list available scans",
 			)
+		} else if strings.Contains(operation, "application_profile") || strings.Contains(operation, "network_neighborhood") {
+			suggestions = append(suggestions,
+				"Ensure runtime observability is enabled in the Kubescape Helm chart",
+				"Enable with: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.runtimeObservability=enable",
+				"Runtime data collection requires time - allow workloads to run before profiles are available",
+			)
+			if strings.Contains(operation, "application_profile") {
+				suggestions = append(suggestions, "Use 'kubectl get applicationprofiles -A' to list available profiles")
+			} else {
+				suggestions = append(suggestions, "Use 'kubectl get networkneighborhoods -A' to list available network data")
+			}
 		} else {
 			suggestions = append(suggestions,
 				"Ensure the required scanning capabilities are enabled in the Kubescape Helm chart",
 				"For vulnerability scanning: --set capabilities.vulnerabilityScan=enable",
 				"For configuration scanning: --set capabilities.continuousScan=enable",
+				"For runtime observability: --set capabilities.runtimeObservability=enable",
 			)
 		}
 		err = err.WithSuggestions(suggestions...).WithRetryable(false).WithErrorCode("KUBESCAPE_RESOURCE_NOT_FOUND")
@@ -338,7 +350,8 @@ func NewKubescapeError(operation string, cause error) *ToolError {
 	} else if strings.Contains(causeStr, "forbidden") {
 		err = err.WithSuggestions(
 			"Check your RBAC permissions for Kubescape CRDs",
-			"Verify your service account has read access to VulnerabilityManifests and WorkloadConfigurationScans",
+			"Verify your service account has read access to Kubescape storage CRDs",
+			"Required CRDs: VulnerabilityManifests, WorkloadConfigurationScans, ApplicationProfiles, NetworkNeighborhoods, SBOMSyfts",
 			"Contact your cluster administrator",
 		).WithRetryable(false).WithErrorCode("KUBESCAPE_PERMISSION_ERROR")
 	} else {
@@ -346,9 +359,10 @@ func NewKubescapeError(operation string, cause error) *ToolError {
 			"Check Kubescape operator status: kubectl get pods -n kubescape",
 			"Verify kubeconfig is valid",
 			"Check if CRDs are installed: kubectl get crd vulnerabilitymanifests.spdx.softwarecomposition.kubescape.io",
-			"Ensure scanning capabilities are enabled in the Helm chart",
-			"For vulnerability scanning: --set capabilities.vulnerabilityScan=enable",
-			"For configuration scanning: --set capabilities.continuousScan=enable",
+			"Ensure scanning capabilities are enabled in the Helm chart:",
+			"  - Vulnerability scanning: --set capabilities.vulnerabilityScan=enable",
+			"  - Configuration scanning: --set capabilities.continuousScan=enable",
+			"  - Runtime observability: --set capabilities.runtimeObservability=enable",
 		).WithRetryable(true).WithErrorCode("KUBESCAPE_GENERIC_ERROR")
 	}
 
