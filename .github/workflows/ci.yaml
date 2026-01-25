@@ -91,7 +91,7 @@ jobs:
 
       - name: Install unittest plugin
         run: |
-          helm plugin install https://github.com/helm-unittest/helm-unittest
+          helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest
 
       - name: Chart init
         run: |

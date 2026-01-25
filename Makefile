@@ -196,7 +196,7 @@ helm-publish: helm-version
 .PHONY: helm-test
 helm-test: helm-version
 	mkdir -p tmp
-	helm plugin ls | grep unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git
+	helm plugin ls | grep unittest || helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest.git
 	helm unittest helm/kagent-tools
 
 .PHONY: create-kind-cluster
