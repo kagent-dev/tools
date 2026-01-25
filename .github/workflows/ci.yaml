@@ -47,7 +47,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '^1.25.5'
+          go-version: '^1.25.6'
           cache: false
 
       - name: Run cmd/main.go tests
@@ -87,7 +87,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
-          version: v3.17.0
+          version: v4.1.0
 
       - name: Install unittest plugin
         run: |
