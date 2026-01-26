@@ -14,3 +14,6 @@ bin/
 /helm/kagent-tools/Chart.yaml
 /reports/tools-cve.csv
 .dagger/
+/tools/.cache/
+.gocache/
+/dist/*

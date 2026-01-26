@@ -104,7 +104,33 @@ Provides Istio service mesh management:
 - **istio_waypoint_status**: Get waypoint proxy status
 - **istio_ztunnel_config**: Get ztunnel configuration
 
-### 4. Argo Rollouts Tools (`argo.go`)
+### 4. Linkerd Tools (`linkerd.go`)
+Provides Linkerd service mesh management:
+
+- **linkerd_check**: Run pre-flight or proxy checks
+- **linkerd_install**: Install Linkerd control plane manifests
+- **linkerd_install_cni**: Install the Linkerd CNI components
+- **linkerd_upgrade**: Upgrade Linkerd installation components
+- **linkerd_uninstall**: Remove Linkerd components
+- **linkerd_version**: Show Linkerd client and server versions
+- **linkerd_authz**: Inspect authorizations for a workload
+- **linkerd_stat**: Retrieve Linkerd metrics for resources
+- **linkerd_top**: Inspect live traffic for workloads
+- **linkerd_edges**: Display allowed edges between resources
+- **linkerd_routes**: Inspect HTTP routes for a resource
+- **linkerd_diagnostics_proxy_metrics**: Collect raw proxy metrics
+- **linkerd_diagnostics_controller_metrics**: Fetch controller metrics
+- **linkerd_diagnostics_endpoints**: Inspect service discovery endpoints
+- **linkerd_diagnostics_policy**: Inspect policy state for an authority
+- **linkerd_diagnostics_profile**: Inspect service discovery profile data
+- **linkerd_viz_install**: Install the Linkerd viz extension
+- **linkerd_viz_uninstall**: Remove the Linkerd viz extension
+- **linkerd_viz_top**: Inspect live traffic using viz extension
+- **linkerd_viz_stat**: Retrieve viz metrics for resources
+- **linkerd_fips_audit**: Audit Linkerd proxies for FIPS compliance
+- **linkerd_policy_generate**: Generate policy manifests for workloads
+
+### 5. Argo Rollouts Tools (`argo.go`)
 Provides Argo Rollouts progressive delivery functionality:
 
 - **verify_argo_rollouts_controller_install**: Verify controller installation
@@ -115,7 +141,7 @@ Provides Argo Rollouts progressive delivery functionality:
 - **verify_gateway_plugin**: Verify Gateway API plugin
 - **check_plugin_logs**: Check plugin installation logs
 
-### 5. Cilium Tools (`cilium.go`)
+### 6. Cilium Tools (`cilium.go`)
 Provides Cilium CNI and networking functionality:
 
 - **cilium_status_and_version**: Get Cilium status and version
@@ -131,7 +157,7 @@ Provides Cilium CNI and networking functionality:
 - **toggle_hubble**: Enable/disable Hubble
 - **toggle_cluster_mesh**: Enable/disable cluster mesh
 
-### 6. Prometheus Tools (`prometheus.go`)
+### 7. Prometheus Tools (`prometheus.go`)
 Provides Prometheus monitoring and alerting functionality:
 
 - **prometheus_query**: Execute PromQL queries
@@ -139,7 +165,7 @@ Provides Prometheus monitoring and alerting functionality:
 - **prometheus_labels**: Get available labels
 - **prometheus_targets**: Get scraping targets and their status
 
-### 7. Grafana Tools (`grafana.go`)
+### 8. Grafana Tools (`grafana.go`)
 Provides Grafana dashboard and alerting management:
 
 - **grafana_org_management**: Manage Grafana organizations
@@ -147,20 +173,20 @@ Provides Grafana dashboard and alerting management:
 - **grafana_alert_management**: Manage alerts and alert rules
 - **grafana_datasource_management**: Manage data sources
 
-### 8. DateTime Tools (`datetime.go`)
+### 9. DateTime Tools (`datetime.go`)
 Provides time and date utilities:
 
 - **current_date_time**: Get current date and time in ISO 8601 format
 - **format_time**: Format timestamps with optional timezone
 - **parse_time**: Parse time strings into RFC3339 format
 
-### 9. Documentation Tools (`docs.go`)
+### 10. Documentation Tools (`docs.go`)
 Provides documentation query functionality:
 
 - **query_documentation**: Query documentation for supported products (simplified implementation)
 - **list_supported_products**: List supported products for documentation queries
 
-### 10. Common Tools (`common.go`)
+### 11. Common Tools (`common.go`)
 Provides general utility functions:
 
 - **shell**: Execute shell commands
@@ -174,6 +200,7 @@ Provides general utility functions:
   - `kubectl` (for Kubernetes tools)
   - `helm` (for Helm tools)
   - `istioctl` (for Istio tools)
+  - `linkerd` (for Linkerd tools)
   - `cilium` (for Cilium tools)
 
 ### Building
