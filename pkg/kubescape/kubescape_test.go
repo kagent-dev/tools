@@ -79,6 +79,7 @@ func TestRegisterTools(t *testing.T) {
 
 func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 	// Setup fake clients with all components healthy
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		// Namespace
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
@@ -102,6 +103,7 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 		},
 	)
 
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset(
 		&apiextensionsv1.CustomResourceDefinition{
 			ObjectMeta: metav1.ObjectMeta{Name: vulnerabilityManifestsCRD},
@@ -176,7 +178,9 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 }
 
 func TestHandleCheckHealth_NamespaceNotFound(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset() // No namespace
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewSimpleClientset()
 
@@ -196,10 +200,12 @@ func TestHandleCheckHealth_NamespaceNotFound(t *testing.T) {
 }
 
 func TestHandleCheckHealth_OperatorPodsNotRunning(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 		// No operator pods
 	)
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewSimpleClientset()
 
@@ -220,6 +226,7 @@ func TestHandleCheckHealth_OperatorPodsNotRunning(t *testing.T) {
 }
 
 func TestHandleCheckHealth_OperatorPodsUnhealthy(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 		&corev1.Pod{
@@ -231,6 +238,7 @@ func TestHandleCheckHealth_OperatorPodsUnhealthy(t *testing.T) {
 			Status: corev1.PodStatus{Phase: corev1.PodPending}, // Not running
 		},
 	)
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewSimpleClientset()
 
@@ -250,9 +258,11 @@ func TestHandleCheckHealth_OperatorPodsUnhealthy(t *testing.T) {
 }
 
 func TestHandleCheckHealth_VulnerabilityCRDMissing(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 	)
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset() // No CRDs
 	spdxClient := kubescapefake.NewSimpleClientset()
 
@@ -272,9 +282,11 @@ func TestHandleCheckHealth_VulnerabilityCRDMissing(t *testing.T) {
 }
 
 func TestHandleCheckHealth_NoScanData(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 	)
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset(
 		&apiextensionsv1.CustomResourceDefinition{
 			ObjectMeta: metav1.ObjectMeta{Name: vulnerabilityManifestsCRD},
@@ -301,9 +313,11 @@ func TestHandleCheckHealth_NoScanData(t *testing.T) {
 }
 
 func TestHandleCheckHealth_RuntimeObservabilityCRDsMissing(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 	)
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset(
 		&apiextensionsv1.CustomResourceDefinition{
 			ObjectMeta: metav1.ObjectMeta{Name: vulnerabilityManifestsCRD},
@@ -357,9 +371,11 @@ func containsHelper(s, substr string) bool {
 }
 
 func TestHandleCheckHealth_CustomNamespace(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "custom-ns"}},
 	)
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewSimpleClientset()
 
