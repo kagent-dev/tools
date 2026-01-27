@@ -37,11 +37,11 @@ vet: ## Run go vet against code.
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run --build-tags=test --timeout=5m
+	$(GOLANGCI_LINT) run --build-tags=test --timeout=10m
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --build-tags=test --fix --timeout=5m
+	$(GOLANGCI_LINT) run --build-tags=test --fix --timeout=10m
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
