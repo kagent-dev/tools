@@ -60,8 +60,17 @@ tests:
           path: spec.template.spec.containers[0].resources.limits.memory
           value: 512Mi
 
-  - it: should have correct service account name
+  - it: should use default service account when useDefaultServiceAccount is true
     template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: default
+
+  - it: should use dedicated service account when useDefaultServiceAccount is false
+    template: deployment.yaml
+    set:
+      useDefaultServiceAccount: false
     asserts:
       - equal:
           path: spec.template.spec.serviceAccountName

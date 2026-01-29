@@ -1,6 +1,10 @@
 # Default values for kagent
 replicaCount: 1
 
+# When true, pods use the default service account and no ClusterRole/ClusterRoleBinding are created.
+# When false, a dedicated ServiceAccount and RBAC are created for the tools deployment.
+useDefaultServiceAccount: false
+
 global:
   tag: ""
 
