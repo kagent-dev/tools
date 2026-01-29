@@ -44,9 +44,6 @@ podSecurityContext: {}
   # fsGroup: 2000
 
 securityContext: {}
-
-# Disable service account token mounting to force usage of Authorization header
-automountServiceAccountToken: true
   # capabilities:
   #   drop:
   #   - ALL
