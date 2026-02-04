@@ -6,6 +6,15 @@ global:
 
 tools:
   loglevel: "debug"
+  # List of tool providers to enable. Empty list means all tools are enabled.
+  # Available: k8s, helm, istio, cilium, argo, prometheus, kubescape, utils
+  enabledTools: []
+  #  - helm_get_release
+  #  - k8s_generate_resource
+  #  - k8s_get_pod_logs
+  # Additional command-line arguments
+  extraArgs: []
+  #  - "--some-future-flag"
   image:
     registry: ghcr.io
     repository: kagent-dev/kagent/tools
