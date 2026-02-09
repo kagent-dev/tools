@@ -299,9 +299,9 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 		"helm":       func(s *server.MCPServer) { helm.RegisterTools(s, readOnly) },
 		"istio":      func(s *server.MCPServer) { istio.RegisterTools(s, readOnly) },
 		"k8s":        func(s *server.MCPServer) { k8s.RegisterTools(s, nil, kubeconfig, readOnly) },
-		"kubescape":  func(s *server.MCPServer) { kubescape.RegisterTools(s, kubeconfig) },
-		"prometheus": prometheus.RegisterTools,
-		"utils":      utils.RegisterTools,
+		"kubescape":  func(s *server.MCPServer) { kubescape.RegisterTools(s, kubeconfig, readOnly) },
+		"prometheus": func(s *server.MCPServer) { prometheus.RegisterTools(s, readOnly) },
+		"utils":      func(s *server.MCPServer) { utils.RegisterTools(s, readOnly) },
 	}
 
 	// If no specific tools are specified, register all available tools.

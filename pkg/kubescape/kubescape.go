@@ -1047,7 +1047,7 @@ func truncateString(s string, maxLen int) string {
 }
 
 // RegisterTools registers all Kubescape tools with the MCP server
-func RegisterTools(s *server.MCPServer, kubeconfig string) {
+func RegisterTools(s *server.MCPServer, kubeconfig string, readOnly bool) {
 	tool := NewKubescapeTool(kubeconfig)
 
 	// Health check tool
