@@ -62,7 +62,7 @@ spec:
           {{- if .Values.tools.enabledTools }}
           - "--tools={{ join "," .Values.tools.enabledTools }}"
           {{- end }}
-          {{- with .Values.tools.extraArgs }}
+          {{- with .Values.tools.args }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
           securityContext:

@@ -13,7 +13,7 @@ tools:
   #  - helm
   #  - prometheus
   # Additional command-line arguments
-  extraArgs: []
+  args: []
   #  - "--some-future-flag"
   image:
     registry: ghcr.io
