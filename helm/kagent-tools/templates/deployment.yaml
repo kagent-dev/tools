@@ -59,6 +59,12 @@ spec:
           args:
           - "--port"
           - "{{ .Values.service.ports.tools.targetPort }}"
+          {{- if .Values.tools.enabledTools }}
+          - "--tools={{ join "," .Values.tools.enabledTools }}"
+          {{- end }}
+          {{- with .Values.tools.args }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.tools.image.registry }}/{{ .Values.tools.image.repository }}:{{ coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version }}"
