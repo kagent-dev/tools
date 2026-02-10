@@ -42,7 +42,7 @@ func TestRegisterTools(t *testing.T) {
 
 	// Should not panic
 	assert.NotPanics(t, func() {
-		RegisterTools(s, "")
+		RegisterTools(s, "", false)
 	})
 
 	// Verify tools are registered by checking the server has tools
