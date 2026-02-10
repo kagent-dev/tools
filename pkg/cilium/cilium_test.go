@@ -16,7 +16,7 @@ import (
 
 func TestRegisterCiliumTools(t *testing.T) {
 	s := server.NewMCPServer("test-server", "v0.0.1")
-	RegisterTools(s)
+	RegisterTools(s, false) // false = enable all tools including write operations
 	// We can't directly check the tools, but we can ensure the call doesn't panic
 }
 
