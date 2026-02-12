@@ -120,7 +120,7 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 		// NOTE: SBOM CRD check is disabled (SBOM tools are too large for LLM context)
 	)
 
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.VulnerabilityManifest{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-manifest",
@@ -182,7 +182,7 @@ func TestHandleCheckHealth_NamespaceNotFound(t *testing.T) {
 	k8sClient := kubefake.NewSimpleClientset() // No namespace
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
@@ -207,7 +207,7 @@ func TestHandleCheckHealth_OperatorPodsNotRunning(t *testing.T) {
 	)
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
@@ -240,7 +240,7 @@ func TestHandleCheckHealth_OperatorPodsUnhealthy(t *testing.T) {
 	)
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
@@ -264,7 +264,7 @@ func TestHandleCheckHealth_VulnerabilityCRDMissing(t *testing.T) {
 	)
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset() // No CRDs
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
@@ -295,7 +295,7 @@ func TestHandleCheckHealth_NoScanData(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: workloadConfigurationScansCRD},
 		},
 	)
-	spdxClient := kubescapefake.NewSimpleClientset() // No vulnerability manifests
+	spdxClient := kubescapefake.NewClientset() // No vulnerability manifests
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
@@ -327,7 +327,7 @@ func TestHandleCheckHealth_RuntimeObservabilityCRDsMissing(t *testing.T) {
 		},
 		// No runtime observability CRDs (applicationprofiles, networkneighborhoods)
 	)
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
@@ -377,7 +377,7 @@ func TestHandleCheckHealth_CustomNamespace(t *testing.T) {
 	)
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	apiExtClient := apiextensionsfake.NewSimpleClientset()
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
@@ -405,7 +405,7 @@ func TestHandleCheckHealth_InitError(t *testing.T) {
 }
 
 func TestHandleListVulnerabilityManifests_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.VulnerabilityManifest{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "manifest-1",
@@ -448,7 +448,7 @@ func TestHandleListVulnerabilityManifests_Success(t *testing.T) {
 }
 
 func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.VulnerabilityManifest{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "manifest-1",
@@ -473,7 +473,7 @@ func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
 }
 
 func TestHandleListVulnerabilityManifests_EmptyResults(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleListVulnerabilityManifests(context.Background(), makeRequest(nil))
@@ -497,7 +497,7 @@ func TestHandleListVulnerabilityManifests_InitError(t *testing.T) {
 }
 
 func TestHandleListVulnerabilitiesInManifest_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.VulnerabilityManifest{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-manifest",
@@ -549,7 +549,7 @@ func TestHandleListVulnerabilitiesInManifest_Success(t *testing.T) {
 }
 
 func TestHandleListVulnerabilitiesInManifest_MissingManifestName(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), makeRequest(nil))
@@ -560,7 +560,7 @@ func TestHandleListVulnerabilitiesInManifest_MissingManifestName(t *testing.T) {
 }
 
 func TestHandleListVulnerabilitiesInManifest_ManifestNotFound(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), makeRequest(map[string]interface{}{
@@ -572,7 +572,7 @@ func TestHandleListVulnerabilitiesInManifest_ManifestNotFound(t *testing.T) {
 }
 
 func TestHandleGetVulnerabilityDetails_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.VulnerabilityManifest{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-manifest",
@@ -619,7 +619,7 @@ func TestHandleGetVulnerabilityDetails_Success(t *testing.T) {
 }
 
 func TestHandleGetVulnerabilityDetails_MissingManifestName(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetVulnerabilityDetails(context.Background(), makeRequest(map[string]interface{}{
@@ -632,7 +632,7 @@ func TestHandleGetVulnerabilityDetails_MissingManifestName(t *testing.T) {
 }
 
 func TestHandleGetVulnerabilityDetails_MissingCveId(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetVulnerabilityDetails(context.Background(), makeRequest(map[string]interface{}{
@@ -645,7 +645,7 @@ func TestHandleGetVulnerabilityDetails_MissingCveId(t *testing.T) {
 }
 
 func TestHandleGetVulnerabilityDetails_CveNotFound(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.VulnerabilityManifest{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-manifest",
@@ -672,7 +672,7 @@ func TestHandleGetVulnerabilityDetails_CveNotFound(t *testing.T) {
 }
 
 func TestHandleListConfigurationScans_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.WorkloadConfigurationScan{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "scan-1",
@@ -702,7 +702,7 @@ func TestHandleListConfigurationScans_Success(t *testing.T) {
 }
 
 func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.WorkloadConfigurationScan{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "scan-1",
@@ -727,7 +727,7 @@ func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
 }
 
 func TestHandleListConfigurationScans_EmptyResults(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleListConfigurationScans(context.Background(), makeRequest(nil))
@@ -742,7 +742,7 @@ func TestHandleListConfigurationScans_EmptyResults(t *testing.T) {
 }
 
 func TestHandleGetConfigurationScan_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.WorkloadConfigurationScan{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-scan",
@@ -762,7 +762,7 @@ func TestHandleGetConfigurationScan_Success(t *testing.T) {
 }
 
 func TestHandleGetConfigurationScan_MissingManifestName(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetConfigurationScan(context.Background(), makeRequest(nil))
@@ -773,7 +773,7 @@ func TestHandleGetConfigurationScan_MissingManifestName(t *testing.T) {
 }
 
 func TestHandleGetConfigurationScan_NotFound(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetConfigurationScan(context.Background(), makeRequest(map[string]interface{}{
@@ -806,7 +806,7 @@ func TestTruncateString(t *testing.T) {
 }
 
 func TestNilArgumentsHandling(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	// Test with nil arguments map - should use defaults
@@ -822,7 +822,7 @@ func TestNilArgumentsHandling(t *testing.T) {
 // Tests for ApplicationProfile handlers
 
 func TestHandleListApplicationProfiles_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.ApplicationProfile{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "profile-1",
@@ -869,7 +869,7 @@ func TestHandleListApplicationProfiles_Success(t *testing.T) {
 }
 
 func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.ApplicationProfile{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "profile-1",
@@ -894,7 +894,7 @@ func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
 }
 
 func TestHandleListApplicationProfiles_EmptyResults(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleListApplicationProfiles(context.Background(), makeRequest(nil))
@@ -918,7 +918,7 @@ func TestHandleListApplicationProfiles_InitError(t *testing.T) {
 }
 
 func TestHandleGetApplicationProfile_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.ApplicationProfile{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-profile",
@@ -962,7 +962,7 @@ func TestHandleGetApplicationProfile_Success(t *testing.T) {
 }
 
 func TestHandleGetApplicationProfile_MissingName(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetApplicationProfile(context.Background(), makeRequest(map[string]interface{}{
@@ -975,7 +975,7 @@ func TestHandleGetApplicationProfile_MissingName(t *testing.T) {
 }
 
 func TestHandleGetApplicationProfile_MissingNamespace(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetApplicationProfile(context.Background(), makeRequest(map[string]interface{}{
@@ -988,7 +988,7 @@ func TestHandleGetApplicationProfile_MissingNamespace(t *testing.T) {
 }
 
 func TestHandleGetApplicationProfile_NotFound(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetApplicationProfile(context.Background(), makeRequest(map[string]interface{}{
@@ -1003,7 +1003,7 @@ func TestHandleGetApplicationProfile_NotFound(t *testing.T) {
 // Tests for NetworkNeighborhood handlers
 
 func TestHandleListNetworkNeighborhoods_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.NetworkNeighborhood{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "nn-1",
@@ -1049,7 +1049,7 @@ func TestHandleListNetworkNeighborhoods_Success(t *testing.T) {
 }
 
 func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.NetworkNeighborhood{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "nn-1",
@@ -1074,7 +1074,7 @@ func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
 }
 
 func TestHandleListNetworkNeighborhoods_EmptyResults(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleListNetworkNeighborhoods(context.Background(), makeRequest(nil))
@@ -1098,7 +1098,7 @@ func TestHandleListNetworkNeighborhoods_InitError(t *testing.T) {
 }
 
 func TestHandleGetNetworkNeighborhood_Success(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset(
+	spdxClient := kubescapefake.NewClientset(
 		&v1beta1.NetworkNeighborhood{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-nn",
@@ -1140,7 +1140,7 @@ func TestHandleGetNetworkNeighborhood_Success(t *testing.T) {
 }
 
 func TestHandleGetNetworkNeighborhood_MissingName(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetNetworkNeighborhood(context.Background(), makeRequest(map[string]interface{}{
@@ -1153,7 +1153,7 @@ func TestHandleGetNetworkNeighborhood_MissingName(t *testing.T) {
 }
 
 func TestHandleGetNetworkNeighborhood_MissingNamespace(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetNetworkNeighborhood(context.Background(), makeRequest(map[string]interface{}{
@@ -1166,7 +1166,7 @@ func TestHandleGetNetworkNeighborhood_MissingNamespace(t *testing.T) {
 }
 
 func TestHandleGetNetworkNeighborhood_NotFound(t *testing.T) {
-	spdxClient := kubescapefake.NewSimpleClientset()
+	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
 	result, err := tool.HandleGetNetworkNeighborhood(context.Background(), makeRequest(map[string]interface{}{
