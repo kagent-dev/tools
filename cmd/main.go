@@ -313,7 +313,22 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 	}
 	for _, toolProviderName := range enabledToolProviders {
 		if registerFunc, ok := toolProviderMap[toolProviderName]; ok {
+			// Snapshot the tool list before this provider registers its tools.
+			// We need this because ListTools() returns ALL tools from ALL providers,
+			// so the only way to know which tools belong to THIS provider is to compare
+			// the list before and after registration.
+			toolsBefore := mcp.ListTools()
+
 			registerFunc(mcp)
+
+			// Determine which tools were just registered by this provider
+			// by finding tools that exist now but didn't exist before.
+			// Record each one in Prometheus so we can observe the full tool inventory.
+			for toolName := range mcp.ListTools() {
+				if _, existed := toolsBefore[toolName]; !existed {
+					metrics.KagentToolsMCPRegisteredTools.WithLabelValues(toolName, toolProviderName).Set(1)
+				}
+			}
 		} else {
 			logger.Get().Error("Unknown tool specified", "provider", toolProviderName)
 		}
