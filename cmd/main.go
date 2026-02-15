@@ -33,6 +33,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -139,8 +140,11 @@ func run(cmd *cobra.Command, args []string) {
 		Version,
 	)
 
-	// Register tools
-	registerMCP(mcp, tools, *kubeconfig, readOnly)
+	// Register tools and wrap handlers with metrics instrumentation.
+	// registerMCP returns a map of tool_name -> tool_provider so that
+	// wrapToolHandlersWithMetrics knows which provider each tool belongs to.
+	toolProviders := registerMCP(mcp, tools, *kubeconfig, readOnly)
+	wrapToolHandlersWithMetrics(mcp, toolProviders)
 
 	// Create wait group for server goroutines
 	var wg sync.WaitGroup
@@ -292,7 +296,11 @@ func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
 	}
 }
 
-func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string, readOnly bool) {
+// registerMCP registers tool providers with the MCP server and returns a mapping
+// of tool_name -> tool_provider. This mapping is built using the ListTools() diff
+// technique: we snapshot the tool list before and after each provider registers,
+// so we know exactly which tools belong to which provider.
+func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string, readOnly bool) map[string]string {
 	// A map to hold tool providers and their registration functions
 	toolProviderMap := map[string]func(*server.MCPServer){
 		"argo":       func(s *server.MCPServer) { argo.RegisterTools(s, readOnly) },
@@ -311,6 +319,11 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 			enabledToolProviders = append(enabledToolProviders, name)
 		}
 	}
+
+	// toolToProvider maps each tool name to its provider (e.g., "kubectl_get" -> "k8s").
+	// This is used later by wrapToolHandlersWithMetrics to set the correct tool_provider label.
+	toolToProvider := make(map[string]string)
+
 	for _, toolProviderName := range enabledToolProviders {
 		if registerFunc, ok := toolProviderMap[toolProviderName]; ok {
 			// Snapshot the tool list before this provider registers its tools.
@@ -327,10 +340,57 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 			for toolName := range mcp.ListTools() {
 				if _, existed := toolsBefore[toolName]; !existed {
 					metrics.KagentToolsMCPRegisteredTools.WithLabelValues(toolName, toolProviderName).Set(1)
+					toolToProvider[toolName] = toolProviderName
 				}
 			}
 		} else {
 			logger.Get().Error("Unknown tool specified", "provider", toolProviderName)
 		}
 	}
+
+	return toolToProvider
+}
+
+// wrapToolHandlersWithMetrics applies the wrapper/middleware pattern to instrument
+// all registered MCP tool handlers with Prometheus invocation counters.
+//
+// How it works:
+//  1. Grab all registered tools from the MCP server using ListTools()
+//  2. For each tool, wrap its handler with a function that increments metrics
+//  3. Replace all tools in the MCP server using SetTools()
+//
+// The wrapper function:
+//   - Increments kagent_tools_mcp_invocations_total on every call
+//   - Increments kagent_tools_mcp_invocations_failure_total only when the handler returns an error
+//   - Calls the original handler unchanged - the tool's behaviour is not affected
+//
+// This uses the standard middleware/decorator pattern: the original handler and the
+// wrapped handler have the same function signature, so they are interchangeable.
+// No changes are required in any pkg/ file - all instrumentation happens centrally here.
+func wrapToolHandlersWithMetrics(mcpServer *server.MCPServer, toolToProvider map[string]string) {
+	allTools := mcpServer.ListTools()
+	wrapped := make([]server.ServerTool, 0, len(allTools))
+
+	for name, st := range allTools {
+		originalHandler := st.Handler
+		toolName := name // capture for closure
+		provider := toolToProvider[toolName]
+
+		wrapped = append(wrapped, server.ServerTool{
+			Tool: st.Tool,
+			Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				metrics.KagentToolsMCPInvocationsTotal.WithLabelValues(toolName, provider).Inc()
+
+				result, err := originalHandler(ctx, req)
+
+				if err != nil {
+					metrics.KagentToolsMCPInvocationsFailureTotal.WithLabelValues(toolName, provider).Inc()
+				}
+
+				return result, err
+			},
+		})
+	}
+
+	mcpServer.SetTools(wrapped...)
 }

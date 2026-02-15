@@ -31,6 +31,22 @@ var (
 			"tool_provider",
 		},
 	)
+
+	KagentToolsMCPInvocationsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kagent_tools_mcp_invocations_total",
+			Help: "Total number of MCP tool invocations",
+		},
+		[]string{"tool_name", "tool_provider"},
+	)
+
+	KagentToolsMCPInvocationsFailureTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kagent_tools_mcp_invocations_failure_total",
+			Help: "Total number of failed MCP tool invocations",
+		},
+		[]string{"tool_name", "tool_provider"},
+	)
 )
 
 func InitServer() *prometheus.Registry {
@@ -46,6 +62,8 @@ func InitServer() *prometheus.Registry {
 	// Register kAgent Tools MCP Server metrics
 	registry.MustRegister(KagentToolsMCPServerInfo)
 	registry.MustRegister(KagentToolsMCPRegisteredTools)
+	registry.MustRegister(KagentToolsMCPInvocationsTotal)
+	registry.MustRegister(KagentToolsMCPInvocationsFailureTotal)
 
 	return registry
 }

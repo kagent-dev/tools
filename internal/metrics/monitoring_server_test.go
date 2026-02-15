@@ -129,6 +129,83 @@ func TestKagentToolsMCPRegisteredTools_SetAndGather(t *testing.T) {
 	}
 }
 
+func TestKagentToolsMCPInvocationsTotal_IncAndGather(t *testing.T) {
+	registry := InitServer()
+
+	// Simulate a few tool invocations
+	KagentToolsMCPInvocationsTotal.WithLabelValues("kubectl_get", "k8s").Inc()
+	KagentToolsMCPInvocationsTotal.WithLabelValues("kubectl_get", "k8s").Inc()
+	KagentToolsMCPInvocationsTotal.WithLabelValues("helm_list", "helm").Inc()
+
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather metrics: %v", err)
+	}
+
+	found := findMetricFamily(families, "kagent_tools_mcp_invocations_total")
+	if found == nil {
+		t.Fatal("Expected kagent_tools_mcp_invocations_total metric to be present")
+	}
+
+	metrics := found.GetMetric()
+	if len(metrics) != 2 {
+		t.Fatalf("Expected 2 time series (one per tool), got %d", len(metrics))
+	}
+
+	// Find the kubectl_get series and verify its counter value is 2
+	for _, m := range metrics {
+		for _, label := range m.GetLabel() {
+			if label.GetName() == "tool_name" && label.GetValue() == "kubectl_get" {
+				if m.GetCounter().GetValue() != 2 {
+					t.Errorf("Expected kubectl_get counter to be 2, got %f", m.GetCounter().GetValue())
+				}
+			}
+		}
+	}
+}
+
+func TestKagentToolsMCPInvocationsFailureTotal_IncAndGather(t *testing.T) {
+	registry := InitServer()
+
+	// Simulate a tool failure
+	KagentToolsMCPInvocationsFailureTotal.WithLabelValues("helm_install", "helm").Inc()
+
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather metrics: %v", err)
+	}
+
+	found := findMetricFamily(families, "kagent_tools_mcp_invocations_failure_total")
+	if found == nil {
+		t.Fatal("Expected kagent_tools_mcp_invocations_failure_total metric to be present")
+	}
+
+	metrics := found.GetMetric()
+	if len(metrics) != 1 {
+		t.Fatalf("Expected 1 time series, got %d", len(metrics))
+	}
+
+	if metrics[0].GetCounter().GetValue() != 1 {
+		t.Errorf("Expected failure counter to be 1, got %f", metrics[0].GetCounter().GetValue())
+	}
+
+	// Verify labels
+	expectedLabels := map[string]string{
+		"tool_name":     "helm_install",
+		"tool_provider": "helm",
+	}
+	for _, label := range metrics[0].GetLabel() {
+		expected, ok := expectedLabels[label.GetName()]
+		if !ok {
+			t.Errorf("Unexpected label %q", label.GetName())
+			continue
+		}
+		if label.GetValue() != expected {
+			t.Errorf("Label %q: expected %q, got %q", label.GetName(), expected, label.GetValue())
+		}
+	}
+}
+
 // findMetricFamily finds a metric family by name from a gathered slice
 func findMetricFamily(families []*dto.MetricFamily, name string) *dto.MetricFamily {
 	for _, family := range families {
@@ -164,6 +241,22 @@ func resetMetrics() {
 			"tool_name",
 			"tool_provider",
 		},
+	)
+
+	KagentToolsMCPInvocationsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kagent_tools_mcp_invocations_total",
+			Help: "Total number of MCP tool invocations",
+		},
+		[]string{"tool_name", "tool_provider"},
+	)
+
+	KagentToolsMCPInvocationsFailureTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kagent_tools_mcp_invocations_failure_total",
+			Help: "Total number of failed MCP tool invocations",
+		},
+		[]string{"tool_name", "tool_provider"},
 	)
 }
 
