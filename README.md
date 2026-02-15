@@ -188,9 +188,21 @@ go build -o kagent-tools .
 
 The server runs using sse transport for MCP communication.
 
+#### CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port`, `-p` | `8084` | Port to run the MCP server on |
+| `--metrics-port` | `8084` | Port to run the Prometheus metrics server on |
+| `--stdio` | `false` | Use stdio for communication instead of HTTP |
+| `--tools` | `[]` (all) | Comma-separated list of tool providers to register |
+| `--read-only` | `false` | Disable tools that perform write operations |
+| `--kubeconfig` | `""` | Path to kubeconfig file (defaults to in-cluster config) |
+| `--version`, `-v` | `false` | Show version information and exit |
+
 ### Testing
 ```bash
-go test -v
+go test -v ./...
 ```
 
 ## Tool Implementation Details
@@ -243,6 +255,25 @@ Tools can be configured through environment variables:
 - `GRAFANA_URL`: Default Grafana server URL
 - `GRAFANA_API_KEY`: Default Grafana API key
 
+## Observability
+
+The MCP server exposes Prometheus metrics on a configurable HTTP endpoint (`/metrics`). By default, the metrics endpoint runs on the same port as the MCP server. To run it on a separate port:
+
+```bash
+./kagent-tools --port 8084 --metrics-port 9090
+```
+
+### Exposed Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `kagent_tools_mcp_server_info` | Gauge | `server_name`, `version`, `git_commit`, `build_date`, `server_mode` | Server metadata (always set to 1) |
+| `kagent_tools_mcp_registered_tools` | Gauge | `tool_name`, `tool_provider` | Set to 1 for each registered tool |
+| `kagent_tools_mcp_invocations_total` | Counter | `tool_name`, `tool_provider` | Total number of tool invocations |
+| `kagent_tools_mcp_invocations_failure_total` | Counter | `tool_name`, `tool_provider` | Total number of failed tool invocations |
+
+Standard Go runtime and process metrics are also included (goroutines, memory, CPU, file descriptors, etc.).
+
 ## Error Handling and Debugging
 
 The tools provide detailed error messages and support verbose output. When debugging issues:
@@ -258,9 +289,8 @@ Potential areas for future improvement:
 1. **Native Client Libraries**: Replace CLI calls with native Go client libraries where possible
 2. **Advanced Documentation Search**: Implement full vector search for documentation queries
 3. **Caching**: Add caching for frequently accessed data
-4. **Metrics and Observability**: Add metrics and tracing for tool usage
-5. **Configuration Management**: Enhanced configuration management and validation
-6. **Parallel Execution**: Support for parallel execution of related operations
+4. **Configuration Management**: Enhanced configuration management and validation
+5. **Parallel Execution**: Support for parallel execution of related operations
 
 ## Contributing
 
