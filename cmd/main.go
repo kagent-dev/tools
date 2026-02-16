@@ -22,6 +22,7 @@ import (
 	"github.com/kagent-dev/tools/pkg/helm"
 	"github.com/kagent-dev/tools/pkg/istio"
 	"github.com/kagent-dev/tools/pkg/k8s"
+	"github.com/kagent-dev/tools/pkg/kubescape"
 	"github.com/kagent-dev/tools/pkg/prometheus"
 	"github.com/kagent-dev/tools/pkg/utils"
 	"github.com/spf13/cobra"
@@ -38,6 +39,7 @@ var (
 	tools       []string
 	kubeconfig  *string
 	showVersion bool
+	readOnly    bool
 
 	// These variables should be set during build time using -ldflags
 	Name      = "kagent-tools-server"
@@ -57,6 +59,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&stdio, "stdio", false, "Use stdio for communication instead of HTTP")
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
+	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "Run in read-only mode (disable tools that perform write operations)")
 	kubeconfig = rootCmd.Flags().String("kubeconfig", "", "kubeconfig file path (optional, defaults to in-cluster config)")
 
 	// if found .env file, load it
@@ -118,9 +121,13 @@ func run(cmd *cobra.Command, args []string) {
 		attribute.Bool("server.stdio_mode", stdio),
 		attribute.Int("server.port", port),
 		attribute.StringSlice("server.tools", tools),
+		attribute.Bool("server.read_only", readOnly),
 	)
 
 	logger.Get().Info("Starting "+Name, "version", Version, "git_commit", GitCommit, "build_date", BuildDate)
+	if readOnly {
+		logger.Get().Info("Running in read-only mode - write operations are disabled")
+	}
 
 	mcp := server.NewMCPServer(
 		Name,
@@ -128,7 +135,7 @@ func run(cmd *cobra.Command, args []string) {
 	)
 
 	// Register tools
-	registerMCP(mcp, tools, *kubeconfig)
+	registerMCP(mcp, tools, *kubeconfig, readOnly)
 
 	// Create wait group for server goroutines
 	var wg sync.WaitGroup
@@ -284,16 +291,17 @@ func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
 	}
 }
 
-func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string) {
+func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string, readOnly bool) {
 	// A map to hold tool providers and their registration functions
 	toolProviderMap := map[string]func(*server.MCPServer){
-		"argo":       argo.RegisterTools,
-		"cilium":     cilium.RegisterTools,
-		"helm":       helm.RegisterTools,
-		"istio":      istio.RegisterTools,
-		"k8s":        func(s *server.MCPServer) { k8s.RegisterTools(s, nil, kubeconfig) },
-		"prometheus": prometheus.RegisterTools,
-		"utils":      utils.RegisterTools,
+		"argo":       func(s *server.MCPServer) { argo.RegisterTools(s, readOnly) },
+		"cilium":     func(s *server.MCPServer) { cilium.RegisterTools(s, readOnly) },
+		"helm":       func(s *server.MCPServer) { helm.RegisterTools(s, readOnly) },
+		"istio":      func(s *server.MCPServer) { istio.RegisterTools(s, readOnly) },
+		"k8s":        func(s *server.MCPServer) { k8s.RegisterTools(s, nil, kubeconfig, readOnly) },
+		"kubescape":  func(s *server.MCPServer) { kubescape.RegisterTools(s, kubeconfig, readOnly) },
+		"prometheus": func(s *server.MCPServer) { prometheus.RegisterTools(s, readOnly) },
+		"utils":      func(s *server.MCPServer) { utils.RegisterTools(s, readOnly) },
 	}
 
 	// If no specific tools are specified, register all available tools.

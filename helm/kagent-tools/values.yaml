@@ -10,10 +10,15 @@ global:
 
 tools:
   loglevel: "debug"
-  k8s:
-    # When true: server requires a Bearer token on each request (fails if missing) and passes it to kubectl.
-    # When false: server does not use the token (kubectl uses in-cluster ServiceAccount).
-    tokenPassthrough: false
+  # List of tool providers to enable. Empty list means all tools are enabled.
+  # Available: k8s, helm, istio, cilium, argo, prometheus, kubescape, utils
+  enabledTools: []
+  #  - k8s
+  #  - helm
+  #  - prometheus
+  # Additional command-line arguments
+  args: []
+  #  - "--some-future-flag"
   image:
     registry: ghcr.io
     repository: kagent-dev/kagent/tools
@@ -26,6 +31,10 @@ tools:
     limits:
       cpu: 1000m
       memory: 512Mi
+  k8s:
+    # When true: a Bearer token in the Authorization header on each request is passed to kubectl; fails if missing
+    # When false: kubectl uses in-cluster ServiceAccount.
+    tokenPassthrough: false
   prometheus:
     url: "prometheus.kagent.svc.cluster.local:9090"
     username: ""

@@ -37,11 +37,11 @@ vet: ## Run go vet against code.
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run --build-tags=test
+	$(GOLANGCI_LINT) run --build-tags=test --timeout=10m
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --build-tags=test --fix
+	$(GOLANGCI_LINT) run --build-tags=test --fix --timeout=10m
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
@@ -136,11 +136,11 @@ DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
 
 # tools image build args
-TOOLS_ISTIO_VERSION ?= 1.28.1
+TOOLS_ISTIO_VERSION ?= 1.28.3
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
-TOOLS_KUBECTL_VERSION ?= 1.34.2
-TOOLS_HELM_VERSION ?= 3.19.0
-TOOLS_CILIUM_VERSION ?= 0.18.9
+TOOLS_KUBECTL_VERSION ?= 1.35.1
+TOOLS_HELM_VERSION ?= 4.1.1
+TOOLS_CILIUM_VERSION ?= 0.19.0
 
 # build args
 TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
@@ -196,7 +196,7 @@ helm-publish: helm-version
 .PHONY: helm-test
 helm-test: helm-version
 	mkdir -p tmp
-	helm plugin ls | grep unittest || helm plugin install https://github.com/helm-unittest/helm-unittest.git
+	helm plugin ls | grep unittest || helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest.git
 	helm unittest helm/kagent-tools
 
 .PHONY: create-kind-cluster

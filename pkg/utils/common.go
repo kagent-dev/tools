@@ -74,27 +74,29 @@ func handleGetCurrentDateTimeTool(ctx context.Context, request mcp.CallToolReque
 	return mcp.NewToolResultText(now.Format(time.RFC3339)), nil
 }
 
-func RegisterTools(s *server.MCPServer) {
+func RegisterTools(s *server.MCPServer, readOnly bool) {
 	logger.Get().Info("RegisterTools initialized")
 
-	// Register shell tool
-	s.AddTool(mcp.NewTool("shell",
-		mcp.WithDescription("Execute shell commands"),
-		mcp.WithString("command", mcp.Description("The shell command to execute"), mcp.Required()),
-	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		command := mcp.ParseString(request, "command", "")
-		if command == "" {
-			return mcp.NewToolResultError("command parameter is required"), nil
-		}
+	// Register shell tool - disabled in read-only mode as it allows arbitrary command execution
+	if !readOnly {
+		s.AddTool(mcp.NewTool("shell",
+			mcp.WithDescription("Execute shell commands"),
+			mcp.WithString("command", mcp.Description("The shell command to execute"), mcp.Required()),
+		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			command := mcp.ParseString(request, "command", "")
+			if command == "" {
+				return mcp.NewToolResultError("command parameter is required"), nil
+			}
 
-		params := shellParams{Command: command}
-		result, err := shellTool(ctx, params)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
+			params := shellParams{Command: command}
+			result, err := shellTool(ctx, params)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 
-		return mcp.NewToolResultText(result), nil
-	})
+			return mcp.NewToolResultText(result), nil
+		})
+	}
 
 	// Register datetime tool
 	s.AddTool(mcp.NewTool("datetime_get_current_time",

@@ -200,40 +200,11 @@ func handleToggleClusterMesh(ctx context.Context, request mcp.CallToolRequest) (
 	return mcp.NewToolResultText(output), nil
 }
 
-func RegisterTools(s *server.MCPServer) {
-
-	// Register all Cilium tools (main and debug)
+func RegisterTools(s *server.MCPServer, readOnly bool) {
+	// Read-only tools - always registered
 	s.AddTool(mcp.NewTool("cilium_status_and_version",
 		mcp.WithDescription("Get the status and version of Cilium installation"),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_status_and_version", handleCiliumStatusAndVersion)))
-
-	s.AddTool(mcp.NewTool("cilium_upgrade_cilium",
-		mcp.WithDescription("Upgrade Cilium on the cluster"),
-		mcp.WithString("cluster_name", mcp.Description("The name of the cluster to upgrade Cilium on")),
-		mcp.WithString("datapath_mode", mcp.Description("The datapath mode to use for Cilium (tunnel, native, aws-eni, gke, azure, aks-byocni)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_upgrade_cilium", handleUpgradeCilium)))
-
-	s.AddTool(mcp.NewTool("cilium_install_cilium",
-		mcp.WithDescription("Install Cilium on the cluster"),
-		mcp.WithString("cluster_name", mcp.Description("The name of the cluster to install Cilium on")),
-		mcp.WithString("cluster_id", mcp.Description("The ID of the cluster to install Cilium on")),
-		mcp.WithString("datapath_mode", mcp.Description("The datapath mode to use for Cilium (tunnel, native, aws-eni, gke, azure, aks-byocni)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_install_cilium", handleInstallCilium)))
-
-	s.AddTool(mcp.NewTool("cilium_uninstall_cilium",
-		mcp.WithDescription("Uninstall Cilium from the cluster"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_uninstall_cilium", handleUninstallCilium)))
-
-	s.AddTool(mcp.NewTool("cilium_connect_to_remote_cluster",
-		mcp.WithDescription("Connect to a remote cluster for cluster mesh"),
-		mcp.WithString("cluster_name", mcp.Description("The name of the destination cluster"), mcp.Required()),
-		mcp.WithString("context", mcp.Description("The kubectl context for the destination cluster")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_connect_to_remote_cluster", handleConnectToRemoteCluster)))
-
-	s.AddTool(mcp.NewTool("cilium_disconnect_remote_cluster",
-		mcp.WithDescription("Disconnect from a remote cluster"),
-		mcp.WithString("cluster_name", mcp.Description("The name of the destination cluster"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_disconnect_remote_cluster", handleDisconnectRemoteCluster)))
 
 	s.AddTool(mcp.NewTool("cilium_list_bgp_peers",
 		mcp.WithDescription("List BGP peers"),
@@ -251,15 +222,46 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithDescription("Show Cilium features status"),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_show_features_status", handleShowFeaturesStatus)))
 
-	s.AddTool(mcp.NewTool("cilium_toggle_hubble",
-		mcp.WithDescription("Enable or disable Hubble"),
-		mcp.WithString("enable", mcp.Description("Set to 'true' to enable, 'false' to disable")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_toggle_hubble", handleToggleHubble)))
+	// Write tools - only registered when write operations are enabled
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_upgrade_cilium",
+			mcp.WithDescription("Upgrade Cilium on the cluster"),
+			mcp.WithString("cluster_name", mcp.Description("The name of the cluster to upgrade Cilium on")),
+			mcp.WithString("datapath_mode", mcp.Description("The datapath mode to use for Cilium (tunnel, native, aws-eni, gke, azure, aks-byocni)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_upgrade_cilium", handleUpgradeCilium)))
 
-	s.AddTool(mcp.NewTool("cilium_toggle_cluster_mesh",
-		mcp.WithDescription("Enable or disable cluster mesh"),
-		mcp.WithString("enable", mcp.Description("Set to 'true' to enable, 'false' to disable")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_toggle_cluster_mesh", handleToggleClusterMesh)))
+		s.AddTool(mcp.NewTool("cilium_install_cilium",
+			mcp.WithDescription("Install Cilium on the cluster"),
+			mcp.WithString("cluster_name", mcp.Description("The name of the cluster to install Cilium on")),
+			mcp.WithString("cluster_id", mcp.Description("The ID of the cluster to install Cilium on")),
+			mcp.WithString("datapath_mode", mcp.Description("The datapath mode to use for Cilium (tunnel, native, aws-eni, gke, azure, aks-byocni)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_install_cilium", handleInstallCilium)))
+
+		s.AddTool(mcp.NewTool("cilium_uninstall_cilium",
+			mcp.WithDescription("Uninstall Cilium from the cluster"),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_uninstall_cilium", handleUninstallCilium)))
+
+		s.AddTool(mcp.NewTool("cilium_connect_to_remote_cluster",
+			mcp.WithDescription("Connect to a remote cluster for cluster mesh"),
+			mcp.WithString("cluster_name", mcp.Description("The name of the destination cluster"), mcp.Required()),
+			mcp.WithString("context", mcp.Description("The kubectl context for the destination cluster")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_connect_to_remote_cluster", handleConnectToRemoteCluster)))
+
+		s.AddTool(mcp.NewTool("cilium_disconnect_remote_cluster",
+			mcp.WithDescription("Disconnect from a remote cluster"),
+			mcp.WithString("cluster_name", mcp.Description("The name of the destination cluster"), mcp.Required()),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_disconnect_remote_cluster", handleDisconnectRemoteCluster)))
+
+		s.AddTool(mcp.NewTool("cilium_toggle_hubble",
+			mcp.WithDescription("Enable or disable Hubble"),
+			mcp.WithString("enable", mcp.Description("Set to 'true' to enable, 'false' to disable")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_toggle_hubble", handleToggleHubble)))
+
+		s.AddTool(mcp.NewTool("cilium_toggle_cluster_mesh",
+			mcp.WithDescription("Enable or disable cluster mesh"),
+			mcp.WithString("enable", mcp.Description("Set to 'true' to enable, 'false' to disable")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_toggle_cluster_mesh", handleToggleClusterMesh)))
+	}
 
 	// Add tools that are also needed by cilium-manager agent
 	s.AddTool(mcp.NewTool("cilium_get_daemon_status",
@@ -295,12 +297,15 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to show the configuration options for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_show_configuration_options", handleShowConfigurationOptions)))
 
-	s.AddTool(mcp.NewTool("cilium_toggle_configuration_option",
-		mcp.WithDescription("Toggle a Cilium configuration option"),
-		mcp.WithString("option", mcp.Description("The option to toggle"), mcp.Required()),
-		mcp.WithString("value", mcp.Description("The value to set the option to (true/false)"), mcp.Required()),
-		mcp.WithString("node_name", mcp.Description("The name of the node to toggle the configuration option for")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_toggle_configuration_option", handleToggleConfigurationOption)))
+	// Write tool - toggle_configuration_option
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_toggle_configuration_option",
+			mcp.WithDescription("Toggle a Cilium configuration option"),
+			mcp.WithString("option", mcp.Description("The option to toggle"), mcp.Required()),
+			mcp.WithString("value", mcp.Description("The value to set the option to (true/false)"), mcp.Required()),
+			mcp.WithString("node_name", mcp.Description("The name of the node to toggle the configuration option for")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_toggle_configuration_option", handleToggleConfigurationOption)))
+	}
 
 	s.AddTool(mcp.NewTool("cilium_list_services",
 		mcp.WithDescription("List services for the cluster"),
@@ -314,31 +319,34 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get the service information for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_get_service_information", handleGetServiceInformation)))
 
-	s.AddTool(mcp.NewTool("cilium_update_service",
-		mcp.WithDescription("Update a service in the cluster"),
-		mcp.WithString("backend_weights", mcp.Description("The backend weights to update the service with")),
-		mcp.WithString("backends", mcp.Description("The backends to update the service with"), mcp.Required()),
-		mcp.WithString("frontend", mcp.Description("The frontend to update the service with"), mcp.Required()),
-		mcp.WithString("id", mcp.Description("The ID of the service to update"), mcp.Required()),
-		mcp.WithString("k8s_cluster_internal", mcp.Description("Whether to update the k8s cluster internal flag")),
-		mcp.WithString("k8s_ext_traffic_policy", mcp.Description("The k8s ext traffic policy to update the service with")),
-		mcp.WithString("k8s_external", mcp.Description("Whether to update the k8s external flag")),
-		mcp.WithString("k8s_host_port", mcp.Description("Whether to update the k8s host port flag")),
-		mcp.WithString("k8s_int_traffic_policy", mcp.Description("The k8s int traffic policy to update the service with")),
-		mcp.WithString("k8s_load_balancer", mcp.Description("Whether to update the k8s load balancer flag")),
-		mcp.WithString("k8s_node_port", mcp.Description("Whether to update the k8s node port flag")),
-		mcp.WithString("local_redirect", mcp.Description("Whether to update the local redirect flag")),
-		mcp.WithString("protocol", mcp.Description("The protocol to update the service with")),
-		mcp.WithString("states", mcp.Description("The states to update the service with")),
-		mcp.WithString("node_name", mcp.Description("The name of the node to update the service on")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_update_service", handleUpdateService)))
+	// Write tools - service management
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_update_service",
+			mcp.WithDescription("Update a service in the cluster"),
+			mcp.WithString("backend_weights", mcp.Description("The backend weights to update the service with")),
+			mcp.WithString("backends", mcp.Description("The backends to update the service with"), mcp.Required()),
+			mcp.WithString("frontend", mcp.Description("The frontend to update the service with"), mcp.Required()),
+			mcp.WithString("id", mcp.Description("The ID of the service to update"), mcp.Required()),
+			mcp.WithString("k8s_cluster_internal", mcp.Description("Whether to update the k8s cluster internal flag")),
+			mcp.WithString("k8s_ext_traffic_policy", mcp.Description("The k8s ext traffic policy to update the service with")),
+			mcp.WithString("k8s_external", mcp.Description("Whether to update the k8s external flag")),
+			mcp.WithString("k8s_host_port", mcp.Description("Whether to update the k8s host port flag")),
+			mcp.WithString("k8s_int_traffic_policy", mcp.Description("The k8s int traffic policy to update the service with")),
+			mcp.WithString("k8s_load_balancer", mcp.Description("Whether to update the k8s load balancer flag")),
+			mcp.WithString("k8s_node_port", mcp.Description("Whether to update the k8s node port flag")),
+			mcp.WithString("local_redirect", mcp.Description("Whether to update the local redirect flag")),
+			mcp.WithString("protocol", mcp.Description("The protocol to update the service with")),
+			mcp.WithString("states", mcp.Description("The states to update the service with")),
+			mcp.WithString("node_name", mcp.Description("The name of the node to update the service on")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_update_service", handleUpdateService)))
 
-	s.AddTool(mcp.NewTool("cilium_delete_service",
-		mcp.WithDescription("Delete a service from the cluster"),
-		mcp.WithString("service_id", mcp.Description("The ID of the service to delete")),
-		mcp.WithString("all", mcp.Description("Whether to delete all services (true/false)")),
-		mcp.WithString("node_name", mcp.Description("The name of the node to delete the service from")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_service", handleDeleteService)))
+		s.AddTool(mcp.NewTool("cilium_delete_service",
+			mcp.WithDescription("Delete a service from the cluster"),
+			mcp.WithString("service_id", mcp.Description("The ID of the service to delete")),
+			mcp.WithString("all", mcp.Description("Whether to delete all services (true/false)")),
+			mcp.WithString("node_name", mcp.Description("The name of the node to delete the service from")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_service", handleDeleteService)))
+	}
 
 	// Debug tools (previously in RegisterCiliumDbgTools)
 	s.AddTool(mcp.NewTool("cilium_get_endpoint_details",
@@ -361,26 +369,29 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get the endpoint health for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_get_endpoint_health", handleGetEndpointHealth)))
 
-	s.AddTool(mcp.NewTool("cilium_manage_endpoint_labels",
-		mcp.WithDescription("Manage the labels (add or delete) of an endpoint in the cluster"),
-		mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to manage labels for"), mcp.Required()),
-		mcp.WithString("labels", mcp.Description("Space-separated labels to manage (e.g., 'key1=value1 key2=value2')"), mcp.Required()),
-		mcp.WithString("action", mcp.Description("The action to perform on the labels (add or delete)"), mcp.Required()),
-		mcp.WithString("node_name", mcp.Description("The name of the node to manage the endpoint labels on")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_manage_endpoint_labels", handleManageEndpointLabels)))
+	// Write tools - endpoint management
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_manage_endpoint_labels",
+			mcp.WithDescription("Manage the labels (add or delete) of an endpoint in the cluster"),
+			mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to manage labels for"), mcp.Required()),
+			mcp.WithString("labels", mcp.Description("Space-separated labels to manage (e.g., 'key1=value1 key2=value2')"), mcp.Required()),
+			mcp.WithString("action", mcp.Description("The action to perform on the labels (add or delete)"), mcp.Required()),
+			mcp.WithString("node_name", mcp.Description("The name of the node to manage the endpoint labels on")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_manage_endpoint_labels", handleManageEndpointLabels)))
 
-	s.AddTool(mcp.NewTool("cilium_manage_endpoint_config",
-		mcp.WithDescription("Manage the configuration of an endpoint in the cluster"),
-		mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to manage configuration for"), mcp.Required()),
-		mcp.WithString("config", mcp.Description("The configuration to manage for the endpoint provided as a space-separated list of key-value pairs (e.g. 'DropNotification=false TraceNotification=false')"), mcp.Required()),
-		mcp.WithString("node_name", mcp.Description("The name of the node to manage the endpoint configuration on")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_manage_endpoint_config", handleManageEndpointConfiguration)))
+		s.AddTool(mcp.NewTool("cilium_manage_endpoint_config",
+			mcp.WithDescription("Manage the configuration of an endpoint in the cluster"),
+			mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to manage configuration for"), mcp.Required()),
+			mcp.WithString("config", mcp.Description("The configuration to manage for the endpoint provided as a space-separated list of key-value pairs (e.g. 'DropNotification=false TraceNotification=false')"), mcp.Required()),
+			mcp.WithString("node_name", mcp.Description("The name of the node to manage the endpoint configuration on")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_manage_endpoint_config", handleManageEndpointConfiguration)))
 
-	s.AddTool(mcp.NewTool("cilium_disconnect_endpoint",
-		mcp.WithDescription("Disconnect an endpoint from the network"),
-		mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to disconnect"), mcp.Required()),
-		mcp.WithString("node_name", mcp.Description("The name of the node to disconnect the endpoint from")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_disconnect_endpoint", handleDisconnectEndpoint)))
+		s.AddTool(mcp.NewTool("cilium_disconnect_endpoint",
+			mcp.WithDescription("Disconnect an endpoint from the network"),
+			mcp.WithString("endpoint_id", mcp.Description("The ID of the endpoint to disconnect"), mcp.Required()),
+			mcp.WithString("node_name", mcp.Description("The name of the node to disconnect the endpoint from")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_disconnect_endpoint", handleDisconnectEndpoint)))
+	}
 
 	s.AddTool(mcp.NewTool("cilium_list_identities",
 		mcp.WithDescription("List all identities in the cluster"),
@@ -403,10 +414,13 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get the encryption state for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_display_encryption_state", handleDisplayEncryptionState)))
 
-	s.AddTool(mcp.NewTool("cilium_flush_ipsec_state",
-		mcp.WithDescription("Flush the IPsec state for the cluster"),
-		mcp.WithString("node_name", mcp.Description("The name of the node to flush the IPsec state for")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_flush_ipsec_state", handleFlushIPsecState)))
+	// Write tool - flush_ipsec_state
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_flush_ipsec_state",
+			mcp.WithDescription("Flush the IPsec state for the cluster"),
+			mcp.WithString("node_name", mcp.Description("The name of the node to flush the IPsec state for")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_flush_ipsec_state", handleFlushIPsecState)))
+	}
 
 	s.AddTool(mcp.NewTool("cilium_list_envoy_config",
 		mcp.WithDescription("List the Envoy configuration for a resource in the cluster"),
@@ -437,11 +451,14 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get the IP cache information for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_show_ip_cache_information", handleShowIPCacheInformation)))
 
-	s.AddTool(mcp.NewTool("cilium_delete_key_from_kv_store",
-		mcp.WithDescription("Delete a key from the kvstore for the cluster"),
-		mcp.WithString("key", mcp.Description("The key to delete from the kvstore"), mcp.Required()),
-		mcp.WithString("node_name", mcp.Description("The name of the node to delete the key from")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_key_from_kv_store", handleDeleteKeyFromKVStore)))
+	// Write tool - delete_key_from_kv_store
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_delete_key_from_kv_store",
+			mcp.WithDescription("Delete a key from the kvstore for the cluster"),
+			mcp.WithString("key", mcp.Description("The key to delete from the kvstore"), mcp.Required()),
+			mcp.WithString("node_name", mcp.Description("The name of the node to delete the key from")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_key_from_kv_store", handleDeleteKeyFromKVStore)))
+	}
 
 	s.AddTool(mcp.NewTool("cilium_get_kv_store_key",
 		mcp.WithDescription("Get a key from the kvstore for the cluster"),
@@ -449,12 +466,15 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get the key from")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_get_kv_store_key", handleGetKVStoreKey)))
 
-	s.AddTool(mcp.NewTool("cilium_set_kv_store_key",
-		mcp.WithDescription("Set a key in the kvstore for the cluster"),
-		mcp.WithString("key", mcp.Description("The key to set in the kvstore"), mcp.Required()),
-		mcp.WithString("value", mcp.Description("The value to set in the kvstore"), mcp.Required()),
-		mcp.WithString("node_name", mcp.Description("The name of the node to set the key in")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_set_kv_store_key", handleSetKVStoreKey)))
+	// Write tool - set_kv_store_key
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_set_kv_store_key",
+			mcp.WithDescription("Set a key in the kvstore for the cluster"),
+			mcp.WithString("key", mcp.Description("The key to set in the kvstore"), mcp.Required()),
+			mcp.WithString("value", mcp.Description("The value to set in the kvstore"), mcp.Required()),
+			mcp.WithString("node_name", mcp.Description("The name of the node to set the key in")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_set_kv_store_key", handleSetKVStoreKey)))
+	}
 
 	s.AddTool(mcp.NewTool("cilium_show_load_information",
 		mcp.WithDescription("Show load information for the cluster"),
@@ -505,12 +525,15 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get policy node information for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_display_policy_node_information", handleDisplayPolicyNodeInformation)))
 
-	s.AddTool(mcp.NewTool("cilium_delete_policy_rules",
-		mcp.WithDescription("Delete policy rules for the cluster"),
-		mcp.WithString("labels", mcp.Description("The labels to delete policy rules for")),
-		mcp.WithString("all", mcp.Description("Whether to delete all policy rules")),
-		mcp.WithString("node_name", mcp.Description("The name of the node to delete policy rules for")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_policy_rules", handleDeletePolicyRules)))
+	// Write tool - delete_policy_rules
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_delete_policy_rules",
+			mcp.WithDescription("Delete policy rules for the cluster"),
+			mcp.WithString("labels", mcp.Description("The labels to delete policy rules for")),
+			mcp.WithString("all", mcp.Description("Whether to delete all policy rules")),
+			mcp.WithString("node_name", mcp.Description("The name of the node to delete policy rules for")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_policy_rules", handleDeletePolicyRules)))
+	}
 
 	s.AddTool(mcp.NewTool("cilium_display_selectors",
 		mcp.WithDescription("Display selectors for the cluster"),
@@ -522,19 +545,22 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get the XDP CIDR filters for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_list_xdp_cidr_filters", handleListXDPCIDRFilters)))
 
-	s.AddTool(mcp.NewTool("cilium_update_xdp_cidr_filters",
-		mcp.WithDescription("Update XDP CIDR filters for the cluster"),
-		mcp.WithString("cidr_prefixes", mcp.Description("The CIDR prefixes to update the XDP filters for"), mcp.Required()),
-		mcp.WithString("revision", mcp.Description("The revision of the XDP filters to update")),
-		mcp.WithString("node_name", mcp.Description("The name of the node to update the XDP filters for")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_update_xdp_cidr_filters", handleUpdateXDPCIDRFilters)))
+	// Write tools - XDP CIDR filters
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_update_xdp_cidr_filters",
+			mcp.WithDescription("Update XDP CIDR filters for the cluster"),
+			mcp.WithString("cidr_prefixes", mcp.Description("The CIDR prefixes to update the XDP filters for"), mcp.Required()),
+			mcp.WithString("revision", mcp.Description("The revision of the XDP filters to update")),
+			mcp.WithString("node_name", mcp.Description("The name of the node to update the XDP filters for")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_update_xdp_cidr_filters", handleUpdateXDPCIDRFilters)))
 
-	s.AddTool(mcp.NewTool("cilium_delete_xdp_cidr_filters",
-		mcp.WithDescription("Delete XDP CIDR filters for the cluster"),
-		mcp.WithString("cidr_prefixes", mcp.Description("The CIDR prefixes to delete the XDP filters for"), mcp.Required()),
-		mcp.WithString("revision", mcp.Description("The revision of the XDP filters to delete")),
-		mcp.WithString("node_name", mcp.Description("The name of the node to delete the XDP filters for")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_xdp_cidr_filters", handleDeleteXDPCIDRFilters)))
+		s.AddTool(mcp.NewTool("cilium_delete_xdp_cidr_filters",
+			mcp.WithDescription("Delete XDP CIDR filters for the cluster"),
+			mcp.WithString("cidr_prefixes", mcp.Description("The CIDR prefixes to delete the XDP filters for"), mcp.Required()),
+			mcp.WithString("revision", mcp.Description("The revision of the XDP filters to delete")),
+			mcp.WithString("node_name", mcp.Description("The name of the node to delete the XDP filters for")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_xdp_cidr_filters", handleDeleteXDPCIDRFilters)))
+	}
 
 	s.AddTool(mcp.NewTool("cilium_validate_cilium_network_policies",
 		mcp.WithDescription("Validate Cilium network policies for the cluster"),
@@ -554,20 +580,23 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("node_name", mcp.Description("The name of the node to get the PCAP recorder for")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_get_pcap_recorder", handleGetPCAPRecorder)))
 
-	s.AddTool(mcp.NewTool("cilium_delete_pcap_recorder",
-		mcp.WithDescription("Delete a PCAP recorder for the cluster"),
-		mcp.WithString("recorder_id", mcp.Description("The ID of the PCAP recorder to delete"), mcp.Required()),
-		mcp.WithString("node_name", mcp.Description("The name of the node to delete the PCAP recorder from")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_pcap_recorder", handleDeletePCAPRecorder)))
+	// Write tools - PCAP recorder management
+	if !readOnly {
+		s.AddTool(mcp.NewTool("cilium_delete_pcap_recorder",
+			mcp.WithDescription("Delete a PCAP recorder for the cluster"),
+			mcp.WithString("recorder_id", mcp.Description("The ID of the PCAP recorder to delete"), mcp.Required()),
+			mcp.WithString("node_name", mcp.Description("The name of the node to delete the PCAP recorder from")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_delete_pcap_recorder", handleDeletePCAPRecorder)))
 
-	s.AddTool(mcp.NewTool("cilium_update_pcap_recorder",
-		mcp.WithDescription("Update a PCAP recorder for the cluster"),
-		mcp.WithString("recorder_id", mcp.Description("The ID of the PCAP recorder to update"), mcp.Required()),
-		mcp.WithString("filters", mcp.Description("The filters to update the PCAP recorder with"), mcp.Required()),
-		mcp.WithString("caplen", mcp.Description("The caplen to update the PCAP recorder with")),
-		mcp.WithString("id", mcp.Description("The id to update the PCAP recorder with")),
-		mcp.WithString("node_name", mcp.Description("The name of the node to update the PCAP recorder on")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_update_pcap_recorder", handleUpdatePCAPRecorder)))
+		s.AddTool(mcp.NewTool("cilium_update_pcap_recorder",
+			mcp.WithDescription("Update a PCAP recorder for the cluster"),
+			mcp.WithString("recorder_id", mcp.Description("The ID of the PCAP recorder to update"), mcp.Required()),
+			mcp.WithString("filters", mcp.Description("The filters to update the PCAP recorder with"), mcp.Required()),
+			mcp.WithString("caplen", mcp.Description("The caplen to update the PCAP recorder with")),
+			mcp.WithString("id", mcp.Description("The id to update the PCAP recorder with")),
+			mcp.WithString("node_name", mcp.Description("The name of the node to update the PCAP recorder on")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("cilium_update_pcap_recorder", handleUpdatePCAPRecorder)))
+	}
 }
 
 // -- Debug Tools --

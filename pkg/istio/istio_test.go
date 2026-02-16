@@ -13,7 +13,7 @@ import (
 
 func TestRegisterTools(t *testing.T) {
 	s := server.NewMCPServer("test-server", "v0.0.1")
-	RegisterTools(s)
+	RegisterTools(s, false) // false = enable all tools including write operations
 }
 
 func TestHandleIstioProxyStatus(t *testing.T) {
