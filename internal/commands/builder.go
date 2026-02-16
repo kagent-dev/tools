@@ -307,7 +307,7 @@ func (cb *CommandBuilder) Execute(ctx context.Context) (string, error) {
 	log := logger.WithContext(ctx)
 	_, span := telemetry.StartSpan(ctx, "commands.execute",
 		attribute.String("command", cb.command),
-		attribute.StringSlice("args", cb.args),
+		attribute.StringSlice("args", logger.RedactArgsForLog(cb.args)),
 		attribute.Bool("cached", cb.cached),
 	)
 	defer span.End()
@@ -322,14 +322,15 @@ func (cb *CommandBuilder) Execute(ctx context.Context) (string, error) {
 		return "", err
 	}
 
+	redactedArgs := logger.RedactArgsForLog(args)
 	span.SetAttributes(
 		attribute.String("built_command", command),
-		attribute.StringSlice("built_args", args),
+		attribute.StringSlice("built_args", redactedArgs),
 	)
 
 	log.Debug("executing command",
 		"command", command,
-		"args", args,
+		"args", redactedArgs,
 		"cached", cb.cached,
 	)
 
@@ -357,9 +358,10 @@ func (cb *CommandBuilder) Execute(ctx context.Context) (string, error) {
 
 func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, args []string) (string, error) {
 	log := logger.WithContext(ctx)
+	redactedArgs := logger.RedactArgsForLog(args)
 	_, span := telemetry.StartSpan(ctx, "commands.executeWithCache",
 		attribute.String("command", command),
-		attribute.StringSlice("args", args),
+		attribute.StringSlice("args", redactedArgs),
 		attribute.Bool("cached", true),
 	)
 	defer span.End()
@@ -371,7 +373,7 @@ func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, 
 
 	log.Info("executing cached command",
 		"command", command,
-		"args", args,
+		"args", redactedArgs,
 		"cache_key", cacheKey,
 		"cache_ttl", cb.cacheTTL.String(),
 	)
@@ -388,7 +390,7 @@ func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, 
 		telemetry.AddEvent(span, "cache.miss.executing_command")
 		log.Debug("cache miss, executing command",
 			"command", command,
-			"args", args,
+			"args", redactedArgs,
 		)
 		return cb.executeCommand(ctx, command, args)
 	})
@@ -397,7 +399,7 @@ func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, 
 		telemetry.RecordError(span, err, "Cached command execution failed")
 		log.Error("cached command execution failed",
 			"command", command,
-			"args", args,
+			"args", redactedArgs,
 			"cache_key", cacheKey,
 			"error", err,
 		)
@@ -407,7 +409,7 @@ func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, 
 	telemetry.RecordSuccess(span, "Cached command executed successfully")
 	log.Info("cached command execution successful",
 		"command", command,
-		"args", args,
+		"args", redactedArgs,
 		"cache_key", cacheKey,
 		"result_length", len(result),
 	)
