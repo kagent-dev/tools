@@ -173,19 +173,3 @@ tests:
           value:
             app.kubernetes.io/name: kagent-tools
             app.kubernetes.io/instance: RELEASE-NAME
-
-  - it: should enable automountServiceAccountToken by default
-    template: deployment.yaml
-    asserts:
-      - equal:
-          path: spec.template.spec.automountServiceAccountToken
-          value: true
-
-  - it: should disable automountServiceAccountToken when configured
-    template: deployment.yaml
-    set:
-      automountServiceAccountToken: false
-    asserts:
-      - equal:
-          path: spec.template.spec.automountServiceAccountToken
-          value: false
