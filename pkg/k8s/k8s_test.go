@@ -17,6 +17,13 @@ func newTestK8sTool() *K8sTool {
 	return NewK8sTool(nil)
 }
 
+// newTestK8sToolWithPassthrough creates a K8sTool with token passthrough set for testing.
+func newTestK8sToolWithPassthrough(passthrough bool) *K8sTool {
+	t := NewK8sTool(nil)
+	t.tokenPassthrough = passthrough
+	return t
+}
+
 // Helper function to create a test K8sTool with mock LLM
 func newTestK8sToolWithLLM(llm llms.Model) *K8sTool {
 	return NewK8sTool(llm)
@@ -1090,7 +1097,7 @@ func TestBearerTokenPassthrough(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide", "--token", "test-token-123"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("test-token-123", map[string]interface{}{"resource_type": "pods"})
 		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
 		assert.NoError(t, err)
@@ -1111,7 +1118,7 @@ func TestBearerTokenPassthrough(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "5", "-n", "default", "--token", "my-auth-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("my-auth-token", map[string]interface{}{
 			"name":     "test-deployment",
 			"replicas": float64(5),
@@ -1136,7 +1143,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"logs", "test-pod", "-n", "default", "--tail", "50", "--token", "logs-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("logs-token", map[string]interface{}{"pod_name": "test-pod"})
 		result, err := k8sTool.handleKubectlLogsEnhanced(ctx, req)
 		assert.NoError(t, err)
@@ -1155,7 +1162,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"delete", "deployment", "test-deployment", "-n", "default", "--token", "delete-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("delete-token", map[string]interface{}{
 			"resource_type": "deployment",
 			"resource_name": "test-deployment",
@@ -1178,7 +1185,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "-p", `{"spec":{"replicas":5}}`, "-n", "default", "--token", "patch-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("patch-token", map[string]interface{}{
 			"resource_type": "deployment",
 			"resource_name": "test-deployment",
@@ -1202,7 +1209,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"describe", "deployment", "test-deployment", "-n", "default", "--token", "describe-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("describe-token", map[string]interface{}{
 			"resource_type": "deployment",
 			"resource_name": "test-deployment",
@@ -1226,7 +1233,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"rollout", "restart", "deployment/myapp", "-n", "default", "--token", "rollout-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("rollout-token", map[string]interface{}{
 			"action":        "restart",
 			"resource_type": "deployment",
@@ -1251,7 +1258,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "--all-namespaces", "--token", "events-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("events-token", nil)
 		result, err := k8sTool.handleGetEvents(ctx, req)
 		assert.NoError(t, err)
@@ -1270,7 +1277,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls -la", "--token", "exec-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("exec-token", map[string]interface{}{
 			"pod_name":  "mypod",
 			"namespace": "default",
@@ -1294,7 +1301,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1=value1", "--token", "annotate-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("annotate-token", map[string]interface{}{
 			"resource_type": "deployment",
 			"resource_name": "test-deployment",
@@ -1318,7 +1325,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env=prod", "--token", "label-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("label-token", map[string]interface{}{
 			"resource_type": "deployment",
 			"resource_name": "test-deployment",
@@ -1342,7 +1349,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"api-resources", "--token", "api-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("api-token", nil)
 		result, err := k8sTool.handleGetAvailableAPIResources(ctx, req)
 		assert.NoError(t, err)
@@ -1361,7 +1368,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"config", "view", "-o", "json", "--token", "config-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("config-token", nil)
 		result, err := k8sTool.handleGetClusterConfiguration(ctx, req)
 		assert.NoError(t, err)
@@ -1380,7 +1387,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1-", "--token", "remove-anno-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("remove-anno-token", map[string]interface{}{
 			"resource_type":  "deployment",
 			"resource_name":  "test-deployment",
@@ -1404,7 +1411,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env-", "--token", "remove-label-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("remove-label-token", map[string]interface{}{
 			"resource_type": "deployment",
 			"resource_name": "test-deployment",
@@ -1428,7 +1435,7 @@ log line 2`
 		mock.AddCommandString("kubectl", []string{"create", "-f", "https://example.com/manifest.yaml", "-n", "default", "--token", "url-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("url-token", map[string]interface{}{
 			"url":       "https://example.com/manifest.yaml",
 			"namespace": "default",
@@ -1456,7 +1463,7 @@ metadata:
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(true)
 		req := requestWithBearerToken("apply-token", map[string]interface{}{
 			"manifest": manifest,
 		})
@@ -1472,14 +1479,25 @@ metadata:
 		assert.Contains(t, callLog[0].Args, "apply-token")
 	})
 
-	t.Run("no token when authorization header missing", func(t *testing.T) {
+	t.Run("returns error when passthrough true and authorization header missing", func(t *testing.T) {
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.Contains(t, getResultText(result), "Bearer token required")
+	})
+
+	t.Run("no token when passthrough false and authorization header missing", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `NAME   READY   STATUS    RESTARTS   AGE`
-		// No --token in expected args since no Authorization header
+		// No --token in expected args when passthrough is false
 		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(false)
 		req := mcp.CallToolRequest{}
 		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
 		// No Header set on request
@@ -1494,14 +1512,14 @@ metadata:
 		assert.NotContains(t, callLog[0].Args, "--token")
 	})
 
-	t.Run("no token when authorization header is not bearer", func(t *testing.T) {
+	t.Run("no token when passthrough false and authorization header is not bearer", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `NAME   READY   STATUS    RESTARTS   AGE`
-		// No --token in expected args since Authorization is not Bearer
+		// No --token when passthrough is false
 		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
-		k8sTool := newTestK8sTool()
+		k8sTool := newTestK8sToolWithPassthrough(false)
 		req := mcp.CallToolRequest{}
 		req.Header = http.Header{}
 		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")

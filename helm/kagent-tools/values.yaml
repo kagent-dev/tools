@@ -1,8 +1,8 @@
 # Default values for kagent
 replicaCount: 1
 
-# When true, pods use the default service account and no ClusterRole/ClusterRoleBinding are created.
-# When false, a dedicated ServiceAccount and RBAC are created for the tools deployment.
+# When true: pods use the default service account and no ClusterRole/ClusterRoleBinding are created.
+# When false: a dedicated ServiceAccount and RBAC are created.
 useDefaultServiceAccount: false
 
 global:
@@ -10,6 +10,10 @@ global:
 
 tools:
   loglevel: "debug"
+  k8s:
+    # When true: server requires a Bearer token on each request (fails if missing) and passes it to kubectl.
+    # When false: server does not use the token (kubectl uses in-cluster ServiceAccount).
+    tokenPassthrough: false
   image:
     registry: ghcr.io
     repository: kagent-dev/kagent/tools

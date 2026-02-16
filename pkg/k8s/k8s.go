@@ -25,16 +25,17 @@ import (
 
 // K8sTool struct to hold the LLM model
 type K8sTool struct {
-	kubeconfig string
-	llmModel   llms.Model
+	kubeconfig       string
+	llmModel         llms.Model
+	tokenPassthrough bool // when true, require Bearer token and pass it to kubectl; when false, do not use token
 }
 
 func NewK8sTool(llmModel llms.Model) *K8sTool {
-	return &K8sTool{llmModel: llmModel}
+	return &K8sTool{llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
 }
 
 func NewK8sToolWithConfig(kubeconfig string, llmModel llms.Model) *K8sTool {
-	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel}
+	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
 }
 
 // runKubectlCommandWithCacheInvalidation runs a kubectl command and invalidates cache if it's a modification operation
@@ -539,34 +540,54 @@ func extractBearerToken(headers http.Header) string {
 	return ""
 }
 
+// tokenForKubectl returns the token to pass to kubectl and an error if passthrough is true but token is missing.
+func (k *K8sTool) tokenForKubectl(headers http.Header) (string, error) {
+	token := extractBearerToken(headers)
+	if k.tokenPassthrough && token == "" {
+		return "", fmt.Errorf("Bearer token required when TOKEN_PASSTHROUGH is true")
+	}
+	if k.tokenPassthrough {
+		return token, nil
+	}
+	return "", nil // do not use token when passthrough is false
+}
+
 // runKubectlCommand is a helper function to execute kubectl commands
 func (k *K8sTool) runKubectlCommand(ctx context.Context, headers http.Header, args ...string) (*mcp.CallToolResult, error) {
-	output, err := commands.NewCommandBuilder("kubectl").
-		WithArgs(args...).
-		WithKubeconfig(k.kubeconfig).
-		WithToken(extractBearerToken(headers)).
-		Execute(ctx)
-
+	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
+	builder := commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(k.kubeconfig)
+	if token != "" {
+		builder = builder.WithToken(token)
+	}
+	output, err := builder.Execute(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	return mcp.NewToolResultText(output), nil
 }
 
 // runKubectlCommandWithTimeout is a helper function to execute kubectl commands with a timeout
 func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, headers http.Header, timeout time.Duration, args ...string) (*mcp.CallToolResult, error) {
-	output, err := commands.NewCommandBuilder("kubectl").
-		WithArgs(args...).
-		WithKubeconfig(k.kubeconfig).
-		WithToken(extractBearerToken(headers)).
-		WithTimeout(timeout).
-		Execute(ctx)
-
+	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
+	builder := commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(k.kubeconfig).
+		WithTimeout(timeout)
+	if token != "" {
+		builder = builder.WithToken(token)
+	}
+	output, err := builder.Execute(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	return mcp.NewToolResultText(output), nil
 }
 
