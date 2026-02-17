@@ -61,7 +61,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8084, "Port to run the server on")
-	rootCmd.Flags().IntVarP(&metricsPort, "metrics-port", "m", 8084, "Port to run the metrics server on")
+	rootCmd.Flags().IntVarP(&metricsPort, "metrics-port", "m", 0, "Port to run the metrics server on (default 0: same as --port)")
 	rootCmd.Flags().BoolVar(&stdio, "stdio", false, "Use stdio for communication instead of HTTP")
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
@@ -96,6 +96,11 @@ func run(cmd *cobra.Command, args []string) {
 	if showVersion {
 		printVersion()
 		return
+	}
+
+	// 0 means "same as --port" - resolve it before any server logic uses it
+	if metricsPort == 0 {
+		metricsPort = port
 	}
 
 	logger.Init(stdio)

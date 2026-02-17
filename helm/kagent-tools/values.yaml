@@ -6,7 +6,8 @@ global:
 
 tools:
   metrics:
-    port: 8084
+    # port defaults to the main --port value (same server). Set explicitly for a dedicated metrics port.
+    port: ""
     servicemonitor:
       enabled: false
       interval: 30s

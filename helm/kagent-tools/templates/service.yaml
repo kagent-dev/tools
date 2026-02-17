@@ -35,6 +35,6 @@ spec:
   ports:
     - name: prometheus-metrics
       protocol: TCP
-      port: {{ .Values.tools.metrics.port | default 8084 }}
-      targetPort: {{ .Values.tools.metrics.port | default 8084 }}
+      port: {{ .Values.tools.metrics.port | default .Values.service.ports.tools.targetPort }}
+      targetPort: {{ .Values.tools.metrics.port | default .Values.service.ports.tools.targetPort }}
  
