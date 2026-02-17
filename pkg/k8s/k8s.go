@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math/rand"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -24,21 +25,22 @@ import (
 
 // K8sTool struct to hold the LLM model
 type K8sTool struct {
-	kubeconfig string
-	llmModel   llms.Model
+	kubeconfig       string
+	llmModel         llms.Model
+	tokenPassthrough bool // when true, require Bearer token and pass it to kubectl; when false, do not use token
 }
 
 func NewK8sTool(llmModel llms.Model) *K8sTool {
-	return &K8sTool{llmModel: llmModel}
+	return &K8sTool{llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
 }
 
 func NewK8sToolWithConfig(kubeconfig string, llmModel llms.Model) *K8sTool {
-	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel}
+	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
 }
 
 // runKubectlCommandWithCacheInvalidation runs a kubectl command and invalidates cache if it's a modification operation
-func (k *K8sTool) runKubectlCommandWithCacheInvalidation(ctx context.Context, args ...string) (*mcp.CallToolResult, error) {
-	result, err := k.runKubectlCommand(ctx, args...)
+func (k *K8sTool) runKubectlCommandWithCacheInvalidation(ctx context.Context, headers http.Header, args ...string) (*mcp.CallToolResult, error) {
+	result, err := k.runKubectlCommand(ctx, headers, args...)
 
 	// If command succeeded and it's a modification command, invalidate cache
 	if err == nil && len(args) > 0 {
@@ -82,7 +84,7 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request mcp.Call
 		args = append(args, "-o", "json")
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Get pod logs
@@ -106,7 +108,7 @@ func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request mcp.Cal
 		args = append(args, "--tail", fmt.Sprintf("%d", tailLines))
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Scale deployment
@@ -121,7 +123,7 @@ func (k *K8sTool) handleScaleDeployment(ctx context.Context, request mcp.CallToo
 
 	args := []string{"scale", "deployment", deploymentName, "--replicas", fmt.Sprintf("%d", replicas), "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
 
 // Patch resource
@@ -152,7 +154,7 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 
 	args := []string{"patch", resourceType, resourceName, "-p", patch, "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
 
 // Apply manifest from content
@@ -197,7 +199,7 @@ func (k *K8sTool) handleApplyManifest(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to close temp file: %v", err)), nil
 	}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, "apply", "-f", tmpFile.Name())
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, "apply", "-f", tmpFile.Name())
 }
 
 // Delete resource
@@ -212,7 +214,7 @@ func (k *K8sTool) handleDeleteResource(ctx context.Context, request mcp.CallTool
 
 	args := []string{"delete", resourceType, resourceName, "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
 
 // Check service connectivity
@@ -227,23 +229,23 @@ func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request mc
 	// Create a temporary curl pod for connectivity check
 	podName := fmt.Sprintf("curl-test-%d", rand.Intn(10000))
 	defer func() {
-		_, _ = k.runKubectlCommand(ctx, "delete", "pod", podName, "-n", namespace, "--ignore-not-found")
+		_, _ = k.runKubectlCommand(ctx, request.Header, "delete", "pod", podName, "-n", namespace, "--ignore-not-found")
 	}()
 
 	// Create the curl pod
-	_, err := k.runKubectlCommand(ctx, "run", podName, "--image=curlimages/curl", "-n", namespace, "--restart=Never", "--", "sleep", "3600")
+	_, err := k.runKubectlCommand(ctx, request.Header, "run", podName, "--image=curlimages/curl", "-n", namespace, "--restart=Never", "--", "sleep", "3600")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create curl pod: %v", err)), nil
 	}
 
 	// Wait for pod to be ready
-	_, err = k.runKubectlCommandWithTimeout(ctx, 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace)
+	_, err = k.runKubectlCommandWithTimeout(ctx, request.Header, 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to wait for curl pod: %v", err)), nil
 	}
 
 	// Execute kubectl command
-	return k.runKubectlCommand(ctx, "exec", podName, "-n", namespace, "--", "curl", "-s", serviceName)
+	return k.runKubectlCommand(ctx, request.Header, "exec", podName, "-n", namespace, "--", "curl", "-s", serviceName)
 }
 
 // Get cluster events
@@ -257,7 +259,7 @@ func (k *K8sTool) handleGetEvents(ctx context.Context, request mcp.CallToolReque
 		args = append(args, "--all-namespaces")
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Execute command in pod
@@ -287,12 +289,12 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolReq
 
 	args := []string{"exec", podName, "-n", namespace, "--", command}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Get available API resources
 func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, "api-resources")
+	return k.runKubectlCommand(ctx, request.Header, "api-resources")
 }
 
 // Kubectl describe tool
@@ -310,7 +312,7 @@ func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request mcp.Cal
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Rollout operations
@@ -329,12 +331,12 @@ func (k *K8sTool) handleRollout(ctx context.Context, request mcp.CallToolRequest
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Get cluster configuration
 func (k *K8sTool) handleGetClusterConfiguration(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, "config", "view", "-o", "json")
+	return k.runKubectlCommand(ctx, request.Header, "config", "view", "-o", "json")
 }
 
 // Remove annotation
@@ -353,7 +355,7 @@ func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request mcp.CallTo
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Remove label
@@ -372,7 +374,7 @@ func (k *K8sTool) handleRemoveLabel(ctx context.Context, request mcp.CallToolReq
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Annotate resource
@@ -393,7 +395,7 @@ func (k *K8sTool) handleAnnotateResource(ctx context.Context, request mcp.CallTo
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Label resource
@@ -414,7 +416,7 @@ func (k *K8sTool) handleLabelResource(ctx context.Context, request mcp.CallToolR
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Create resource from URL
@@ -431,7 +433,7 @@ func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request mcp.C
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Resource generation embeddings
@@ -528,32 +530,64 @@ func (k *K8sTool) handleGenerateResource(ctx context.Context, request mcp.CallTo
 	return mcp.NewToolResultText(responseText), nil
 }
 
-// runKubectlCommand is a helper function to execute kubectl commands
-func (k *K8sTool) runKubectlCommand(ctx context.Context, args ...string) (*mcp.CallToolResult, error) {
-	output, err := commands.NewCommandBuilder("kubectl").
-		WithArgs(args...).
-		WithKubeconfig(k.kubeconfig).
-		Execute(ctx)
+// extractBearerToken extracts the Bearer token from the Authorization header
+func extractBearerToken(headers http.Header) string {
+	if auth := headers.Get("Authorization"); auth != "" {
+		if strings.HasPrefix(auth, "Bearer ") {
+			return strings.TrimPrefix(auth, "Bearer ")
+		}
+	}
+	return ""
+}
 
+// tokenForKubectl returns the token to pass to kubectl and an error if passthrough is true but token is missing.
+func (k *K8sTool) tokenForKubectl(headers http.Header) (string, error) {
+	token := extractBearerToken(headers)
+	if k.tokenPassthrough && token == "" {
+		return "", fmt.Errorf("Bearer token required when TOKEN_PASSTHROUGH is true")
+	}
+	if k.tokenPassthrough {
+		return token, nil
+	}
+	return "", nil // do not use token when passthrough is false
+}
+
+// runKubectlCommand is a helper function to execute kubectl commands
+func (k *K8sTool) runKubectlCommand(ctx context.Context, headers http.Header, args ...string) (*mcp.CallToolResult, error) {
+	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
+	builder := commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(k.kubeconfig)
+	if token != "" {
+		builder = builder.WithToken(token)
+	}
+	output, err := builder.Execute(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	return mcp.NewToolResultText(output), nil
 }
 
 // runKubectlCommandWithTimeout is a helper function to execute kubectl commands with a timeout
-func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, timeout time.Duration, args ...string) (*mcp.CallToolResult, error) {
-	output, err := commands.NewCommandBuilder("kubectl").
-		WithArgs(args...).
-		WithKubeconfig(k.kubeconfig).
-		WithTimeout(timeout).
-		Execute(ctx)
-
+func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, headers http.Header, timeout time.Duration, args ...string) (*mcp.CallToolResult, error) {
+	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
+	builder := commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(k.kubeconfig).
+		WithTimeout(timeout)
+	if token != "" {
+		builder = builder.WithToken(token)
+	}
+	output, err := builder.Execute(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	return mcp.NewToolResultText(output), nil
 }
 
@@ -611,7 +645,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 			args = append(args, "-n", namespace)
 		}
 
-		result, err := k8sTool.runKubectlCommand(ctx, args...)
+		result, err := k8sTool.runKubectlCommand(ctx, request.Header, args...)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Get YAML command failed: %v", err)), nil
 		}
@@ -737,7 +771,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 			}
 			tmpFile.Close()
 
-			result, err := k8sTool.runKubectlCommand(ctx, "create", "-f", tmpFile.Name())
+			result, err := k8sTool.runKubectlCommand(ctx, request.Header, "create", "-f", tmpFile.Name())
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("Create command failed: %v", err)), nil
 			}

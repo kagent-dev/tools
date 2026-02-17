@@ -66,6 +66,13 @@ Allows overriding it for multi-namespace deployments in combined charts.
 {{- end }}
 
 {{/*
+Service account name: default when useDefaultServiceAccount is true, otherwise the chart fullname.
+*/}}
+{{- define "kagent.serviceAccountName" -}}
+{{- if .Values.useDefaultServiceAccount }}default{{- else }}{{ include "kagent.fullname" . }}{{- end }}
+{{- end }}
+
+{{/*
 Watch namespaces - transforms list of namespaces cached by the controller into comma-separated string
 Removes duplicates
 */}}

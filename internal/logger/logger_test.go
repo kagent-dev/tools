@@ -12,6 +12,43 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+func TestRedactArgsForLog(t *testing.T) {
+	t.Run("redacts token value", func(t *testing.T) {
+		args := []string{"get", "pods", "--token", "secret-token-123", "-n", "default"}
+		redacted := RedactArgsForLog(args)
+		require.Len(t, redacted, 6)
+		assert.Equal(t, "get", redacted[0])
+		assert.Equal(t, "pods", redacted[1])
+		assert.Equal(t, "--token", redacted[2])
+		assert.Equal(t, "<REDACTED>", redacted[3])
+		assert.Equal(t, "-n", redacted[4])
+		assert.Equal(t, "default", redacted[5])
+	})
+	t.Run("empty args returns nil", func(t *testing.T) {
+		assert.Nil(t, RedactArgsForLog(nil))
+		assert.Nil(t, RedactArgsForLog([]string{}))
+	})
+	t.Run("args without token unchanged", func(t *testing.T) {
+		args := []string{"get", "pods", "-n", "default"}
+		redacted := RedactArgsForLog(args)
+		assert.Equal(t, args, redacted)
+	})
+	t.Run("--token at end with no value", func(t *testing.T) {
+		args := []string{"get", "pods", "--token"}
+		redacted := RedactArgsForLog(args)
+		assert.Equal(t, args, redacted)
+	})
+	t.Run("logged output does not contain token", func(t *testing.T) {
+		var buf bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&buf, nil))
+		args := []string{"get", "pods", "--token", "secret-token-123"}
+		log.Info("executing command", "command", "kubectl", "args", RedactArgsForLog(args))
+		output := buf.String()
+		assert.Contains(t, output, "<REDACTED>")
+		assert.NotContains(t, output, "secret-token-123")
+	})
+}
+
 func TestLogExecCommand(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))

@@ -1,6 +1,10 @@
 # Default values for kagent
 replicaCount: 1
 
+# When true: pods use the default service account and no ClusterRole/ClusterRoleBinding are created.
+# When false: a dedicated ServiceAccount and RBAC are created.
+useDefaultServiceAccount: false
+
 global:
   tag: ""
 
@@ -27,6 +31,10 @@ tools:
     limits:
       cpu: 1000m
       memory: 512Mi
+  k8s:
+    # When true: a Bearer token in the Authorization header on each request is passed to kubectl; fails if missing
+    # When false: kubectl uses in-cluster ServiceAccount.
+    tokenPassthrough: false
   prometheus:
     url: "prometheus.kagent.svc.cluster.local:9090"
     username: ""

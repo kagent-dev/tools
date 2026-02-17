@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
@@ -14,6 +15,13 @@ import (
 // Helper function to create a test K8sTool
 func newTestK8sTool() *K8sTool {
 	return NewK8sTool(nil)
+}
+
+// newTestK8sToolWithPassthrough creates a K8sTool with token passthrough set for testing.
+func newTestK8sToolWithPassthrough(passthrough bool) *K8sTool {
+	t := NewK8sTool(nil)
+	t.tokenPassthrough = passthrough
+	return t
 }
 
 // Helper function to create a test K8sTool with mock LLM
@@ -30,6 +38,21 @@ func getResultText(result *mcp.CallToolResult) string {
 		return textContent.Text
 	}
 	return ""
+}
+
+// Helper function to create an http.Header with Bearer token authorization
+func headerWithBearerToken(token string) http.Header {
+	h := http.Header{}
+	h.Set("Authorization", "Bearer "+token)
+	return h
+}
+
+// Helper function to create a CallToolRequest with Bearer token
+func requestWithBearerToken(token string, args map[string]interface{}) mcp.CallToolRequest {
+	req := mcp.CallToolRequest{}
+	req.Header = headerWithBearerToken(token)
+	req.Params.Arguments = args
+	return req
 }
 
 func TestHandleGetAvailableAPIResources(t *testing.T) {
@@ -1061,5 +1084,454 @@ users:
 		resultText := getResultText(result)
 		assert.Contains(t, resultText, "current-context")
 		assert.Contains(t, resultText, "clusters")
+	})
+}
+
+// Tests for Bearer token passing to kubectl commands
+func TestBearerTokenPassthrough(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("get resources with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `NAME   READY   STATUS    RESTARTS   AGE`
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide", "--token", "test-token-123"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("test-token-123", map[string]interface{}{"resource_type": "pods"})
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		// Verify the command was executed with the token
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, "kubectl", callLog[0].Command)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "test-token-123")
+	})
+
+	t.Run("scale deployment with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment scaled`
+		mock.AddCommandString("kubectl", []string{"scale", "deployment", "test-deployment", "--replicas", "5", "-n", "default", "--token", "my-auth-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("my-auth-token", map[string]interface{}{
+			"name":     "test-deployment",
+			"replicas": float64(5),
+		})
+
+		result, err := k8sTool.handleScaleDeployment(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		// Verify the command was executed with the token
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "my-auth-token")
+	})
+
+	t.Run("get pod logs with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `log line 1
+log line 2`
+		mock.AddCommandString("kubectl", []string{"logs", "test-pod", "-n", "default", "--tail", "50", "--token", "logs-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("logs-token", map[string]interface{}{"pod_name": "test-pod"})
+		result, err := k8sTool.handleKubectlLogsEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "logs-token")
+	})
+
+	t.Run("delete resource with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment deleted`
+		mock.AddCommandString("kubectl", []string{"delete", "deployment", "test-deployment", "-n", "default", "--token", "delete-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("delete-token", map[string]interface{}{
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
+		})
+
+		result, err := k8sTool.handleDeleteResource(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "delete-token")
+	})
+
+	t.Run("patch resource with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment patched`
+		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "-p", `{"spec":{"replicas":5}}`, "-n", "default", "--token", "patch-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("patch-token", map[string]interface{}{
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
+			"patch":         `{"spec":{"replicas":5}}`,
+		})
+
+		result, err := k8sTool.handlePatchResource(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "patch-token")
+	})
+
+	t.Run("describe resource with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `Name: test-deployment`
+		mock.AddCommandString("kubectl", []string{"describe", "deployment", "test-deployment", "-n", "default", "--token", "describe-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("describe-token", map[string]interface{}{
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
+			"namespace":     "default",
+		})
+
+		result, err := k8sTool.handleKubectlDescribeTool(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "describe-token")
+	})
+
+	t.Run("rollout with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/myapp restarted`
+		mock.AddCommandString("kubectl", []string{"rollout", "restart", "deployment/myapp", "-n", "default", "--token", "rollout-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("rollout-token", map[string]interface{}{
+			"action":        "restart",
+			"resource_type": "deployment",
+			"resource_name": "myapp",
+			"namespace":     "default",
+		})
+
+		result, err := k8sTool.handleRollout(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "rollout-token")
+	})
+
+	t.Run("get events with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `{"items": []}`
+		mock.AddCommandString("kubectl", []string{"get", "events", "-o", "json", "--all-namespaces", "--token", "events-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("events-token", nil)
+		result, err := k8sTool.handleGetEvents(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "events-token")
+	})
+
+	t.Run("exec command with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `total 8`
+		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls -la", "--token", "exec-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("exec-token", map[string]interface{}{
+			"pod_name":  "mypod",
+			"namespace": "default",
+			"command":   "ls -la",
+		})
+
+		result, err := k8sTool.handleExecCommand(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "exec-token")
+	})
+
+	t.Run("annotate resource with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment annotated`
+		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1=value1", "--token", "annotate-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("annotate-token", map[string]interface{}{
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
+			"annotations":   "key1=value1",
+		})
+
+		result, err := k8sTool.handleAnnotateResource(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "annotate-token")
+	})
+
+	t.Run("label resource with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment labeled`
+		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env=prod", "--token", "label-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("label-token", map[string]interface{}{
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
+			"labels":        "env=prod",
+		})
+
+		result, err := k8sTool.handleLabelResource(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "label-token")
+	})
+
+	t.Run("api resources with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `NAME   SHORTNAMES   APIVERSION   NAMESPACED   KIND`
+		mock.AddCommandString("kubectl", []string{"api-resources", "--token", "api-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("api-token", nil)
+		result, err := k8sTool.handleGetAvailableAPIResources(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "api-token")
+	})
+
+	t.Run("cluster configuration with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `{"current-context": "default"}`
+		mock.AddCommandString("kubectl", []string{"config", "view", "-o", "json", "--token", "config-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("config-token", nil)
+		result, err := k8sTool.handleGetClusterConfiguration(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "config-token")
+	})
+
+	t.Run("remove annotation with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment annotated`
+		mock.AddCommandString("kubectl", []string{"annotate", "deployment", "test-deployment", "key1-", "--token", "remove-anno-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("remove-anno-token", map[string]interface{}{
+			"resource_type":  "deployment",
+			"resource_name":  "test-deployment",
+			"annotation_key": "key1",
+		})
+
+		result, err := k8sTool.handleRemoveAnnotation(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "remove-anno-token")
+	})
+
+	t.Run("remove label with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment labeled`
+		mock.AddCommandString("kubectl", []string{"label", "deployment", "test-deployment", "env-", "--token", "remove-label-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("remove-label-token", map[string]interface{}{
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
+			"label_key":     "env",
+		})
+
+		result, err := k8sTool.handleRemoveLabel(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "remove-label-token")
+	})
+
+	t.Run("create resource from URL with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `deployment.apps/test-deployment created`
+		mock.AddCommandString("kubectl", []string{"create", "-f", "https://example.com/manifest.yaml", "-n", "default", "--token", "url-token"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("url-token", map[string]interface{}{
+			"url":       "https://example.com/manifest.yaml",
+			"namespace": "default",
+		})
+
+		result, err := k8sTool.handleCreateResourceFromURL(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "url-token")
+	})
+
+	t.Run("apply manifest with bearer token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		manifest := `apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod`
+		expectedOutput := `pod/test-pod created`
+		// Use partial matcher since temp file name is dynamic
+		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := requestWithBearerToken("apply-token", map[string]interface{}{
+			"manifest": manifest,
+		})
+
+		result, err := k8sTool.handleApplyManifest(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Contains(t, callLog[0].Args, "--token")
+		assert.Contains(t, callLog[0].Args, "apply-token")
+	})
+
+	t.Run("returns error when passthrough true and authorization header missing", func(t *testing.T) {
+		k8sTool := newTestK8sToolWithPassthrough(true)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.Contains(t, getResultText(result), "Bearer token required")
+	})
+
+	t.Run("no token when passthrough false and authorization header missing", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `NAME   READY   STATUS    RESTARTS   AGE`
+		// No --token in expected args when passthrough is false
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(false)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
+		// No Header set on request
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		// Verify no --token was added
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.NotContains(t, callLog[0].Args, "--token")
+	})
+
+	t.Run("no token when passthrough false and authorization header is not bearer", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `NAME   READY   STATUS    RESTARTS   AGE`
+		// No --token when passthrough is false
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sToolWithPassthrough(false)
+		req := mcp.CallToolRequest{}
+		req.Header = http.Header{}
+		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		// Verify no --token was added
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.NotContains(t, callLog[0].Args, "--token")
 	})
 }
