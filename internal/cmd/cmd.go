@@ -20,10 +20,11 @@ type DefaultShellExecutor struct{}
 func (e *DefaultShellExecutor) Exec(ctx context.Context, command string, args ...string) ([]byte, error) {
 	log := logger.WithContext(ctx)
 	startTime := time.Now()
+	redactedArgs := logger.RedactArgsForLog(args)
 
 	log.Info("executing command",
 		"command", command,
-		"args", args,
+		"args", redactedArgs,
 	)
 
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -34,7 +35,7 @@ func (e *DefaultShellExecutor) Exec(ctx context.Context, command string, args ..
 	if err != nil {
 		log.Error("command execution failed",
 			"command", command,
-			"args", args,
+			"args", redactedArgs,
 			"error", err,
 			"output", string(output),
 			"duration", duration.Seconds(),
@@ -42,7 +43,7 @@ func (e *DefaultShellExecutor) Exec(ctx context.Context, command string, args ..
 	} else {
 		log.Info("command execution successful",
 			"command", command,
-			"args", args,
+			"args", redactedArgs,
 			"duration", duration.Seconds(),
 		)
 	}

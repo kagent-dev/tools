@@ -60,12 +60,45 @@ tests:
           path: spec.template.spec.containers[0].resources.limits.memory
           value: 512Mi
 
-  - it: should have correct service account name
+  - it: should use default service account when useDefaultServiceAccount is true
     template: deployment.yaml
+    set:
+      useDefaultServiceAccount: true
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: default
+
+  - it: should use dedicated service account when useDefaultServiceAccount is false
+    template: deployment.yaml
+    set:
+      useDefaultServiceAccount: false
     asserts:
       - equal:
           path: spec.template.spec.serviceAccountName
           value: RELEASE-NAME
+
+  - it: should set token passthrough env when tools.k8s.tokenPassthrough is true
+    template: deployment.yaml
+    set:
+      tools.k8s.tokenPassthrough: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TOKEN_PASSTHROUGH
+            value: "true"
+
+  - it: should set token passthrough env when tools.k8s.tokenPassthrough is false
+    template: deployment.yaml
+    set:
+      tools.k8s.tokenPassthrough: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TOKEN_PASSTHROUGH
+            value: "false"
 
   - it: should have correct container port
     template: deployment.yaml
