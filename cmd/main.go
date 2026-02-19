@@ -366,7 +366,9 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 //
 // The wrapper function:
 //   - Increments kagent_tools_mcp_invocations_total on every call
-//   - Increments kagent_tools_mcp_invocations_failure_total only when the handler returns an error
+//   - Increments kagent_tools_mcp_invocations_failure_total when the handler returns a
+//     non-nil Go error OR when result.IsError is true (the MCP convention for tool-level
+//     failures - handlers return NewToolResultError(...), nil, not a Go error)
 //   - Calls the original handler unchanged - the tool's behaviour is not affected
 //
 // This uses the standard middleware/decorator pattern: the original handler and the
@@ -388,7 +390,10 @@ func wrapToolHandlersWithMetrics(mcpServer *server.MCPServer, toolToProvider map
 
 				result, err := originalHandler(ctx, req)
 
-				if err != nil {
+				// Count as failure if the Go error is non-nil OR if the tool returned
+				// a result with IsError=true (the MCP convention for tool-level failures,
+				// which always return nil for the Go error).
+				if err != nil || (result != nil && result.IsError) {
 					metrics.KagentToolsMCPInvocationsFailureTotal.WithLabelValues(toolName, provider).Inc()
 				}
 
