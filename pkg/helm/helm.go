@@ -2,31 +2,91 @@ package helm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/errors"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
-	"github.com/kagent-dev/tools/internal/mcpcompat"
-	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 )
+
+type listReleasesRequest struct {
+	Namespace     string `json:"namespace"`
+	AllNamespaces string `json:"all_namespaces"`
+	All           string `json:"all"`
+	Uninstalled   string `json:"uninstalled"`
+	Uninstalling  string `json:"uninstalling"`
+	Failed        string `json:"failed"`
+	Deployed      string `json:"deployed"`
+	Pending       string `json:"pending"`
+	Filter        string `json:"filter"`
+	Output        string `json:"output"`
+}
+
+type getReleaseRequest struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Resource  string `json:"resource"`
+}
+
+type upgradeReleaseRequest struct {
+	Name      string `json:"name"`
+	Chart     string `json:"chart"`
+	Namespace string `json:"namespace"`
+	Version   string `json:"version"`
+	Values    string `json:"values"`
+	Set       string `json:"set"`
+	Install   string `json:"install"`
+	DryRun    string `json:"dry_run"`
+	Wait      string `json:"wait"`
+}
+
+type uninstallRequest struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	DryRun    string `json:"dry_run"`
+	Wait      string `json:"wait"`
+}
+
+type repoAddRequest struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+func decodeArgs(request mcp.CallToolRequest, out interface{}) error {
+	if request.Params == nil || request.Params.Arguments == nil {
+		return nil
+	}
+	return json.Unmarshal(request.Params.Arguments, out)
+}
+
+func isTrue(v string) bool {
+	return v == "true"
+}
 
 // Helm list releases
 func handleHelmListReleases(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
-	all := mcp.ParseString(request, "all", "") == "true"
-	uninstalled := mcp.ParseString(request, "uninstalled", "") == "true"
-	uninstalling := mcp.ParseString(request, "uninstalling", "") == "true"
-	failed := mcp.ParseString(request, "failed", "") == "true"
-	deployed := mcp.ParseString(request, "deployed", "") == "true"
-	pending := mcp.ParseString(request, "pending", "") == "true"
-	filter := mcp.ParseString(request, "filter", "")
-	output := mcp.ParseString(request, "output", "")
+	var req listReleasesRequest
+	if err := decodeArgs(request, &req); err != nil {
+		return mcp.NewToolResultError("invalid arguments: " + err.Error()), nil
+	}
+
+	namespace := req.Namespace
+	allNamespaces := isTrue(req.AllNamespaces)
+	all := isTrue(req.All)
+	uninstalled := isTrue(req.Uninstalled)
+	uninstalling := isTrue(req.Uninstalling)
+	failed := isTrue(req.Failed)
+	deployed := isTrue(req.Deployed)
+	pending := isTrue(req.Pending)
+	filter := req.Filter
+	output := req.Output
 
 	args := []string{"list"}
 
@@ -118,9 +178,17 @@ func runHelmCommand(ctx context.Context, args []string) (string, error) {
 
 // Helm get release
 func handleHelmGetRelease(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	resource := mcp.ParseString(request, "resource", "all")
+	var req getReleaseRequest
+	if err := decodeArgs(request, &req); err != nil {
+		return mcp.NewToolResultError("invalid arguments: " + err.Error()), nil
+	}
+
+	name := req.Name
+	namespace := req.Namespace
+	resource := req.Resource
+	if resource == "" {
+		resource = "all"
+	}
 
 	if name == "" {
 		return mcp.NewToolResultError("name parameter is required"), nil
@@ -142,15 +210,20 @@ func handleHelmGetRelease(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 // Helm upgrade release
 func handleHelmUpgradeRelease(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	chart := mcp.ParseString(request, "chart", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	version := mcp.ParseString(request, "version", "")
-	values := mcp.ParseString(request, "values", "")
-	setValues := mcp.ParseString(request, "set", "")
-	install := mcp.ParseString(request, "install", "") == "true"
-	dryRun := mcp.ParseString(request, "dry_run", "") == "true"
-	wait := mcp.ParseString(request, "wait", "") == "true"
+	var req upgradeReleaseRequest
+	if err := decodeArgs(request, &req); err != nil {
+		return mcp.NewToolResultError("invalid arguments: " + err.Error()), nil
+	}
+
+	name := req.Name
+	chart := req.Chart
+	namespace := req.Namespace
+	version := req.Version
+	values := req.Values
+	setValues := req.Set
+	install := isTrue(req.Install)
+	dryRun := isTrue(req.DryRun)
+	wait := isTrue(req.Wait)
 
 	if name == "" || chart == "" {
 		return mcp.NewToolResultError("name and chart parameters are required"), nil
@@ -219,10 +292,15 @@ func handleHelmUpgradeRelease(ctx context.Context, request mcp.CallToolRequest) 
 
 // Helm uninstall release
 func handleHelmUninstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	dryRun := mcp.ParseString(request, "dry_run", "") == "true"
-	wait := mcp.ParseString(request, "wait", "") == "true"
+	var req uninstallRequest
+	if err := decodeArgs(request, &req); err != nil {
+		return mcp.NewToolResultError("invalid arguments: " + err.Error()), nil
+	}
+
+	name := req.Name
+	namespace := req.Namespace
+	dryRun := isTrue(req.DryRun)
+	wait := isTrue(req.Wait)
 
 	if name == "" || namespace == "" {
 		return mcp.NewToolResultError("name and namespace parameters are required"), nil
@@ -248,8 +326,13 @@ func handleHelmUninstall(ctx context.Context, request mcp.CallToolRequest) (*mcp
 
 // Helm repo add
 func handleHelmRepoAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name := mcp.ParseString(request, "name", "")
-	url := mcp.ParseString(request, "url", "")
+	var req repoAddRequest
+	if err := decodeArgs(request, &req); err != nil {
+		return mcp.NewToolResultError("invalid arguments: " + err.Error()), nil
+	}
+
+	name := req.Name
+	url := req.URL
 
 	if name == "" || url == "" {
 		return mcp.NewToolResultError("name and url parameters are required"), nil

@@ -2,6 +2,7 @@ package cilium
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/kagent-dev/tools/internal/commands"
@@ -11,6 +12,25 @@ import (
 	"github.com/kagent-dev/tools/internal/mcpcompat"
 	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 )
+
+type ciliumBaseRequest struct {
+	ClusterName  string `json:"cluster_name"`
+	ClusterID    string `json:"cluster_id"`
+	DatapathMode string `json:"datapath_mode"`
+	Context      string `json:"context"`
+	Enable       string `json:"enable"`
+}
+
+func decodeBaseRequest(request mcp.CallToolRequest) (ciliumBaseRequest, error) {
+	var req ciliumBaseRequest
+	if request.Params == nil || request.Params.Arguments == nil {
+		return req, nil
+	}
+	if err := json.Unmarshal(request.Params.Arguments, &req); err != nil {
+		return req, err
+	}
+	return req, nil
+}
 
 func runCiliumCliWithContext(ctx context.Context, args ...string) (string, error) {
 	kubeconfigPath := utils.GetKubeconfig()
@@ -36,8 +56,12 @@ func handleCiliumStatusAndVersion(ctx context.Context, request mcp.CallToolReque
 }
 
 func handleUpgradeCilium(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	clusterName := mcp.ParseString(request, "cluster_name", "")
-	datapathMode := mcp.ParseString(request, "datapath_mode", "")
+	req, decodeErr := decodeBaseRequest(request)
+	if decodeErr != nil {
+		return mcp.NewToolResultError("invalid arguments: " + decodeErr.Error()), nil
+	}
+	clusterName := req.ClusterName
+	datapathMode := req.DatapathMode
 
 	args := []string{"upgrade"}
 	if clusterName != "" {
@@ -56,9 +80,13 @@ func handleUpgradeCilium(ctx context.Context, request mcp.CallToolRequest) (*mcp
 }
 
 func handleInstallCilium(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	clusterName := mcp.ParseString(request, "cluster_name", "")
-	clusterID := mcp.ParseString(request, "cluster_id", "")
-	datapathMode := mcp.ParseString(request, "datapath_mode", "")
+	req, decodeErr := decodeBaseRequest(request)
+	if decodeErr != nil {
+		return mcp.NewToolResultError("invalid arguments: " + decodeErr.Error()), nil
+	}
+	clusterName := req.ClusterName
+	clusterID := req.ClusterID
+	datapathMode := req.DatapathMode
 
 	args := []string{"install"}
 	if clusterName != "" {
@@ -89,8 +117,12 @@ func handleUninstallCilium(ctx context.Context, request mcp.CallToolRequest) (*m
 }
 
 func handleConnectToRemoteCluster(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	clusterName := mcp.ParseString(request, "cluster_name", "")
-	context := mcp.ParseString(request, "context", "")
+	req, decodeErr := decodeBaseRequest(request)
+	if decodeErr != nil {
+		return mcp.NewToolResultError("invalid arguments: " + decodeErr.Error()), nil
+	}
+	clusterName := req.ClusterName
+	context := req.Context
 
 	if clusterName == "" {
 		return mcp.NewToolResultError("cluster_name parameter is required"), nil
@@ -110,7 +142,11 @@ func handleConnectToRemoteCluster(ctx context.Context, request mcp.CallToolReque
 }
 
 func handleDisconnectRemoteCluster(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	clusterName := mcp.ParseString(request, "cluster_name", "")
+	req, decodeErr := decodeBaseRequest(request)
+	if decodeErr != nil {
+		return mcp.NewToolResultError("invalid arguments: " + decodeErr.Error()), nil
+	}
+	clusterName := req.ClusterName
 
 	if clusterName == "" {
 		return mcp.NewToolResultError("cluster_name parameter is required"), nil
@@ -163,7 +199,14 @@ func handleShowFeaturesStatus(ctx context.Context, request mcp.CallToolRequest) 
 }
 
 func handleToggleHubble(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	enableStr := mcp.ParseString(request, "enable", "true")
+	req, decodeErr := decodeBaseRequest(request)
+	if decodeErr != nil {
+		return mcp.NewToolResultError("invalid arguments: " + decodeErr.Error()), nil
+	}
+	enableStr := req.Enable
+	if enableStr == "" {
+		enableStr = "true"
+	}
 	enable := enableStr == "true"
 
 	var action string
@@ -182,7 +225,14 @@ func handleToggleHubble(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 }
 
 func handleToggleClusterMesh(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	enableStr := mcp.ParseString(request, "enable", "true")
+	req, decodeErr := decodeBaseRequest(request)
+	if decodeErr != nil {
+		return mcp.NewToolResultError("invalid arguments: " + decodeErr.Error()), nil
+	}
+	enableStr := req.Enable
+	if enableStr == "" {
+		enableStr = "true"
+	}
 	enable := enableStr == "true"
 
 	var action string
