@@ -2,29 +2,122 @@ package istio
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/kagent-dev/tools/internal/commands"
+	mcp "github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
-	"github.com/kagent-dev/tools/internal/mcpcompat"
-	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 )
+
+type boolFlag bool
+
+func (b *boolFlag) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*b = false
+		return nil
+	}
+
+	var boolVal bool
+	if err := json.Unmarshal(data, &boolVal); err == nil {
+		*b = boolFlag(boolVal)
+		return nil
+	}
+
+	var stringVal string
+	if err := json.Unmarshal(data, &stringVal); err == nil {
+		*b = boolFlag(strings.EqualFold(stringVal, "true"))
+		return nil
+	}
+
+	return fmt.Errorf("invalid boolean value")
+}
+
+func parseToolArgs[T any](request mcp.CallToolRequest, defaults T) (T, error) {
+	args := defaults
+	if request.Params == nil || request.Params.Arguments == nil {
+		return args, nil
+	}
+	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+		return args, err
+	}
+	return args, nil
+}
+
+type proxyStatusArgs struct {
+	PodName   string `json:"pod_name"`
+	Namespace string `json:"namespace"`
+}
+
+type proxyConfigArgs struct {
+	PodName    string `json:"pod_name"`
+	Namespace  string `json:"namespace"`
+	ConfigType string `json:"config_type"`
+}
+
+type profileArgs struct {
+	Profile string `json:"profile"`
+}
+
+type analyzeArgs struct {
+	Namespace     string   `json:"namespace"`
+	AllNamespaces boolFlag `json:"all_namespaces"`
+}
+
+type versionArgs struct {
+	Short boolFlag `json:"short"`
+}
+
+type waypointListArgs struct {
+	Namespace     string   `json:"namespace"`
+	AllNamespaces boolFlag `json:"all_namespaces"`
+}
+
+type waypointGenerateArgs struct {
+	Namespace   string `json:"namespace"`
+	Name        string `json:"name"`
+	TrafficType string `json:"traffic_type"`
+}
+
+type waypointApplyArgs struct {
+	Namespace       string   `json:"namespace"`
+	EnrollNamespace boolFlag `json:"enroll_namespace"`
+}
+
+type waypointDeleteArgs struct {
+	Namespace string   `json:"namespace"`
+	Names     string   `json:"names"`
+	All       boolFlag `json:"all"`
+}
+
+type waypointStatusArgs struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
+type ztunnelConfigArgs struct {
+	Namespace  string `json:"namespace"`
+	ConfigType string `json:"config_type"`
+}
 
 // Istio proxy status
 func handleIstioProxyStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	podName := mcp.ParseString(request, "pod_name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
+	input, err := parseToolArgs(request, proxyStatusArgs{})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
 	args := []string{"proxy-status"}
 
-	if namespace != "" {
-		args = append(args, "-n", namespace)
+	if input.Namespace != "" {
+		args = append(args, "-n", input.Namespace)
 	}
 
-	if podName != "" {
-		args = append(args, podName)
+	if input.PodName != "" {
+		args = append(args, input.PodName)
 	}
 
 	result, err := runIstioCtl(ctx, args)
@@ -45,20 +138,21 @@ func runIstioCtl(ctx context.Context, args []string) (string, error) {
 
 // Istio proxy config
 func handleIstioProxyConfig(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	podName := mcp.ParseString(request, "pod_name", "")
-	namespace := mcp.ParseString(request, "namespace", "")
-	configType := mcp.ParseString(request, "config_type", "all")
+	input, err := parseToolArgs(request, proxyConfigArgs{ConfigType: "all"})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	if podName == "" {
+	if input.PodName == "" {
 		return mcp.NewToolResultError("pod_name parameter is required"), nil
 	}
 
-	args := []string{"proxy-config", configType}
+	args := []string{"proxy-config", input.ConfigType}
 
-	if namespace != "" {
-		args = append(args, fmt.Sprintf("%s.%s", podName, namespace))
+	if input.Namespace != "" {
+		args = append(args, fmt.Sprintf("%s.%s", input.PodName, input.Namespace))
 	} else {
-		args = append(args, podName)
+		args = append(args, input.PodName)
 	}
 
 	result, err := runIstioCtl(ctx, args)
@@ -71,9 +165,12 @@ func handleIstioProxyConfig(ctx context.Context, request mcp.CallToolRequest) (*
 
 // Istio install
 func handleIstioInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	profile := mcp.ParseString(request, "profile", "default")
+	input, err := parseToolArgs(request, profileArgs{Profile: "default"})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	args := []string{"install", "--set", fmt.Sprintf("profile=%s", profile), "-y"}
+	args := []string{"install", "--set", fmt.Sprintf("profile=%s", input.Profile), "-y"}
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
@@ -85,9 +182,12 @@ func handleIstioInstall(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 
 // Istio generate manifest
 func handleIstioGenerateManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	profile := mcp.ParseString(request, "profile", "default")
+	input, err := parseToolArgs(request, profileArgs{Profile: "default"})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	args := []string{"manifest", "generate", "--set", fmt.Sprintf("profile=%s", profile)}
+	args := []string{"manifest", "generate", "--set", fmt.Sprintf("profile=%s", input.Profile)}
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
@@ -99,15 +199,17 @@ func handleIstioGenerateManifest(ctx context.Context, request mcp.CallToolReques
 
 // Istio analyze
 func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
+	input, err := parseToolArgs(request, analyzeArgs{})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
 	args := []string{"analyze"}
 
-	if allNamespaces {
+	if bool(input.AllNamespaces) {
 		args = append(args, "-A")
-	} else if namespace != "" {
-		args = append(args, "-n", namespace)
+	} else if input.Namespace != "" {
+		args = append(args, "-n", input.Namespace)
 	}
 
 	result, err := runIstioCtl(ctx, args)
@@ -120,11 +222,14 @@ func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request mcp.Cal
 
 // Istio version
 func handleIstioVersion(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	short := mcp.ParseString(request, "short", "") == "true"
+	input, err := parseToolArgs(request, versionArgs{})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
 	args := []string{"version"}
 
-	if short {
+	if bool(input.Short) {
 		args = append(args, "--short")
 	}
 
@@ -150,15 +255,17 @@ func handleIstioRemoteClusters(ctx context.Context, request mcp.CallToolRequest)
 
 // Waypoint list
 func handleWaypointList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
+	input, err := parseToolArgs(request, waypointListArgs{})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
 	args := []string{"waypoint", "list"}
 
-	if allNamespaces {
+	if bool(input.AllNamespaces) {
 		args = append(args, "-A")
-	} else if namespace != "" {
-		args = append(args, "-n", namespace)
+	} else if input.Namespace != "" {
+		args = append(args, "-n", input.Namespace)
 	}
 
 	result, err := runIstioCtl(ctx, args)
@@ -171,24 +278,25 @@ func handleWaypointList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 
 // Waypoint generate
 func handleWaypointGenerate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	name := mcp.ParseString(request, "name", "waypoint")
-	trafficType := mcp.ParseString(request, "traffic_type", "all")
+	input, err := parseToolArgs(request, waypointGenerateArgs{Name: "waypoint", TrafficType: "all"})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	if namespace == "" {
+	if input.Namespace == "" {
 		return mcp.NewToolResultError("namespace parameter is required"), nil
 	}
 
 	args := []string{"waypoint", "generate"}
 
-	if name != "" {
-		args = append(args, name)
+	if input.Name != "" {
+		args = append(args, input.Name)
 	}
 
-	args = append(args, "-n", namespace)
+	args = append(args, "-n", input.Namespace)
 
-	if trafficType != "" {
-		args = append(args, "--for", trafficType)
+	if input.TrafficType != "" {
+		args = append(args, "--for", input.TrafficType)
 	}
 
 	result, err := runIstioCtl(ctx, args)
@@ -201,16 +309,18 @@ func handleWaypointGenerate(ctx context.Context, request mcp.CallToolRequest) (*
 
 // Waypoint apply
 func handleWaypointApply(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	enrollNamespace := mcp.ParseString(request, "enroll_namespace", "") == "true"
+	input, err := parseToolArgs(request, waypointApplyArgs{})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	if namespace == "" {
+	if input.Namespace == "" {
 		return mcp.NewToolResultError("namespace parameter is required"), nil
 	}
 
-	args := []string{"waypoint", "apply", "-n", namespace}
+	args := []string{"waypoint", "apply", "-n", input.Namespace}
 
-	if enrollNamespace {
+	if bool(input.EnrollNamespace) {
 		args = append(args, "--enroll-namespace")
 	}
 
@@ -224,26 +334,27 @@ func handleWaypointApply(ctx context.Context, request mcp.CallToolRequest) (*mcp
 
 // Waypoint delete
 func handleWaypointDelete(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	names := mcp.ParseString(request, "names", "")
-	all := mcp.ParseString(request, "all", "") == "true"
+	input, err := parseToolArgs(request, waypointDeleteArgs{})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	if namespace == "" {
+	if input.Namespace == "" {
 		return mcp.NewToolResultError("namespace parameter is required"), nil
 	}
 
 	args := []string{"waypoint", "delete"}
 
-	if all {
+	if bool(input.All) {
 		args = append(args, "--all")
-	} else if names != "" {
-		namesList := strings.Split(names, ",")
+	} else if input.Names != "" {
+		namesList := strings.Split(input.Names, ",")
 		for _, name := range namesList {
 			args = append(args, strings.TrimSpace(name))
 		}
 	}
 
-	args = append(args, "-n", namespace)
+	args = append(args, "-n", input.Namespace)
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
@@ -255,20 +366,22 @@ func handleWaypointDelete(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 // Waypoint status
 func handleWaypointStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	name := mcp.ParseString(request, "name", "")
+	input, err := parseToolArgs(request, waypointStatusArgs{})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	if namespace == "" {
+	if input.Namespace == "" {
 		return mcp.NewToolResultError("namespace parameter is required"), nil
 	}
 
 	args := []string{"waypoint", "status"}
 
-	if name != "" {
-		args = append(args, name)
+	if input.Name != "" {
+		args = append(args, input.Name)
 	}
 
-	args = append(args, "-n", namespace)
+	args = append(args, "-n", input.Namespace)
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
@@ -280,13 +393,15 @@ func handleWaypointStatus(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 // Ztunnel config
 func handleZtunnelConfig(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	namespace := mcp.ParseString(request, "namespace", "")
-	configType := mcp.ParseString(request, "config_type", "all")
+	input, err := parseToolArgs(request, ztunnelConfigArgs{ConfigType: "all"})
+	if err != nil {
+		return mcp.NewToolResultError("invalid arguments"), nil
+	}
 
-	args := []string{"ztunnel", "config", configType}
+	args := []string{"ztunnel", "config", input.ConfigType}
 
-	if namespace != "" {
-		args = append(args, "-n", namespace)
+	if input.Namespace != "" {
+		args = append(args, "-n", input.Namespace)
 	}
 
 	result, err := runIstioCtl(ctx, args)
