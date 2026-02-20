@@ -2,13 +2,12 @@ package telemetry
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/kagent-dev/tools/internal/mcpcompat"
 	"github.com/kagent-dev/tools/internal/mcpcompat/server"
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -106,15 +105,18 @@ func WithTracing(toolName string, handler ToolHandler) ToolHandler {
 			)
 		}
 
+		requestID := ""
+		if request.Params != nil {
+			requestID = request.Params.Name
+		}
+
 		span.SetAttributes(
 			attribute.String("mcp.tool.name", toolName),
-			attribute.String("mcp.request.id", request.Params.Name),
+			attribute.String("mcp.request.id", requestID),
 		)
 
-		if request.Params.Arguments != nil {
-			if argsJSON, err := json.Marshal(request.Params.Arguments); err == nil {
-				span.SetAttributes(attribute.String("mcp.request.arguments", string(argsJSON)))
-			}
+		if request.Params != nil && len(request.Params.Arguments) > 0 {
+			span.SetAttributes(attribute.String("mcp.request.arguments", string(request.Params.Arguments)))
 		}
 
 		span.AddEvent("tool.execution.start")

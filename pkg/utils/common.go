@@ -9,8 +9,8 @@ import (
 
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
-	"github.com/kagent-dev/tools/internal/mcpcompat"
 	"github.com/kagent-dev/tools/internal/mcpcompat/server"
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // KubeConfigManager manages kubeconfig path with thread safety
@@ -48,12 +48,12 @@ func AddKubeconfigArgs(args []string) []string {
 	return args
 }
 
-// shellTool provides shell command execution functionality
-type shellParams struct {
-	Command string `json:"command" description:"The shell command to execute"`
+// shellInput provides shell command execution input.
+type shellInput struct {
+	Command string `json:"command" jsonschema:"required" jsonschema_description:"The shell command to execute"`
 }
 
-func shellTool(ctx context.Context, params shellParams) (string, error) {
+func shellTool(ctx context.Context, params shellInput) (string, error) {
 	// Split command into parts (basic implementation)
 	parts := strings.Fields(params.Command)
 	if len(parts) == 0 {
@@ -68,10 +68,11 @@ func shellTool(ctx context.Context, params shellParams) (string, error) {
 
 // handleGetCurrentDateTimeTool provides datetime functionality for both MCP and testing
 func handleGetCurrentDateTimeTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	_ = ctx
+	_ = request
 	// Returns the current date and time in ISO 8601 format (RFC3339)
-	// This matches the Python implementation: datetime.datetime.now().isoformat()
 	now := time.Now()
-	return mcp.NewToolResultText(now.Format(time.RFC3339)), nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: now.Format(time.RFC3339)}}}, nil
 }
 
 func RegisterTools(s *server.MCPServer, readOnly bool) {
@@ -79,29 +80,32 @@ func RegisterTools(s *server.MCPServer, readOnly bool) {
 
 	// Register shell tool - disabled in read-only mode as it allows arbitrary command execution
 	if !readOnly {
-		s.AddTool(mcp.NewTool("shell",
-			mcp.WithDescription("Execute shell commands"),
-			mcp.WithString("command", mcp.Description("The shell command to execute"), mcp.Required()),
-		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			command := mcp.ParseString(request, "command", "")
-			if command == "" {
-				return mcp.NewToolResultError("command parameter is required"), nil
+		mcp.AddTool[shellInput, any](s.Inner(), &mcp.Tool{
+			Name:        "shell",
+			Description: "Execute shell commands",
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input shellInput) (*mcp.CallToolResult, any, error) {
+			if strings.TrimSpace(input.Command) == "" {
+				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "command parameter is required"}}}, nil, nil
 			}
 
-			params := shellParams{Command: command}
-			result, err := shellTool(ctx, params)
+			result, err := shellTool(ctx, input)
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, nil, nil
 			}
 
-			return mcp.NewToolResultText(result), nil
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: result}}}, nil, nil
 		})
 	}
 
 	// Register datetime tool
-	s.AddTool(mcp.NewTool("datetime_get_current_time",
-		mcp.WithDescription("Returns the current date and time in ISO 8601 format."),
-	), handleGetCurrentDateTimeTool)
-
-	// Note: LLM Tool implementation would go here if needed
+	mcp.AddTool[struct{}, any](s.Inner(), &mcp.Tool{
+		Name:        "datetime_get_current_time",
+		Description: "Returns the current date and time in ISO 8601 format.",
+	}, func(ctx context.Context, request *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		if request == nil {
+			request = &mcp.CallToolRequest{}
+		}
+		result, err := handleGetCurrentDateTimeTool(ctx, *request)
+		return result, nil, err
+	})
 }

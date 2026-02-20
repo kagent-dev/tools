@@ -5,21 +5,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kagent-dev/tools/internal/mcpcompat"
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ToolError represents a structured error with context and recovery suggestions
 type ToolError struct {
-	Operation    string                 `json:"operation"`
-	Cause        error                  `json:"cause"`
-	Suggestions  []string               `json:"suggestions"`
-	IsRetryable  bool                   `json:"is_retryable"`
-	Timestamp    time.Time              `json:"timestamp"`
-	ErrorCode    string                 `json:"error_code"`
-	Component    string                 `json:"component"`
-	ResourceType string                 `json:"resource_type,omitempty"`
-	ResourceName string                 `json:"resource_name,omitempty"`
-	Context      map[string]interface{} `json:"context,omitempty"`
+	Operation    string            `json:"operation"`
+	Cause        error             `json:"cause"`
+	Suggestions  []string          `json:"suggestions"`
+	IsRetryable  bool              `json:"is_retryable"`
+	Timestamp    time.Time         `json:"timestamp"`
+	ErrorCode    string            `json:"error_code"`
+	Component    string            `json:"component"`
+	ResourceType string            `json:"resource_type,omitempty"`
+	ResourceName string            `json:"resource_name,omitempty"`
+	Context      map[string]string `json:"context,omitempty"`
 }
 
 // Error implements the error interface
@@ -63,11 +63,11 @@ func (e *ToolError) ToMCPResult() *mcp.CallToolResult {
 	if len(e.Context) > 0 {
 		message.WriteString("\n**📋 Context**:\n")
 		for key, value := range e.Context {
-			message.WriteString(fmt.Sprintf("- %s: %v\n", key, value))
+			message.WriteString(fmt.Sprintf("- %s: %s\n", key, value))
 		}
 	}
 
-	return mcp.NewToolResultError(message.String())
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message.String()}}}
 }
 
 // NewToolError creates a new structured tool error
@@ -80,7 +80,7 @@ func NewToolError(component, operation string, cause error) *ToolError {
 		Timestamp:   time.Now(),
 		ErrorCode:   "UNKNOWN",
 		Component:   component,
-		Context:     make(map[string]interface{}),
+		Context:     make(map[string]string),
 	}
 }
 
@@ -111,7 +111,7 @@ func (e *ToolError) WithResource(resourceType, resourceName string) *ToolError {
 
 // WithContext adds contextual information to the error
 func (e *ToolError) WithContext(key string, value interface{}) *ToolError {
-	e.Context[key] = value
+	e.Context[key] = fmt.Sprint(value)
 	return e
 }
 
