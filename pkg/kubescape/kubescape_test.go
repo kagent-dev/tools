@@ -8,8 +8,8 @@ import (
 
 	"github.com/kubescape/storage/pkg/apis/softwarecomposition/v1beta1"
 	kubescapefake "github.com/kubescape/storage/pkg/generated/clientset/versioned/fake"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"

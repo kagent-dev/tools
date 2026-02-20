@@ -11,8 +11,8 @@ import (
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/pkg/utils"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 )
 
 // Helm list releases

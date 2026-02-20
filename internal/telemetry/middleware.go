@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

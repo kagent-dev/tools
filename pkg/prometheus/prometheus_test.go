@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
 	"github.com/stretchr/testify/assert"
 )
 

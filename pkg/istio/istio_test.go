@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

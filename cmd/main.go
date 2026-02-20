@@ -30,7 +30,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 )
 
 var (

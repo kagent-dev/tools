@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
 )
 
 // Test the actual MCP tool handler functions

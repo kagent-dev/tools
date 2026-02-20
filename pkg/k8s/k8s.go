@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 	"github.com/tmc/langchaingo/llms"
 
 	"github.com/kagent-dev/tools/internal/cache"
@@ -84,7 +84,7 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request mcp.Call
 		args = append(args, "-o", "json")
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Get pod logs
@@ -108,7 +108,7 @@ func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request mcp.Cal
 		args = append(args, "--tail", fmt.Sprintf("%d", tailLines))
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Scale deployment
@@ -123,7 +123,7 @@ func (k *K8sTool) handleScaleDeployment(ctx context.Context, request mcp.CallToo
 
 	args := []string{"scale", "deployment", deploymentName, "--replicas", fmt.Sprintf("%d", replicas), "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Patch resource
@@ -154,7 +154,7 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 
 	args := []string{"patch", resourceType, resourceName, "-p", patch, "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Apply manifest from content
@@ -199,7 +199,7 @@ func (k *K8sTool) handleApplyManifest(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to close temp file: %v", err)), nil
 	}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, "apply", "-f", tmpFile.Name())
+	return k.runKubectlCommandWithCacheInvalidation(ctx, mcp.HTTPHeadersFromContext(ctx), "apply", "-f", tmpFile.Name())
 }
 
 // Delete resource
@@ -214,7 +214,7 @@ func (k *K8sTool) handleDeleteResource(ctx context.Context, request mcp.CallTool
 
 	args := []string{"delete", resourceType, resourceName, "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Check service connectivity
@@ -229,23 +229,23 @@ func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request mc
 	// Create a temporary curl pod for connectivity check
 	podName := fmt.Sprintf("curl-test-%d", rand.Intn(10000))
 	defer func() {
-		_, _ = k.runKubectlCommand(ctx, request.Header, "delete", "pod", podName, "-n", namespace, "--ignore-not-found")
+		_, _ = k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), "delete", "pod", podName, "-n", namespace, "--ignore-not-found")
 	}()
 
 	// Create the curl pod
-	_, err := k.runKubectlCommand(ctx, request.Header, "run", podName, "--image=curlimages/curl", "-n", namespace, "--restart=Never", "--", "sleep", "3600")
+	_, err := k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), "run", podName, "--image=curlimages/curl", "-n", namespace, "--restart=Never", "--", "sleep", "3600")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create curl pod: %v", err)), nil
 	}
 
 	// Wait for pod to be ready
-	_, err = k.runKubectlCommandWithTimeout(ctx, request.Header, 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace)
+	_, err = k.runKubectlCommandWithTimeout(ctx, mcp.HTTPHeadersFromContext(ctx), 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to wait for curl pod: %v", err)), nil
 	}
 
 	// Execute kubectl command
-	return k.runKubectlCommand(ctx, request.Header, "exec", podName, "-n", namespace, "--", "curl", "-s", serviceName)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), "exec", podName, "-n", namespace, "--", "curl", "-s", serviceName)
 }
 
 // Get cluster events
@@ -259,7 +259,7 @@ func (k *K8sTool) handleGetEvents(ctx context.Context, request mcp.CallToolReque
 		args = append(args, "--all-namespaces")
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Execute command in pod
@@ -289,12 +289,12 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolReq
 
 	args := []string{"exec", podName, "-n", namespace, "--", command}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Get available API resources
 func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, request.Header, "api-resources")
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), "api-resources")
 }
 
 // Kubectl describe tool
@@ -312,7 +312,7 @@ func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request mcp.Cal
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Rollout operations
@@ -331,12 +331,12 @@ func (k *K8sTool) handleRollout(ctx context.Context, request mcp.CallToolRequest
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Get cluster configuration
 func (k *K8sTool) handleGetClusterConfiguration(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, request.Header, "config", "view", "-o", "json")
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), "config", "view", "-o", "json")
 }
 
 // Remove annotation
@@ -355,7 +355,7 @@ func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request mcp.CallTo
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Remove label
@@ -374,7 +374,7 @@ func (k *K8sTool) handleRemoveLabel(ctx context.Context, request mcp.CallToolReq
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Annotate resource
@@ -395,7 +395,7 @@ func (k *K8sTool) handleAnnotateResource(ctx context.Context, request mcp.CallTo
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Label resource
@@ -416,7 +416,7 @@ func (k *K8sTool) handleLabelResource(ctx context.Context, request mcp.CallToolR
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Create resource from URL
@@ -433,7 +433,7 @@ func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request mcp.C
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	return k.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 }
 
 // Resource generation embeddings
@@ -645,7 +645,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 			args = append(args, "-n", namespace)
 		}
 
-		result, err := k8sTool.runKubectlCommand(ctx, request.Header, args...)
+		result, err := k8sTool.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), args...)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Get YAML command failed: %v", err)), nil
 		}
@@ -771,7 +771,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 			}
 			tmpFile.Close()
 
-			result, err := k8sTool.runKubectlCommand(ctx, request.Header, "create", "-f", tmpFile.Name())
+			result, err := k8sTool.runKubectlCommand(ctx, mcp.HTTPHeadersFromContext(ctx), "create", "-f", tmpFile.Name())
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("Create command failed: %v", err)), nil
 			}

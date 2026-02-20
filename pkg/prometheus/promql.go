@@ -4,7 +4,7 @@ import (
 	"context"
 	_ "embed"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )

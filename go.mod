@@ -6,7 +6,8 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/kubescape/k8s-interface v0.0.203
 	github.com/kubescape/storage v0.0.239
-	github.com/mark3labs/mcp-go v0.43.2
+	github.com/mark3labs/mcp-go v0.44.0
+	github.com/modelcontextprotocol/go-sdk v1.3.1
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/spf13/cobra v1.10.2
@@ -97,6 +98,7 @@ require (
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-containerregistry v0.20.6 // indirect
+	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/licensecheck v0.3.1 // indirect
 	github.com/google/pprof v0.0.0-20251114195745-4902fdda35c8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -137,6 +139,8 @@ require (
 	github.com/sasha-s/go-deadlock v0.3.6 // indirect
 	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e // indirect
 	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
+	github.com/segmentio/asm v1.1.3 // indirect
+	github.com/segmentio/encoding v0.5.3 // indirect
 	github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect

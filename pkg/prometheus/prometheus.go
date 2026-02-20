@@ -12,8 +12,8 @@ import (
 	"github.com/kagent-dev/tools/internal/errors"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 )
 
 // clientKey is the context key for the http client.

@@ -9,8 +9,8 @@ import (
 
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/kagent-dev/tools/internal/mcpcompat"
+	"github.com/kagent-dev/tools/internal/mcpcompat/server"
 )
 
 // KubeConfigManager manages kubeconfig path with thread safety
