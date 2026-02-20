@@ -114,6 +114,52 @@ type CheckStatus struct {
 	Details interface{} `json:"details,omitempty"`
 }
 
+// Typed response models for MCP payloads.
+type vulnerabilityManifestSummary struct {
+	Namespace             string `json:"namespace"`
+	ManifestName          string `json:"manifest_name"`
+	ImageLevel            bool   `json:"image_level"`
+	WorkloadLevel         bool   `json:"workload_level"`
+	ImageID               string `json:"image_id,omitempty"`
+	ImageTag              string `json:"image_tag,omitempty"`
+	WorkloadID            string `json:"workload_id,omitempty"`
+	WorkloadContainerName string `json:"workload_container_name,omitempty"`
+	VulnerabilityCount    int    `json:"vulnerability_count"`
+}
+
+type listVulnerabilityManifestsResponse struct {
+	VulnerabilityManifests []vulnerabilityManifestSummary `json:"vulnerability_manifests"`
+	TotalCount             int                            `json:"total_count"`
+}
+
+type vulnerabilitySummary struct {
+	ID          string              `json:"id"`
+	Severity    string              `json:"severity"`
+	Description string              `json:"description"`
+	DataSource  v1beta1.DataSource  `json:"data_source"`
+	FixState    v1beta1.FixState    `json:"fix_state,omitempty"`
+	FixVersions []string            `json:"fix_versions,omitempty"`
+}
+
+type listVulnerabilitiesResponse struct {
+	ManifestName    string               `json:"manifest_name"`
+	Namespace       string               `json:"namespace"`
+	TotalCount      int                  `json:"total_count"`
+	SeveritySummary map[string]int       `json:"severity_summary"`
+	Vulnerabilities []vulnerabilitySummary `json:"vulnerabilities"`
+}
+
+type configurationScanSummary struct {
+	Namespace    string `json:"namespace"`
+	ManifestName string `json:"manifest_name"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type listConfigurationScansResponse struct {
+	ConfigurationScans []configurationScanSummary `json:"configuration_scans"`
+	TotalCount         int                        `json:"total_count"`
+}
+
 // handleCheckHealth verifies Kubescape operator installation and readiness
 func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if k.initError != nil {
@@ -502,26 +548,25 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 	}
 
 	// Build response
-	vulnerabilityManifests := []map[string]interface{}{}
+	vulnerabilityManifests := make([]vulnerabilityManifestSummary, 0, len(manifests.Items))
 	for _, manifest := range manifests.Items {
 		isImageLevel := manifest.Annotations[helpersv1.WlidMetadataKey] == ""
-		manifestMap := map[string]interface{}{
-			"namespace":               manifest.Namespace,
-			"manifest_name":           manifest.Name,
-			"image_level":             isImageLevel,
-			"workload_level":          !isImageLevel,
-			"image_id":                manifest.Annotations[helpersv1.ImageIDMetadataKey],
-			"image_tag":               manifest.Annotations[helpersv1.ImageTagMetadataKey],
-			"workload_id":             manifest.Annotations[helpersv1.WlidMetadataKey],
-			"workload_container_name": manifest.Annotations[helpersv1.ContainerNameMetadataKey],
-			"vulnerability_count":     len(manifest.Spec.Payload.Matches),
-		}
-		vulnerabilityManifests = append(vulnerabilityManifests, manifestMap)
+		vulnerabilityManifests = append(vulnerabilityManifests, vulnerabilityManifestSummary{
+			Namespace:             manifest.Namespace,
+			ManifestName:          manifest.Name,
+			ImageLevel:            isImageLevel,
+			WorkloadLevel:         !isImageLevel,
+			ImageID:               manifest.Annotations[helpersv1.ImageIDMetadataKey],
+			ImageTag:              manifest.Annotations[helpersv1.ImageTagMetadataKey],
+			WorkloadID:            manifest.Annotations[helpersv1.WlidMetadataKey],
+			WorkloadContainerName: manifest.Annotations[helpersv1.ContainerNameMetadataKey],
+			VulnerabilityCount:    len(manifest.Spec.Payload.Matches),
+		})
 	}
 
-	result := map[string]interface{}{
-		"vulnerability_manifests": vulnerabilityManifests,
-		"total_count":             len(vulnerabilityManifests),
+	result := listVulnerabilityManifestsResponse{
+		VulnerabilityManifests: vulnerabilityManifests,
+		TotalCount:             len(vulnerabilityManifests),
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
@@ -555,7 +600,7 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 	}
 
 	// Extract vulnerabilities with summary info
-	vulnerabilities := []map[string]interface{}{}
+	vulnerabilities := make([]vulnerabilitySummary, 0, len(manifest.Spec.Payload.Matches))
 	severityCounts := map[string]int{
 		"Critical": 0,
 		"High":     0,
@@ -573,27 +618,27 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 			severityCounts["Unknown"]++
 		}
 
-		vulnInfo := map[string]interface{}{
-			"id":          vuln.ID,
-			"severity":    severity,
-			"description": truncateString(vuln.Description, 200),
-			"data_source": vuln.DataSource,
+		summary := vulnerabilitySummary{
+			ID:          vuln.ID,
+			Severity:    severity,
+			Description: truncateString(vuln.Description, 200),
+			DataSource:  vuln.DataSource,
 		}
 
 		if vuln.Fix.State != "" {
-			vulnInfo["fix_state"] = vuln.Fix.State
-			vulnInfo["fix_versions"] = vuln.Fix.Versions
+			summary.FixState = vuln.Fix.State
+			summary.FixVersions = vuln.Fix.Versions
 		}
 
-		vulnerabilities = append(vulnerabilities, vulnInfo)
+		vulnerabilities = append(vulnerabilities, summary)
 	}
 
-	result := map[string]interface{}{
-		"manifest_name":    manifestName,
-		"namespace":        namespace,
-		"total_count":      len(vulnerabilities),
-		"severity_summary": severityCounts,
-		"vulnerabilities":  vulnerabilities,
+	result := listVulnerabilitiesResponse{
+		ManifestName:    manifestName,
+		Namespace:       namespace,
+		TotalCount:      len(vulnerabilities),
+		SeveritySummary: severityCounts,
+		Vulnerabilities: vulnerabilities,
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
@@ -671,19 +716,18 @@ func (k *KubescapeTool) handleListConfigurationScans(ctx context.Context, reques
 		return toolErr.ToMCPResult(), nil
 	}
 
-	configManifests := []map[string]interface{}{}
+	configManifests := make([]configurationScanSummary, 0, len(manifests.Items))
 	for _, manifest := range manifests.Items {
-		item := map[string]interface{}{
-			"namespace":     manifest.Namespace,
-			"manifest_name": manifest.Name,
-			"created_at":    manifest.CreationTimestamp.Format(time.RFC3339),
-		}
-		configManifests = append(configManifests, item)
+		configManifests = append(configManifests, configurationScanSummary{
+			Namespace:    manifest.Namespace,
+			ManifestName: manifest.Name,
+			CreatedAt:    manifest.CreationTimestamp.Format(time.RFC3339),
+		})
 	}
 
-	result := map[string]interface{}{
-		"configuration_scans": configManifests,
-		"total_count":         len(configManifests),
+	result := listConfigurationScansResponse{
+		ConfigurationScans: configManifests,
+		TotalCount:         len(configManifests),
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
