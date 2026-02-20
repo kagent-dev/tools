@@ -1,44 +1,22 @@
-{{- if not .Values.useDefaultServiceAccount }}
+{{- if and (not .Values.useDefaultServiceAccount) .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  {{- if .Values.rbac.readOnly }}
+  name: {{ include "kagent.fullname" . }}-read-rolebinding
+  {{- else }}
   name: {{ include "kagent.fullname" . }}-cluster-admin-rolebinding
+  {{- end }}
   labels:
     {{- include "kagent.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  {{- if .Values.rbac.readOnly }}
+  name: {{ include "kagent.fullname" . }}-read-role
+  {{- else }}
   name: {{ include "kagent.fullname" . }}-cluster-admin-role
-subjects:
-- kind: ServiceAccount
-  name: {{ include "kagent.fullname" . }}
-  namespace: {{ include "kagent.namespace" . }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ include "kagent.fullname" . }}-getter-rolebinding
-  labels:
-    {{- include "kagent.labels" . | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ include "kagent.fullname" . }}-getter-role
-subjects:
-- kind: ServiceAccount
-  name: {{ include "kagent.fullname" . }}
-  namespace: {{ include "kagent.namespace" . }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ include "kagent.fullname" . }}-writer-rolebinding
-  labels:
-    {{- include "kagent.labels" . | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ include "kagent.fullname" . }}-writer-role
+  {{- end }}
 subjects:
 - kind: ServiceAccount
   name: {{ include "kagent.fullname" . }}
