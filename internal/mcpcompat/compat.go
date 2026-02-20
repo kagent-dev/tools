@@ -9,6 +9,7 @@ import (
 )
 
 type (
+	CallToolParams  = sdkmcp.CallToolParams
 	CallToolRequest = sdkmcp.CallToolRequest
 	CallToolResult  = sdkmcp.CallToolResult
 	Content         = sdkmcp.Content
@@ -64,8 +65,10 @@ func ParseInt(req CallToolRequest, key string, defaultVal int) int {
 	return defaultVal
 }
 
+func NewTextContent(text string) *TextContent { return &TextContent{Text: text} }
+
 func NewToolResultText(text string) *CallToolResult {
-	return &CallToolResult{Content: []Content{&TextContent{Text: text}}}
+	return &CallToolResult{Content: []Content{NewTextContent(text)}}
 }
 
 func NewToolResultError(text string) *CallToolResult {
