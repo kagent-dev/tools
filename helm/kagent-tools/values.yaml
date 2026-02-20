@@ -91,6 +91,25 @@ topologySpreadConstraints: []
 #    topologyKey: topology.kubernetes.io/zone
 #    whenUnsatisfiable: DoNotSchedule
 
+rbac:
+  # When false, no ClusterRole or ClusterRoleBinding are created.
+  # The ServiceAccount is still created allowing you to attach your own roles externally.
+  create: true
+  # When true, deploys a read-only ClusterRole (get, list, watch) instead of cluster-admin.
+  # Pairs well with the --read-only CLI flag which disables write operations at the application layer.
+  # Only applies when rbac.create is true.
+  # Defaults to False as to not introduce breaking changes. Worth revisiting later on.
+  readOnly: false
+  # When readOnly is true, grants read access to Secrets. Default: no access to Secrets.
+  # Ignored when readOnly is false (admin already has full access).
+  allowSecrets: false
+  # Extra rules appended to the read-only ClusterRole.  Useful for granting read access to CRDs (Istio, Cilium, Argo, etc.).
+  # Ignored when readOnly is false (admin already has full access).
+  additionalRules: []
+  #  - apiGroups: ["networking.istio.io"]
+  #    resources: ["virtualservices", "destinationrules", "gateways"]
+  #    verbs: ["get", "list", "watch"]
+
 otel:
   tracing:
     enabled: false
