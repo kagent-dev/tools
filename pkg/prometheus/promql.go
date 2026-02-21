@@ -3,6 +3,7 @@ package prometheus
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 
 	"github.com/kagent-dev/tools/internal/mcpcompat"
 	"github.com/tmc/langchaingo/llms"
@@ -12,8 +13,19 @@ import (
 //go:embed promql_prompt.md
 var promqlPrompt string
 
+type promqlRequest struct {
+	QueryDescription string `json:"query_description"`
+}
+
 func handlePromql(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	queryDescription := mcp.ParseString(request, "query_description", "")
+	var req promqlRequest
+	if request.Params != nil && request.Params.Arguments != nil {
+		if err := json.Unmarshal(request.Params.Arguments, &req); err != nil {
+			return mcp.NewToolResultError("invalid arguments: " + err.Error()), nil
+		}
+	}
+
+	queryDescription := req.QueryDescription
 	if queryDescription == "" {
 		return mcp.NewToolResultError("query_description is required"), nil
 	}

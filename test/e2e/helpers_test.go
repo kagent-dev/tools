@@ -15,9 +15,7 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/commands"
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/client/transport"
-	"github.com/kagent-dev/tools/internal/mcpcompat"
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -164,10 +162,10 @@ func (ts *TestServer) Stop() error {
 	return nil
 }
 
-// MCPClient represents a client for communicating with the MCP server using the official mcp-go client
+// MCPClient represents a client for communicating with the MCP server using the official MCP SDK
 type MCPClient struct {
-	client *client.Client
-	log    *slog.Logger
+	session *mcp.ClientSession
+	log     *slog.Logger
 }
 
 // InstallKAgentTools installs KAgent Tools using helm in the specified namespace
@@ -247,51 +245,43 @@ func InstallKAgentTools(namespace string, releaseName string) {
 	Expect(nodePort).To(Equal("30885"))
 }
 
-// GetMCPClient creates a new MCP client configured for the e2e test environment using the official mcp-go client
+// GetMCPClient creates a new MCP client configured for the e2e test environment using the official MCP SDK
 func GetMCPClient() (*MCPClient, error) {
-	// Create HTTP transport for the MCP server with timeout long enough for operations like Istio installation
-	httpTransport, err := transport.NewStreamableHTTP("http://127.0.0.1:30885/mcp", transport.WithHTTPTimeout(180*time.Second))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP transport: %w", err)
+	transport := &mcp.StreamableClientTransport{
+		Endpoint: "http://127.0.0.1:30885/mcp",
+		HTTPClient: &http.Client{
+			Timeout: 180 * time.Second,
+		},
 	}
 
-	// Create the official MCP client
-	mcpClient := client.NewClient(httpTransport)
+	mcpClient := mcp.NewClient(&mcp.Implementation{
+		Name:    "e2e-test-client",
+		Version: "1.0.0",
+	}, nil)
 
-	// Start the client
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	if err := mcpClient.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start MCP client: %w", err)
-	}
-
-	// Initialize the client
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    "e2e-test-client",
-		Version: "1.0.0",
-	}
-	initRequest.Params.Capabilities = mcp.ClientCapabilities{}
-
-	_, err = mcpClient.Initialize(ctx, initRequest)
+	session, err := mcpClient.Connect(ctx, transport, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize MCP client: %w", err)
+		return nil, fmt.Errorf("failed to connect MCP client: %w", err)
 	}
 
 	mcpHelper := &MCPClient{
-		client: mcpClient,
-		log:    slog.Default(),
+		session: session,
+		log:     slog.Default(),
 	}
 
 	// Validate connection by listing tools
 	tools, err := mcpHelper.listTools()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tools: %w", err)
+	}
 	if len(tools) == 0 {
-		return nil, fmt.Errorf("no tools found in MCP server: %w", err)
+		return nil, fmt.Errorf("no tools found in MCP server")
 	}
 	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885/mcp", "tools", len(tools))
-	return mcpHelper, err
+	return mcpHelper, nil
 }
 
 // listTools calls the tools/list method to get available tools
@@ -299,8 +289,7 @@ func (c *MCPClient) listTools() ([]interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	request := mcp.ListToolsRequest{}
-	result, err := c.client.ListTools(ctx, request)
+	result, err := c.session.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		return nil, err
 	}
@@ -329,14 +318,10 @@ func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
 		Output:       "json",
 	}
 
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "k8s_get_resources",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
+	result, err := c.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "k8s_get_resources",
+		Arguments: arguments,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -361,14 +346,10 @@ func (c *MCPClient) helmListReleases() (interface{}, error) {
 		Output:        "json",
 	}
 
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "helm_list_releases",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
+	result, err := c.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "helm_list_releases",
+		Arguments: arguments,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -391,14 +372,10 @@ func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
 		Profile: profile,
 	}
 
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "istio_install_istio",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
+	result, err := c.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "istio_install_istio",
+		Arguments: arguments,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -423,14 +400,10 @@ func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
 		Output:    "json",
 	}
 
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "argo_rollouts_list",
-			Arguments: arguments,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
+	result, err := c.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "argo_rollouts_list",
+		Arguments: arguments,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -445,14 +418,10 @@ func (c *MCPClient) ciliumStatus() (interface{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	request := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      "cilium_status_and_version",
-			Arguments: nil,
-		},
-	}
-
-	result, err := c.client.CallTool(ctx, request)
+	result, err := c.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "cilium_status_and_version",
+		Arguments: map[string]any{},
+	})
 	if err != nil {
 		return nil, err
 	}

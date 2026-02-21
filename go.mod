@@ -6,7 +6,6 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/kubescape/k8s-interface v0.0.203
 	github.com/kubescape/storage v0.0.239
-	github.com/mark3labs/mcp-go v0.44.0
 	github.com/modelcontextprotocol/go-sdk v1.3.1
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
