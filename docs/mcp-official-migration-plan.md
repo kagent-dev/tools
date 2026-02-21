@@ -1,11 +1,11 @@
 # Official MCP Go SDK Migration Plan
 
 ## Objective
-Remove all usage of `github.com/mark3labs/mcp-go` and migrate fully to `github.com/modelcontextprotocol/go-sdk` with strong typing, stable behavior, and passing tests.
+Remove all usage of the legacy MCP SDK package and migrate fully to `github.com/modelcontextprotocol/go-sdk` with strong typing, stable behavior, and passing tests.
 
 ## Definition of Done
-- `go.mod` has **no** `mark3labs/mcp-go` dependency (direct or required by internal tests).
-- `grep -R "mark3labs/mcp-go" .` returns only historical docs/changelog notes (or zero).
+- `go.mod` has **no** legacy MCP SDK dependency (direct or required by internal tests).
+- Legacy MCP package import grep returns zero matches.
 - `go test ./...` passes.
 - Server runs in stdio and streamable HTTP modes with official SDK.
 - Tool handlers use typed inputs (structs) for business logic.

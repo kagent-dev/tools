@@ -157,7 +157,7 @@ package category
 
 import (
     "context"
-    "github.com/mark3labs/mcp-go/pkg/mcp"
+    "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type Tools struct {
