@@ -27,7 +27,7 @@ kubeadmConfigPatchesJSON6902:
     patch: |
       - op: add
         path: /apiServer/certSANs/-
-        value: docker
+        value: host.docker.internal
 
 # this is the default configuration for nodes
 nodes:
