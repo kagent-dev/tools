@@ -9,6 +9,15 @@ global:
   tag: ""
 
 tools:
+  metrics:
+    # port defaults to the main --port value (same server). Set explicitly for a dedicated metrics port.
+    port: ""
+    servicemonitor:
+      enabled: false
+      interval: 30s
+      scrapeTimeout: 10s
+      labels:
+        release: prometheus
   loglevel: "debug"
   # List of tool providers to enable. Empty list means all tools are enabled.
   # Available: k8s, helm, istio, cilium, argo, prometheus, kubescape, utils
