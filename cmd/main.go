@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/kagent-dev/tools/internal/metrics"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/internal/version"
 	"github.com/kagent-dev/tools/pkg/argo"
@@ -25,16 +27,19 @@ import (
 	"github.com/kagent-dev/tools/pkg/kubescape"
 	"github.com/kagent-dev/tools/pkg/prometheus"
 	"github.com/kagent-dev/tools/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 var (
 	port        int
+	metricsPort int
 	stdio       bool
 	tools       []string
 	kubeconfig  *string
@@ -56,6 +61,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8084, "Port to run the server on")
+	rootCmd.Flags().IntVarP(&metricsPort, "metrics-port", "m", 0, "Port to run the metrics server on (default 0: same as --port)")
 	rootCmd.Flags().BoolVar(&stdio, "stdio", false, "Use stdio for communication instead of HTTP")
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
@@ -90,6 +96,11 @@ func run(cmd *cobra.Command, args []string) {
 	if showVersion {
 		printVersion()
 		return
+	}
+
+	// 0 means "same as --port" - resolve it before any server logic uses it
+	if metricsPort == 0 {
+		metricsPort = port
 	}
 
 	logger.Init(stdio)
@@ -134,8 +145,11 @@ func run(cmd *cobra.Command, args []string) {
 		Version,
 	)
 
-	// Register tools
-	registerMCP(mcp, tools, *kubeconfig, readOnly)
+	// Register tools and wrap handlers with metrics instrumentation.
+	// registerMCP returns a map of tool_name -> tool_provider so that
+	// wrapToolHandlersWithMetrics knows which provider each tool belongs to.
+	toolProviders := registerMCP(mcp, tools, *kubeconfig, readOnly)
+	wrapToolHandlersWithMetrics(mcp, toolProviders)
 
 	// Create wait group for server goroutines
 	var wg sync.WaitGroup
@@ -146,6 +160,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	// HTTP server reference (only used when not in stdio mode)
 	var httpServer *http.Server
+	var metricsServer *http.Server // Separate server for metrics if metricsPort is different from main port
 
 	// Start server based on chosen mode
 	wg.Add(1)
@@ -170,17 +185,40 @@ func run(cmd *cobra.Command, args []string) {
 			}
 		})
 
-		// Add metrics endpoint (basic implementation for e2e tests)
-		mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
-			w.WriteHeader(http.StatusOK)
+		// Add metrics endpoint
+		registry := metrics.InitServer() // Initialize Prometheus metrics before starting the server
 
-			// Generate real runtime metrics instead of hardcoded values
-			metrics := generateRuntimeMetrics()
-			if err := writeResponse(w, []byte(metrics)); err != nil {
-				logger.Get().Error("Failed to write metrics response", "error", err)
+		if metricsPort != port { // Only start a separate metrics server if the metrics port is different from the main server port
+			// Create the metrics server outside the goroutine to avoid a race condition
+			// between the goroutine assigning metricsServer and the shutdown handler reading it
+			metricsMux := http.NewServeMux()
+			metricsMux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+			metricsServer = &http.Server{
+				Addr:    fmt.Sprintf(":%d", metricsPort),
+				Handler: metricsMux,
 			}
-		})
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				logger.Get().Info("Starting Prometheus metrics endpoint on /metrics", "port", strconv.Itoa(metricsPort))
+				if err := metricsServer.ListenAndServe(); err != nil {
+					if !errors.Is(err, http.ErrServerClosed) {
+						logger.Get().Error("Metrics endpoint failed", "error", err)
+					} else {
+						logger.Get().Info("Metrics server closed gracefully.")
+					}
+				}
+			}()
+		} else {
+			logger.Get().Info("Starting Prometheus metrics endpoint on /metrics", "port", strconv.Itoa(port))
+			mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+		}
+		serverMode := "read-write"
+		if readOnly {
+			serverMode = "read-only"
+		}
+		metrics.KagentToolsMCPServerInfo.WithLabelValues(Name, Version, GitCommit, BuildDate, serverMode).Set(1)
 
 		// Handle all other routes with the MCP server wrapped in telemetry middleware
 		mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -229,6 +267,19 @@ func run(cmd *cobra.Command, args []string) {
 				rootSpan.AddEvent("server.shutdown.completed")
 			}
 		}
+
+		// Gracefully shutdown metrics server if running separately
+		if !stdio && metricsServer != nil {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+
+			if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+				logger.Get().Error("Failed to shutdown metrics server gracefully", "error", err)
+				rootSpan.RecordError(err)
+			} else {
+				logger.Get().Info("Metrics server shutdown completed")
+			}
+		}
 	}()
 
 	// Wait for all server operations to complete
@@ -242,47 +293,6 @@ func writeResponse(w http.ResponseWriter, data []byte) error {
 	return err
 }
 
-// generateRuntimeMetrics generates real runtime metrics for the /metrics endpoint
-func generateRuntimeMetrics() string {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	now := time.Now().Unix()
-
-	// Build metrics in Prometheus format
-	metrics := strings.Builder{}
-
-	// Go runtime info
-	metrics.WriteString("# HELP go_info Information about the Go environment.\n")
-	metrics.WriteString("# TYPE go_info gauge\n")
-	metrics.WriteString(fmt.Sprintf("go_info{version=\"%s\"} 1\n", runtime.Version()))
-
-	// Process start time
-	metrics.WriteString("# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n")
-	metrics.WriteString("# TYPE process_start_time_seconds gauge\n")
-	metrics.WriteString(fmt.Sprintf("process_start_time_seconds %d\n", now))
-
-	// Memory metrics
-	metrics.WriteString("# HELP go_memstats_alloc_bytes Number of bytes allocated and still in use.\n")
-	metrics.WriteString("# TYPE go_memstats_alloc_bytes gauge\n")
-	metrics.WriteString(fmt.Sprintf("go_memstats_alloc_bytes %d\n", m.Alloc))
-
-	metrics.WriteString("# HELP go_memstats_total_alloc_bytes Total number of bytes allocated, even if freed.\n")
-	metrics.WriteString("# TYPE go_memstats_total_alloc_bytes counter\n")
-	metrics.WriteString(fmt.Sprintf("go_memstats_total_alloc_bytes %d\n", m.TotalAlloc))
-
-	metrics.WriteString("# HELP go_memstats_sys_bytes Number of bytes obtained from system.\n")
-	metrics.WriteString("# TYPE go_memstats_sys_bytes gauge\n")
-	metrics.WriteString(fmt.Sprintf("go_memstats_sys_bytes %d\n", m.Sys))
-
-	// Goroutine count
-	metrics.WriteString("# HELP go_goroutines Number of goroutines that currently exist.\n")
-	metrics.WriteString("# TYPE go_goroutines gauge\n")
-	metrics.WriteString(fmt.Sprintf("go_goroutines %d\n", runtime.NumGoroutine()))
-
-	return metrics.String()
-}
-
 func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
 	logger.Get().Info("Running KAgent Tools Server STDIO:", "tools", strings.Join(tools, ","))
 	stdioServer := server.NewStdioServer(mcp)
@@ -291,7 +301,11 @@ func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
 	}
 }
 
-func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string, readOnly bool) {
+// registerMCP registers tool providers with the MCP server and returns a mapping
+// of tool_name -> tool_provider. This mapping is built using the ListTools() diff
+// technique: we snapshot the tool list before and after each provider registers,
+// so we know exactly which tools belong to which provider.
+func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string, readOnly bool) map[string]string {
 	// A map to hold tool providers and their registration functions
 	toolProviderMap := map[string]func(*server.MCPServer){
 		"argo":       func(s *server.MCPServer) { argo.RegisterTools(s, readOnly) },
@@ -310,11 +324,83 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 			enabledToolProviders = append(enabledToolProviders, name)
 		}
 	}
+
+	// toolToProvider maps each tool name to its provider (e.g., "kubectl_get" -> "k8s").
+	// This is used later by wrapToolHandlersWithMetrics to set the correct tool_provider label.
+	toolToProvider := make(map[string]string)
+
 	for _, toolProviderName := range enabledToolProviders {
 		if registerFunc, ok := toolProviderMap[toolProviderName]; ok {
+			// Snapshot the tool list before this provider registers its tools.
+			// We need this because ListTools() returns ALL tools from ALL providers,
+			// so the only way to know which tools belong to THIS provider is to compare
+			// the list before and after registration.
+			toolsBefore := mcp.ListTools()
+
 			registerFunc(mcp)
+
+			// Determine which tools were just registered by this provider
+			// by finding tools that exist now but didn't exist before.
+			// Record each one in Prometheus so we can observe the full tool inventory.
+			for toolName := range mcp.ListTools() {
+				if _, existed := toolsBefore[toolName]; !existed {
+					metrics.KagentToolsMCPRegisteredTools.WithLabelValues(toolName, toolProviderName).Set(1)
+					toolToProvider[toolName] = toolProviderName
+				}
+			}
 		} else {
 			logger.Get().Error("Unknown tool specified", "provider", toolProviderName)
 		}
 	}
+
+	return toolToProvider
+}
+
+// wrapToolHandlersWithMetrics applies the wrapper/middleware pattern to instrument
+// all registered MCP tool handlers with Prometheus invocation counters.
+//
+// How it works:
+//  1. Grab all registered tools from the MCP server using ListTools()
+//  2. For each tool, wrap its handler with a function that increments metrics
+//  3. Replace all tools in the MCP server using SetTools()
+//
+// The wrapper function:
+//   - Increments kagent_tools_mcp_invocations_total on every call
+//   - Increments kagent_tools_mcp_invocations_failure_total when the handler returns a
+//     non-nil Go error OR when result.IsError is true (the MCP convention for tool-level
+//     failures - handlers return NewToolResultError(...), nil, not a Go error)
+//   - Calls the original handler unchanged - the tool's behaviour is not affected
+//
+// This uses the standard middleware/decorator pattern: the original handler and the
+// wrapped handler have the same function signature, so they are interchangeable.
+// No changes are required in any pkg/ file - all instrumentation happens centrally here.
+func wrapToolHandlersWithMetrics(mcpServer *server.MCPServer, toolToProvider map[string]string) {
+	allTools := mcpServer.ListTools()
+	wrapped := make([]server.ServerTool, 0, len(allTools))
+
+	for name, st := range allTools {
+		originalHandler := st.Handler
+		toolName := name // capture for closure
+		provider := toolToProvider[toolName]
+
+		wrapped = append(wrapped, server.ServerTool{
+			Tool: st.Tool,
+			Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				metrics.KagentToolsMCPInvocationsTotal.WithLabelValues(toolName, provider).Inc()
+
+				result, err := originalHandler(ctx, req)
+
+				// Count as failure if the Go error is non-nil OR if the tool returned
+				// a result with IsError=true (the MCP convention for tool-level failures,
+				// which always return nil for the Go error).
+				if err != nil || (result != nil && result.IsError) {
+					metrics.KagentToolsMCPInvocationsFailureTotal.WithLabelValues(toolName, provider).Inc()
+				}
+
+				return result, err
+			},
+		})
+	}
+
+	mcpServer.SetTools(wrapped...)
 }

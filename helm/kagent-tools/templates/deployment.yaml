@@ -59,6 +59,8 @@ spec:
           args:
           - "--port"
           - "{{ .Values.service.ports.tools.targetPort }}"
+          - "--metrics-port"
+          - "{{ .Values.tools.metrics.port | default .Values.service.ports.tools.targetPort }}"
           {{- if .Values.tools.enabledTools }}
           - "--tools={{ join "," .Values.tools.enabledTools }}"
           {{- end }}
@@ -99,6 +101,9 @@ spec:
           ports:
             - name: http-tools
               containerPort: {{ .Values.service.ports.tools.targetPort }}
+              protocol: TCP
+            - name: http-metrics
+              containerPort: {{ .Values.tools.metrics.port | default .Values.service.ports.tools.targetPort }}
               protocol: TCP
           readinessProbe:
             tcpSocket:

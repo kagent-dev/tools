@@ -1,0 +1,23 @@
+
+{{- if .Values.tools.metrics.servicemonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "kagent.fullname" . }}
+  namespace: {{ include "kagent.namespace" . }}
+  labels:
+    {{- toYaml .Values.tools.metrics.servicemonitor.labels | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "kagent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: metrics
+  namespaceSelector:
+    matchNames:
+      - {{ include "kagent.namespace" . }}
+  endpoints:
+    - port: prometheus-metrics
+      interval: {{ .Values.tools.metrics.servicemonitor.interval | default "30s" }}
+      scrapeTimeout: {{ .Values.tools.metrics.servicemonitor.scrapeTimeout | default "10s" }}
+      path: {{ .Values.tools.metrics.servicemonitor.path | default "/metrics" }}
+{{- end }}
