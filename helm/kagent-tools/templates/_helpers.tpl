@@ -43,7 +43,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 Selector labels
 */}}
 {{- define "kagent.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "kagent.name" . }}
+app.kubernetes.io/name: {{ include "kagent.fullname" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 

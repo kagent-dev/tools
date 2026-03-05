@@ -171,5 +171,5 @@ tests:
       - equal:
           path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels
           value:
-            app.kubernetes.io/name: kagent-tools
+            app.kubernetes.io/name: RELEASE-NAME
             app.kubernetes.io/instance: RELEASE-NAME
