@@ -264,6 +264,56 @@ func TestHandlePatchResource(t *testing.T) {
 	})
 }
 
+func TestHandlePatchStatus(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("missing parameters", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		k8sTool := newTestK8sTool()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"resource_type": "customresource",
+			// Missing resource_name and patch
+		}
+
+		result, err := k8sTool.handlePatchStatus(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+
+		// Verify no commands were executed since parameters are missing
+		callLog := mock.GetCallLog()
+		assert.Len(t, callLog, 0)
+	})
+
+	t.Run("valid parameters", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `customresource.kagent.dev/test-resource patched`
+		mock.AddCommandString("kubectl", []string{"patch", "customresource", "test-resource", "--subresource=status", "--type=merge", "-p", `{"status":{"phase":"Ready"}}`, "-n", "default"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"resource_type": "customresource",
+			"resource_name": "test-resource",
+			"patch":         `{"status":{"phase":"Ready"}}`,
+		}
+
+		result, err := k8sTool.handlePatchStatus(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Contains(t, resultText, "patched")
+	})
+}
+
 func TestHandleDeleteResource(t *testing.T) {
 	ctx := context.Background()
 
