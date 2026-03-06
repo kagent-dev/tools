@@ -157,6 +157,47 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
 
+// Patch resource status
+func (k *K8sTool) handlePatchStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resourceType := mcp.ParseString(request, "resource_type", "")
+	resourceName := mcp.ParseString(request, "resource_name", "")
+	patch := mcp.ParseString(request, "patch", "")
+	namespace := mcp.ParseString(request, "namespace", "default")
+
+	if resourceType == "" || resourceName == "" || patch == "" {
+		return mcp.NewToolResultError("resource_type, resource_name, and patch parameters are required"), nil
+	}
+
+	// Validate resource name for security
+	if err := security.ValidateK8sResourceName(resourceName); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid resource name: %v", err)), nil
+	}
+
+	// Validate namespace for security
+	if err := security.ValidateNamespace(namespace); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil
+	}
+
+	// Validate patch content as JSON/YAML
+	if err := security.ValidateYAMLContent(patch); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch content: %v", err)), nil
+	}
+
+	args := []string{
+		"patch",
+		resourceType,
+		resourceName,
+		"--subresource=status",
+		"--type=merge",
+		"-p",
+		patch,
+		"-n",
+		namespace,
+	}
+
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
+}
+
 // Apply manifest from content
 func (k *K8sTool) handleApplyManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	manifest := mcp.ParseString(request, "manifest", "")
@@ -682,6 +723,14 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 			mcp.WithString("patch", mcp.Description("JSON patch to apply"), mcp.Required()),
 			mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
 		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_patch_resource", k8sTool.handlePatchResource)))
+
+		s.AddTool(mcp.NewTool("k8s_patch_status",
+			mcp.WithDescription("Patch the status of a Kubernetes resource"),
+			mcp.WithString("resource_type", mcp.Description("Type of resource (deployment, service, etc.)"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
+			mcp.WithString("patch", mcp.Description("JSON/YAML status patch"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_patch_status", k8sTool.handlePatchStatus)))
 
 		s.AddTool(mcp.NewTool("k8s_apply_manifest",
 			mcp.WithDescription("Apply a YAML manifest to the Kubernetes cluster"),
