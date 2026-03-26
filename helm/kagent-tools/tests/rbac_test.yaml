@@ -1,16 +1,16 @@
 suite: test rbac
 templates:
-  - role.yaml
-  - rolebinding.yaml
+  - clusterrole.yaml
+  - clusterrolebinding.yaml
 tests:
   - it: should render clusterroles by default
     asserts:
       - isKind:
           of: ClusterRole
-        template: role.yaml
+        template: clusterrole.yaml
       - isKind:
           of: ClusterRoleBinding
-        template: rolebinding.yaml
+        template: clusterrolebinding.yaml
 
   - it: should render Roles when clusterScoped is false
     set:
@@ -18,18 +18,18 @@ tests:
     asserts:
       - isKind:
           of: Role
-        template: role.yaml
+        template: clusterrole.yaml
       - isKind:
           of: RoleBinding
-        template: rolebinding.yaml
+        template: clusterrolebinding.yaml
       - equal:
           path: metadata.namespace
           value: NAMESPACE
-        template: role.yaml
+        template: clusterrole.yaml
       - equal:
           path: metadata.namespace
           value: NAMESPACE
-        template: rolebinding.yaml
+        template: clusterrolebinding.yaml
 
   - it: should render multiple roles and bindings when namespaces are specified and clusterScoped is false
     set:
@@ -40,27 +40,27 @@ tests:
     asserts:
       - hasDocuments:
           count: 2
-        template: role.yaml
+        template: clusterrole.yaml
       - equal:
           path: metadata.namespace
           value: ns1
-        template: role.yaml
+        template: clusterrole.yaml
         documentIndex: 0
       - equal:
           path: metadata.namespace
           value: ns2
-        template: role.yaml
+        template: clusterrole.yaml
         documentIndex: 1
       - hasDocuments:
           count: 2
-        template: rolebinding.yaml
+        template: clusterrolebinding.yaml
       - equal:
           path: metadata.namespace
           value: ns1
-        template: rolebinding.yaml
+        template: clusterrolebinding.yaml
         documentIndex: 0
       - equal:
           path: metadata.namespace
           value: ns2
-        template: rolebinding.yaml
+        template: clusterrolebinding.yaml
         documentIndex: 1
