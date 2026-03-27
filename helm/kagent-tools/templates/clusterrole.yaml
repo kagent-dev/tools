@@ -1,95 +1,118 @@
-{{- if and (not .Values.useDefaultServiceAccount) .Values.rbac.create }}
+{{- define "kagent-tools.rules" -}}
 {{- if .Values.rbac.readOnly }}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "kagent-tools.fullname" . }}-read-role
-  labels:
-    {{- include "kagent-tools.labels" . | nindent 4 }}
-rules:
-  # Core workload resources
-  - apiGroups: [""]
-    resources:
-      - pods
-      - services
-      - endpoints
-      - configmaps
-      - serviceaccounts
-      - persistentvolumeclaims
-      - replicationcontrollers
-      - namespaces
-    verbs: ["get", "list", "watch"]
+# Core workload resources
+- apiGroups: [""]
+  resources:
+    - pods
+    - services
+    - endpoints
+    - configmaps
+    - serviceaccounts
+    - persistentvolumeclaims
+    - replicationcontrollers
+    - namespaces
+  verbs: ["get", "list", "watch"]
 
-  # Pod logs (subresource)
-  - apiGroups: [""]
-    resources:
-      - pods/log
-    verbs: ["get", "list"]
+# Pod logs (subresource)
+- apiGroups: [""]
+  resources:
+    - pods/log
+  verbs: ["get", "list"]
 
-  # Events
-  - apiGroups: [""]
-    resources:
-      - events
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["events.k8s.io"]
-    resources:
-      - events
-    verbs: ["get", "list", "watch"]
+# Events
+- apiGroups: [""]
+  resources:
+    - events
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["events.k8s.io"]
+  resources:
+    - events
+  verbs: ["get", "list", "watch"]
 
-  # Apps workloads
-  - apiGroups: ["apps"]
-    resources:
-      - deployments
-      - statefulsets
-      - daemonsets
-      - replicasets
-    verbs: ["get", "list", "watch"]
+# Apps workloads
+- apiGroups: ["apps"]
+  resources:
+    - deployments
+    - statefulsets
+    - daemonsets
+    - replicasets
+  verbs: ["get", "list", "watch"]
 
-  # Batch workloads
-  - apiGroups: ["batch"]
-    resources:
-      - jobs
-      - cronjobs
-    verbs: ["get", "list", "watch"]
+# Batch workloads
+- apiGroups: ["batch"]
+  resources:
+    - jobs
+    - cronjobs
+  verbs: ["get", "list", "watch"]
 
-  # Networking
-  - apiGroups: ["networking.k8s.io"]
-    resources:
-      - ingresses
-      - networkpolicies
-    verbs: ["get", "list", "watch"]
+# Networking
+- apiGroups: ["networking.k8s.io"]
+  resources:
+    - ingresses
+    - networkpolicies
+  verbs: ["get", "list", "watch"]
 
-  # Autoscaling
-  - apiGroups: ["autoscaling"]
-    resources:
-      - horizontalpodautoscalers
-    verbs: ["get", "list", "watch"]
+# Autoscaling
+- apiGroups: ["autoscaling"]
+  resources:
+    - horizontalpodautoscalers
+  verbs: ["get", "list", "watch"]
 
-  {{- if .Values.rbac.allowSecrets }}
-  # Secrets (opt-in)
-  - apiGroups: [""]
-    resources:
-      - secrets
-    verbs: ["get", "list", "watch"]
-  {{- end }}
+{{- if .Values.rbac.allowSecrets }}
+# Secrets (opt-in)
+- apiGroups: [""]
+  resources:
+    - secrets
+  verbs: ["get", "list", "watch"]
+{{- end }}
 
-  {{- with .Values.rbac.additionalRules }}
-  # Additional user-defined rules
-  {{- toYaml . | nindent 2 }}
-  {{- end }}
-
+{{- with .Values.rbac.additionalRules }}
+# Additional user-defined rules
+{{- toYaml . | nindent 0 }}
+{{- end }}
 {{- else }}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "kagent-tools.fullname" . }}-cluster-admin-role
-  labels:
-    {{- include "kagent-tools.labels" . | nindent 4 }}
-rules:
 - apiGroups: ["*"]
   resources: ["*"]
   verbs: ["*"]
+{{- if .Values.rbac.clusterScoped }}
 - nonResourceURLs: ["*"]
   verbs: ["*"]
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- if and (not .Values.useDefaultServiceAccount) .Values.rbac.create }}
+{{- if .Values.rbac.clusterScoped }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  {{- if .Values.rbac.readOnly }}
+  name: {{ include "kagent-tools.fullname" . }}-read-role
+  {{- else }}
+  name: {{ include "kagent-tools.fullname" . }}-cluster-admin-role
+  {{- end }}
+  labels:
+    {{- include "kagent-tools.labels" . | nindent 4 }}
+rules:
+  {{- include "kagent-tools.rules" . | nindent 2 }}
+
+{{- else }}
+{{- $namespaces := .Values.rbac.namespaces | default (list (include "kagent-tools.namespace" .)) }}
+{{- range $namespace := $namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  {{- if $.Values.rbac.readOnly }}
+  name: {{ include "kagent-tools.fullname" $ }}-read-role
+  {{- else }}
+  name: {{ include "kagent-tools.fullname" $ }}-cluster-admin-role
+  {{- end }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "kagent-tools.labels" $ | nindent 4 }}
+rules:
+  {{- include "kagent-tools.rules" $ | nindent 2 }}
+{{- end }}
 {{- end }}
 {{- end }}

@@ -1,0 +1,66 @@
+suite: test rbac
+templates:
+  - clusterrole.yaml
+  - clusterrolebinding.yaml
+tests:
+  - it: should render clusterroles by default
+    asserts:
+      - isKind:
+          of: ClusterRole
+        template: clusterrole.yaml
+      - isKind:
+          of: ClusterRoleBinding
+        template: clusterrolebinding.yaml
+
+  - it: should render Roles when clusterScoped is false
+    set:
+      rbac.clusterScoped: false
+    asserts:
+      - isKind:
+          of: Role
+        template: clusterrole.yaml
+      - isKind:
+          of: RoleBinding
+        template: clusterrolebinding.yaml
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+        template: clusterrole.yaml
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+        template: clusterrolebinding.yaml
+
+  - it: should render multiple roles and bindings when namespaces are specified and clusterScoped is false
+    set:
+      rbac.clusterScoped: false
+      rbac.namespaces:
+        - ns1
+        - ns2
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: clusterrole.yaml
+      - equal:
+          path: metadata.namespace
+          value: ns1
+        template: clusterrole.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.namespace
+          value: ns2
+        template: clusterrole.yaml
+        documentIndex: 1
+      - hasDocuments:
+          count: 2
+        template: clusterrolebinding.yaml
+      - equal:
+          path: metadata.namespace
+          value: ns1
+        template: clusterrolebinding.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.namespace
+          value: ns2
+        template: clusterrolebinding.yaml
+        documentIndex: 1

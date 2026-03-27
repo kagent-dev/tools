@@ -1,4 +1,6 @@
 {{- if and (not .Values.useDefaultServiceAccount) .Values.rbac.create }}
+
+{{- if .Values.rbac.clusterScoped }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -21,4 +23,35 @@ subjects:
 - kind: ServiceAccount
   name: {{ include "kagent-tools.fullname" . }}
   namespace: {{ include "kagent-tools.namespace" . }}
+
+{{- else }}
+{{- $namespaces := .Values.rbac.namespaces | default (list (include "kagent-tools.namespace" .)) }}
+{{- range $namespace := $namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  {{- if $.Values.rbac.readOnly }}
+  name: {{ include "kagent-tools.fullname" $ }}-read-rolebinding
+  {{- else }}
+  name: {{ include "kagent-tools.fullname" $ }}-cluster-admin-rolebinding
+  {{- end }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "kagent-tools.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  {{- if $.Values.rbac.readOnly }}
+  name: {{ include "kagent-tools.fullname" $ }}-read-role
+  {{- else }}
+  name: {{ include "kagent-tools.fullname" $ }}-cluster-admin-role
+  {{- end }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kagent-tools.fullname" $ }}
+  namespace: {{ include "kagent-tools.namespace" $ }}
+{{- end }}
+{{- end }}
+
 {{- end }}
