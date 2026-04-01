@@ -3,6 +3,7 @@ package cilium
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/telemetry"
@@ -619,7 +620,8 @@ func runCiliumDbgCommandWithContext(ctx context.Context, command, nodeName strin
 	if err != nil {
 		return "", err
 	}
-	args := []string{"exec", "-it", podName, "--", "cilium-dbg", command}
+	args := []string{"exec", "-n", "kube-system", podName, "--", "cilium-dbg"}
+	args = append(args, strings.Fields(command)...)
 	kubeconfigPath := utils.GetKubeconfig()
 	return commands.NewCommandBuilder("kubectl").
 		WithArgs(args...).
@@ -780,13 +782,13 @@ func handleShowConfigurationOptions(ctx context.Context, request mcp.CallToolReq
 
 	var cmd string
 	if listAll {
-		cmd = "endpoint config --all"
+		cmd = "config --all"
 	} else if listReadOnly {
-		cmd = "endpoint config -r"
+		cmd = "config -r"
 	} else if listOptions {
-		cmd = "endpoint config --list-options"
+		cmd = "config --list-options"
 	} else {
-		cmd = "endpoint config"
+		cmd = "config"
 	}
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
@@ -810,7 +812,7 @@ func handleToggleConfigurationOption(ctx context.Context, request mcp.CallToolRe
 		valueStr = "disable"
 	}
 
-	cmd := fmt.Sprintf("endpoint config %s=%s", option, valueStr)
+	cmd := fmt.Sprintf("config %s=%s", option, valueStr)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to toggle configuration option: %v", err)), nil
@@ -885,7 +887,7 @@ func handleFQDNCache(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 func handleShowDNSNames(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand(ctx, "dns names", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "fqdn names", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to show DNS names: %v", err)), nil
 	}
@@ -1000,7 +1002,7 @@ func handleListBPFMapEvents(ctx context.Context, request mcp.CallToolRequest) (*
 		return mcp.NewToolResultError("map_name parameter is required"), nil
 	}
 
-	cmd := fmt.Sprintf("bpf map events %s", mapName)
+	cmd := fmt.Sprintf("map events %s", mapName)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list BPF map events: %v", err)), nil
@@ -1016,7 +1018,7 @@ func handleGetBPFMap(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 		return mcp.NewToolResultError("map_name parameter is required"), nil
 	}
 
-	cmd := fmt.Sprintf("bpf map get %s", mapName)
+	cmd := fmt.Sprintf("map get %s", mapName)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get BPF map: %v", err)), nil
@@ -1027,7 +1029,7 @@ func handleGetBPFMap(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 func handleListBPFMaps(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand(ctx, "bpf map list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "map list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list BPF maps: %v", err)), nil
 	}
@@ -1055,7 +1057,7 @@ func handleListMetrics(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 func handleListClusterNodes(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	nodeName := mcp.ParseString(request, "node_name", "")
 
-	output, err := runCiliumDbgCommand(ctx, "nodes list", nodeName)
+	output, err := runCiliumDbgCommand(ctx, "node list", nodeName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list cluster nodes: %v", err)), nil
 	}

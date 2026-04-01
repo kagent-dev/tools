@@ -258,6 +258,358 @@ func TestRunCiliumCliWithContext(t *testing.T) {
 	})
 }
 
+// mockCiliumDbgCommand sets up the mock for a cilium-dbg command executed via kubectl exec.
+// It mocks: (1) kubectl get pods to resolve the cilium pod name, (2) kubectl exec to run cilium-dbg.
+func mockCiliumDbgCommand(mock *cmd.MockShellExecutor, dbgArgs []string, output string, err error) {
+	// Mock the pod name lookup
+	mock.AddCommandString("kubectl", []string{
+		"get", "pods", "-n", "kube-system",
+		"--selector=k8s-app=cilium",
+		"--field-selector=spec.nodeName=test-node",
+		"-o", "jsonpath={.items[0].metadata.name}",
+	}, "cilium-abc123", nil)
+
+	// Mock the kubectl exec call
+	execArgs := []string{"exec", "-n", "kube-system", "cilium-abc123", "--", "cilium-dbg"}
+	execArgs = append(execArgs, dbgArgs...)
+	mock.AddCommandString("kubectl", execArgs, output, err)
+}
+
+func newRequestWithArgs(args map[string]any) mcp.CallToolRequest {
+	return mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: args,
+		},
+	}
+}
+
+func TestHandleGetEndpointsList(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"endpoint", "list"}, "ENDPOINT   POLICY\n34   Disabled", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleGetEndpointsList(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "ENDPOINT")
+}
+
+func TestHandleGetEndpointDetails(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"endpoint", "get", "34", "-o", "json"}, `{"id": 34}`, nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"endpoint_id": "34", "node_name": "test-node"})
+	result, err := handleGetEndpointDetails(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), `"id": 34`)
+}
+
+func TestHandleGetEndpointLogs(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"endpoint", "logs", "34"}, "endpoint log output", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"endpoint_id": "34", "node_name": "test-node"})
+	result, err := handleGetEndpointLogs(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "endpoint log output")
+}
+
+func TestHandleGetEndpointHealth(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"endpoint", "health", "34"}, "endpoint health OK", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"endpoint_id": "34", "node_name": "test-node"})
+	result, err := handleGetEndpointHealth(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "endpoint health OK")
+}
+
+func TestHandleShowConfigurationOptions(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		ctx := context.Background()
+		mock := cmd.NewMockShellExecutor()
+		mockCiliumDbgCommand(mock, []string{"config"}, "PolicyEnforcement=default", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+		result, err := handleShowConfigurationOptions(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+		assert.Contains(t, getResultText(result), "PolicyEnforcement")
+	})
+
+	t.Run("all", func(t *testing.T) {
+		ctx := context.Background()
+		mock := cmd.NewMockShellExecutor()
+		mockCiliumDbgCommand(mock, []string{"config", "--all"}, "all config options", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		req := newRequestWithArgs(map[string]any{"node_name": "test-node", "list_all": "true"})
+		result, err := handleShowConfigurationOptions(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+		assert.Contains(t, getResultText(result), "all config options")
+	})
+
+	t.Run("read_only", func(t *testing.T) {
+		ctx := context.Background()
+		mock := cmd.NewMockShellExecutor()
+		mockCiliumDbgCommand(mock, []string{"config", "-r"}, "read only config", nil)
+		ctx = cmd.WithShellExecutor(ctx, mock)
+
+		req := newRequestWithArgs(map[string]any{"node_name": "test-node", "list_read_only": "true"})
+		result, err := handleShowConfigurationOptions(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+		assert.Contains(t, getResultText(result), "read only config")
+	})
+}
+
+func TestHandleToggleConfigurationOption(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"config", "PolicyEnforcement=enable"}, "option toggled", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"option": "PolicyEnforcement", "value": "true", "node_name": "test-node"})
+	result, err := handleToggleConfigurationOption(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "option toggled")
+}
+
+func TestHandleListIdentities(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"identity", "list"}, "ID  LABELS\n1   reserved:host", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListIdentities(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "reserved:host")
+}
+
+func TestHandleGetDaemonStatus(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"status"}, "KVStore: Ok\nKubernetes: Ok", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleGetDaemonStatus(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "KVStore: Ok")
+}
+
+func TestHandleDisplayEncryptionState(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"encrypt", "status"}, "Encryption: Disabled", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleDisplayEncryptionState(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "Encryption: Disabled")
+}
+
+func TestHandleShowDNSNames(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"fqdn", "names"}, "DNS names output", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleShowDNSNames(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "DNS names output")
+}
+
+func TestHandleFQDNCache(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"fqdn", "cache", "list"}, "FQDN cache entries", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleFQDNCache(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "FQDN cache entries")
+}
+
+func TestHandleListClusterNodes(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"node", "list"}, "Name   IPv4 Address\nnode1  10.0.0.1", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListClusterNodes(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "node1")
+}
+
+func TestHandleListNodeIds(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"nodeid", "list"}, "ID   IP\n1   10.0.0.1", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListNodeIds(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "10.0.0.1")
+}
+
+func TestHandleListBPFMaps(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"map", "list"}, "Name   Num entries\ncilium_lb4   22", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListBPFMaps(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "cilium_lb4")
+}
+
+func TestHandleGetBPFMap(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"map", "get", "cilium_lb4"}, "map contents", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"map_name": "cilium_lb4", "node_name": "test-node"})
+	result, err := handleGetBPFMap(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "map contents")
+}
+
+func TestHandleListBPFMapEvents(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"map", "events", "cilium_lb4"}, "map events", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"map_name": "cilium_lb4", "node_name": "test-node"})
+	result, err := handleListBPFMapEvents(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "map events")
+}
+
+func TestHandleListMetrics(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"metrics", "list"}, "Metric   Value\ncilium_endpoint_count   4", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListMetrics(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "cilium_endpoint_count")
+}
+
+func TestHandleListServices(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"service", "list"}, "ID   Frontend\n1   10.96.0.1:443", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListServices(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "10.96.0.1")
+}
+
+func TestHandleListIPAddresses(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"ip", "list"}, "IP   Identity\n10.0.0.1   1", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListIPAddresses(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "10.0.0.1")
+}
+
+func TestHandleDisplaySelectors(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"policy", "selectors"}, "SELECTOR   IDENTITIES", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleDisplaySelectors(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "SELECTOR")
+}
+
+func TestHandleListLocalRedirectPolicies(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"lrp", "list"}, "No local redirect policies", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListLocalRedirectPolicies(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "No local redirect policies")
+}
+
+func TestHandleRequestDebuggingInformation(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"debuginfo"}, "debug info output", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleRequestDebuggingInformation(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "debug info output")
+}
+
+func TestHandleListXDPCIDRFilters(t *testing.T) {
+	ctx := context.Background()
+	mock := cmd.NewMockShellExecutor()
+	mockCiliumDbgCommand(mock, []string{"prefilter", "list"}, "CIDR filters", nil)
+	ctx = cmd.WithShellExecutor(ctx, mock)
+
+	req := newRequestWithArgs(map[string]any{"node_name": "test-node"})
+	result, err := handleListXDPCIDRFilters(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, getResultText(result), "CIDR filters")
+}
+
 func getResultText(r *mcp.CallToolResult) string {
 	if r == nil || len(r.Content) == 0 {
 		return ""
