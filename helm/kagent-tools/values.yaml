@@ -104,11 +104,9 @@ rbac:
   # When false, no ClusterRole or ClusterRoleBinding are created.
   # The ServiceAccount is still created allowing you to attach your own roles externally.
   create: true
-  # -- If true, creates ClusterRole and ClusterRoleBinding resources.
-  # If false, creates Role and RoleBinding resources instead.
-  clusterScoped: true
-  # -- When clusterScoped is false, specify additional namespaces to create Roles and RoleBindings in.
-  # If empty, defaults to the release namespace.
+  # -- Namespaces in which to create Role and RoleBinding resources.
+  # If empty (default), the chart creates cluster-scoped ClusterRole and ClusterRoleBinding resources.
+  # If set, the chart creates a Role + RoleBinding per listed namespace (install namespace must be included).
   namespaces: []
   # When true, deploys a read-only ClusterRole (get, list, watch) instead of cluster-admin.
   # Pairs well with the --read-only CLI flag which disables write operations at the application layer.

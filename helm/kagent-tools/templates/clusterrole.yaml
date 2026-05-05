@@ -74,7 +74,7 @@
 - apiGroups: ["*"]
   resources: ["*"]
   verbs: ["*"]
-{{- if .Values.rbac.clusterScoped }}
+{{- if not .Values.rbac.namespaces }}
 - nonResourceURLs: ["*"]
   verbs: ["*"]
 {{- end }}
@@ -82,23 +82,9 @@
 {{- end -}}
 
 {{- if and (not .Values.useDefaultServiceAccount) .Values.rbac.create }}
-{{- if .Values.rbac.clusterScoped }}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  {{- if .Values.rbac.readOnly }}
-  name: {{ include "kagent-tools.fullname" . }}-read-role
-  {{- else }}
-  name: {{ include "kagent-tools.fullname" . }}-cluster-admin-role
-  {{- end }}
-  labels:
-    {{- include "kagent-tools.labels" . | nindent 4 }}
-rules:
-  {{- include "kagent-tools.rules" . | nindent 2 }}
-
-{{- else }}
-{{- $namespaces := .Values.rbac.namespaces | default (list (include "kagent-tools.namespace" .)) }}
-{{- range $namespace := $namespaces }}
+{{- include "kagent-tools.rbac.validate" . -}}
+{{- if .Values.rbac.namespaces }}
+{{- range $namespace := (.Values.rbac.namespaces | uniq | sortAlpha) }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -114,5 +100,19 @@ metadata:
 rules:
   {{- include "kagent-tools.rules" $ | nindent 2 }}
 {{- end }}
+
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  {{- if .Values.rbac.readOnly }}
+  name: {{ include "kagent-tools.fullname" . }}-read-role
+  {{- else }}
+  name: {{ include "kagent-tools.fullname" . }}-cluster-admin-role
+  {{- end }}
+  labels:
+    {{- include "kagent-tools.labels" . | nindent 4 }}
+rules:
+  {{- include "kagent-tools.rules" . | nindent 2 }}
 {{- end }}
 {{- end }}
