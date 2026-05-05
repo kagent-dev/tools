@@ -106,7 +106,8 @@ spec:
               containerPort: {{ .Values.tools.metrics.port | default .Values.service.ports.tools.targetPort }}
               protocol: TCP
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health
               port: http-tools
             initialDelaySeconds: 15
             periodSeconds: 15
