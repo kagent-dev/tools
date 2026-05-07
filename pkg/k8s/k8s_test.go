@@ -1585,3 +1585,71 @@ metadata:
 		assert.NotContains(t, callLog[0].Args, "--token")
 	})
 }
+
+func TestHandleWaitForCondition(t *testing.T) {
+	k8sTool := newTestK8sTool()
+
+	tests := []struct {
+		name    string
+		args    map[string]interface{}
+		mock    []string
+		mockErr error
+		wantErr bool
+	}{
+		{
+			name: "success with defaults",
+			args: map[string]interface{}{"resource_type": "deployment", "resource_name": "myapp", "condition": "Available"},
+			mock: []string{"wait", "deployment/myapp", "--for=condition=Available", "-n", "default", "--timeout=60s"},
+		},
+		{
+			name: "success with explicit namespace and timeout",
+			args: map[string]interface{}{"resource_type": "pod", "resource_name": "mypod", "condition": "Ready", "namespace": "kube-system", "timeout_seconds": float64(120)},
+			mock: []string{"wait", "pod/mypod", "--for=condition=Ready", "-n", "kube-system", "--timeout=120s"},
+		},
+		{
+			name:    "missing resource_type",
+			args:    map[string]interface{}{"resource_name": "myapp", "condition": "Available"},
+			wantErr: true,
+		},
+		{
+			name:    "missing resource_name",
+			args:    map[string]interface{}{"resource_type": "deployment", "condition": "Available"},
+			wantErr: true,
+		},
+		{
+			name:    "missing condition",
+			args:    map[string]interface{}{"resource_type": "deployment", "resource_name": "myapp"},
+			wantErr: true,
+		},
+		{
+			name:    "zero timeout",
+			args:    map[string]interface{}{"resource_type": "deployment", "resource_name": "myapp", "condition": "Available", "timeout_seconds": float64(0)},
+			wantErr: true,
+		},
+		{
+			name:    "kubectl error propagated",
+			args:    map[string]interface{}{"resource_type": "deployment", "resource_name": "slow-app", "condition": "Available", "timeout_seconds": float64(5)},
+			mock:    []string{"wait", "deployment/slow-app", "--for=condition=Available", "-n", "default", "--timeout=5s"},
+			mockErr: assert.AnError,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := cmd.NewMockShellExecutor()
+			if tt.mock != nil {
+				mock.AddCommandString("kubectl", tt.mock, "", tt.mockErr)
+			}
+			ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = tt.args
+
+			result, err := k8sTool.handleWaitForCondition(ctx, req)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+			assert.Equal(t, tt.wantErr, result.IsError)
+		})
+	}
+}
