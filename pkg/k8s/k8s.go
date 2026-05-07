@@ -571,6 +571,28 @@ func (k *K8sTool) handleGenerateResource(ctx context.Context, request mcp.CallTo
 	return mcp.NewToolResultText(responseText), nil
 }
 
+func (k *K8sTool) handleWaitForCondition(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resourceType := mcp.ParseString(request, "resource_type", "")
+	resourceName := mcp.ParseString(request, "resource_name", "")
+	condition := mcp.ParseString(request, "condition", "")
+	namespace := mcp.ParseString(request, "namespace", "default")
+	timeoutSeconds := mcp.ParseInt(request, "timeout_seconds", 60)
+
+	if resourceType == "" || resourceName == "" || condition == "" {
+		return mcp.NewToolResultError("resource_type, resource_name, and condition are required"), nil
+	}
+	if timeoutSeconds <= 0 {
+		return mcp.NewToolResultError("timeout_seconds must be greater than zero"), nil
+	}
+
+	return k.runKubectlCommand(ctx, request.Header,
+		"wait", resourceType+"/"+resourceName,
+		"--for=condition="+condition,
+		"-n", namespace,
+		"--timeout="+fmt.Sprintf("%ds", timeoutSeconds),
+	)
+}
+
 // extractBearerToken extracts the Bearer token from the Authorization header
 func extractBearerToken(headers http.Header) string {
 	if auth := headers.Get("Authorization"); auth != "" {
@@ -706,6 +728,15 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 		mcp.WithString("resource_description", mcp.Description("Detailed description of the resource to generate"), mcp.Required()),
 		mcp.WithString("resource_type", mcp.Description(fmt.Sprintf("Type of resource to generate (%s)", strings.Join(slices.Collect(resourceTypes), ", "))), mcp.Required()),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_generate_resource", k8sTool.handleGenerateResource)))
+
+	s.AddTool(mcp.NewTool("k8s_wait_for_condition",
+		mcp.WithDescription("Wait until a Kubernetes resource reaches a specific condition. Uses kubectl wait under the hood and blocks until the condition is met or the timeout expires. Avoids polling loops and saves LLM turns."),
+		mcp.WithString("resource_type", mcp.Description("Type of resource (deployment, pod, job, etc.)"), mcp.Required()),
+		mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
+		mcp.WithString("condition", mcp.Description("Condition to wait for (Available, Ready, Complete, etc.)"), mcp.Required()),
+		mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
+		mcp.WithNumber("timeout_seconds", mcp.Description("Maximum time to wait in seconds (default: 60)")),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_wait_for_condition", k8sTool.handleWaitForCondition)))
 
 	// Write tools - only registered when write operations are enabled
 	if !readOnly {
