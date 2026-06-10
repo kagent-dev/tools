@@ -111,4 +111,9 @@ spec:
               port: http-tools
             initialDelaySeconds: 15
             periodSeconds: 15
-
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
