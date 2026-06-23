@@ -66,6 +66,20 @@ func shellTool(ctx context.Context, params shellParams) (string, error) {
 	return commands.NewCommandBuilder(cmd).WithArgs(args...).Execute(ctx)
 }
 
+func handleShellTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	command := mcp.ParseString(request, "command", "")
+	if command == "" {
+		return mcp.NewToolResultError("command parameter is required"), nil
+	}
+
+	result, err := shellTool(ctx, shellParams{Command: command})
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(result), nil
+}
+
 // handleGetCurrentDateTimeTool provides datetime functionality for both MCP and testing
 func handleGetCurrentDateTimeTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Returns the current date and time in ISO 8601 format (RFC3339)
@@ -82,20 +96,7 @@ func RegisterTools(s *server.MCPServer, readOnly bool) {
 		s.AddTool(mcp.NewTool("shell",
 			mcp.WithDescription("Execute shell commands"),
 			mcp.WithString("command", mcp.Description("The shell command to execute"), mcp.Required()),
-		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			command := mcp.ParseString(request, "command", "")
-			if command == "" {
-				return mcp.NewToolResultError("command parameter is required"), nil
-			}
-
-			params := shellParams{Command: command}
-			result, err := shellTool(ctx, params)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-
-			return mcp.NewToolResultText(result), nil
-		})
+		), handleShellTool)
 	}
 
 	// Register datetime tool

@@ -7,10 +7,27 @@ import (
 
 	"github.com/kagent-dev/tools/internal/cmd"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tmc/langchaingo/llms"
 )
+
+func TestRegisterTools(t *testing.T) {
+	t.Run("read-write", func(t *testing.T) {
+		s := server.NewMCPServer("test", "v0.0.1")
+		RegisterTools(s, nil, "", false)
+	})
+	t.Run("read-only", func(t *testing.T) {
+		s := server.NewMCPServer("test", "v0.0.1")
+		RegisterTools(s, nil, "/tmp/kubeconfig", true)
+	})
+}
+
+func TestNewK8sToolWithConfig(t *testing.T) {
+	tool := NewK8sToolWithConfig("/tmp/kc", nil)
+	assert.Equal(t, "/tmp/kc", tool.kubeconfig)
+}
 
 // Helper function to create a test K8sTool
 func newTestK8sTool() *K8sTool {

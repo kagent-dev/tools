@@ -355,3 +355,143 @@ func TestIstioErrorHandling(t *testing.T) {
 		assert.True(t, result.IsError)
 	})
 }
+
+func TestHandleWaypointApply(t *testing.T) {
+	t.Run("basic apply", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default"}, "applied", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"namespace": "default"}
+		result, err := handleWaypointApply(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("apply with enroll-namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default", "--enroll-namespace"}, "applied", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"namespace": "default", "enroll_namespace": "true"}
+		result, err := handleWaypointApply(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("missing namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleWaypointApply(ctx, mcp.CallToolRequest{})
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
+
+	t.Run("command failure", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default"}, "", assert.AnError)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"namespace": "default"}
+		result, err := handleWaypointApply(ctx, req)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
+}
+
+func TestHandleWaypointDelete(t *testing.T) {
+	t.Run("delete all", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "delete", "--all", "-n", "default"}, "deleted", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"namespace": "default", "all": "true"}
+		result, err := handleWaypointDelete(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("delete by names", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "delete", "wp1", "wp2", "-n", "default"}, "deleted", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"namespace": "default", "names": "wp1, wp2"}
+		result, err := handleWaypointDelete(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("missing namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleWaypointDelete(ctx, mcp.CallToolRequest{})
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
+}
+
+func TestHandleWaypointStatus(t *testing.T) {
+	t.Run("status with name", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "status", "wp1", "-n", "default"}, "status", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"namespace": "default", "name": "wp1"}
+		result, err := handleWaypointStatus(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("status without name", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"waypoint", "status", "-n", "default"}, "status", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"namespace": "default"}
+		result, err := handleWaypointStatus(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("missing namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleWaypointStatus(ctx, mcp.CallToolRequest{})
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
+}
+
+func TestHandleZtunnelConfig(t *testing.T) {
+	t.Run("default config type", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"ztunnel", "config", "all"}, "ztunnel config", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleZtunnelConfig(ctx, mcp.CallToolRequest{})
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("with namespace and config type", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"ztunnel", "config", "workloads", "-n", "istio-system"}, "ztunnel config", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"config_type": "workloads", "namespace": "istio-system"}
+		result, err := handleZtunnelConfig(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("command failure", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("istioctl", []string{"ztunnel", "config", "all"}, "", assert.AnError)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleZtunnelConfig(ctx, mcp.CallToolRequest{})
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
+}
