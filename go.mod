@@ -1,6 +1,6 @@
 module github.com/kagent-dev/tools
 
-go 1.26.1
+go 1.26.4
 
 require (
 	github.com/joho/godotenv v1.5.1

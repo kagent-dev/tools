@@ -7,9 +7,165 @@ import (
 
 	"github.com/kagent-dev/tools/internal/cmd"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRegisterTools(t *testing.T) {
+	t.Run("read-write", func(t *testing.T) {
+		s := server.NewMCPServer("test", "v0.0.1")
+		RegisterTools(s, false)
+	})
+	t.Run("read-only", func(t *testing.T) {
+		s := server.NewMCPServer("test", "v0.0.1")
+		RegisterTools(s, true)
+	})
+}
+
+func TestHandleListRollouts(t *testing.T) {
+	t.Run("default namespace and type", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "list", "rollouts", "-n", "argo-rollouts"}, "NAME STATUS\nmyapp Healthy", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		result, err := handleListRollouts(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+		assert.Contains(t, getResultText(result), "myapp")
+	})
+
+	t.Run("experiments type custom namespace", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "list", "experiments", "-n", "prod"}, "NAME", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"type": "experiments", "namespace": "prod"}
+		result, err := handleListRollouts(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+	})
+
+	t.Run("command failure", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "list", "rollouts", "-n", "argo-rollouts"}, "", assert.AnError)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		result, err := handleListRollouts(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.True(t, result.IsError)
+		assert.Contains(t, getResultText(result), "Error listing rollouts")
+	})
+}
+
+func TestHandleCheckPluginLogs(t *testing.T) {
+	t.Run("plugin install found in logs", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		logs := `Downloading plugin argoproj-labs/gatewayAPI from: https://github.com/x/releases/download/v0.5.0/gatewayapi-plugin-linux-amd64"
+Download complete, it took 1.5s`
+		mock.AddCommandString("kubectl", []string{"logs", "-n", "argo-rollouts", "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}, logs, nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		result, err := handleCheckPluginLogs(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.Contains(t, getResultText(result), "0.5.0")
+		assert.Contains(t, getResultText(result), `"installed": true`)
+	})
+
+	t.Run("plugin install not found", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"logs", "-n", "argo-rollouts", "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}, "no plugin here", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		result, err := handleCheckPluginLogs(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.Contains(t, getResultText(result), "Plugin installation not found")
+	})
+
+	t.Run("command failure", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"logs", "-n", "argo-rollouts", "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}, "", assert.AnError)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		result, err := handleCheckPluginLogs(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.Contains(t, getResultText(result), `"installed": false`)
+	})
+}
+
+func TestConfigureGatewayPlugin(t *testing.T) {
+	t.Run("applies configmap successfully", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "configmap/argo-rollouts-config created", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		status := configureGatewayPlugin(ctx, "0.5.0", "argo-rollouts")
+		assert.True(t, status.Installed)
+		assert.Equal(t, "0.5.0", status.Version)
+		assert.NotEmpty(t, status.Architecture)
+	})
+
+	t.Run("apply failure", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "", assert.AnError)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		status := configureGatewayPlugin(ctx, "0.5.0", "argo-rollouts")
+		assert.False(t, status.Installed)
+		assert.Contains(t, status.ErrorMessage, "Error applying Gateway API plugin config")
+	})
+}
+
+func TestHandleVerifyGatewayPluginAlreadyConfigured(t *testing.T) {
+	mock := cmd.NewMockShellExecutor()
+	mock.AddCommandString("kubectl", []string{"get", "configmap", "argo-rollouts-config", "-n", "argo-rollouts", "-o", "yaml"}, "data:\n  trafficRouterPlugins: argoproj-labs/gatewayAPI", nil)
+	ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+	result, err := handleVerifyGatewayPlugin(ctx, mcp.CallToolRequest{})
+	assert.NoError(t, err)
+	assert.Contains(t, getResultText(result), "already configured")
+}
+
+func TestHandleVerifyArgoRolloutsControllerInstallStatuses(t *testing.T) {
+	baseCmd := []string{"get", "pods", "-n", "argo-rollouts", "-l", "app.kubernetes.io/component=rollouts-controller", "-o", "jsonpath={.items[*].status.phase}"}
+
+	t.Run("all running", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", baseCmd, "Running Running", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleVerifyArgoRolloutsControllerInstall(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.Contains(t, getResultText(result), "All pods are running")
+	})
+
+	t.Run("not all running", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", baseCmd, "Running Pending", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleVerifyArgoRolloutsControllerInstall(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.Contains(t, getResultText(result), "Not all pods are running")
+	})
+
+	t.Run("no pods", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", baseCmd, "", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleVerifyArgoRolloutsControllerInstall(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.Contains(t, getResultText(result), "No pods found")
+	})
+
+	t.Run("command error", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", baseCmd, "", assert.AnError)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+		result, err := handleVerifyArgoRolloutsControllerInstall(ctx, mcp.CallToolRequest{})
+		assert.NoError(t, err)
+		assert.True(t, result.IsError)
+	})
+}
 
 // Helper function to extract text content from MCP result
 func getResultText(result *mcp.CallToolResult) string {
