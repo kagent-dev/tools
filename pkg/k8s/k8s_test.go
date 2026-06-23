@@ -242,7 +242,7 @@ func TestHandlePatchResource(t *testing.T) {
 	t.Run("valid parameters", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment patched`
-		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "-p", `{"spec":{"replicas":5}}`, "-n", "default"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "--type=strategic", "-p", `{"spec":{"replicas":5}}`, "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -261,6 +261,55 @@ func TestHandlePatchResource(t *testing.T) {
 
 		resultText := getResultText(result)
 		assert.Contains(t, resultText, "patched")
+	})
+
+	t.Run("merge patch type for CustomResource", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `installer.composition.krateo.io/installer patched`
+		mock.AddCommandString("kubectl", []string{"patch", "installers.composition.krateo.io", "installer", "--type=merge", "-p", `{"spec":{"features":{"composableportal":true}}}`, "-n", "krateo-system"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"resource_type": "installers.composition.krateo.io",
+			"resource_name": "installer",
+			"patch":         `{"spec":{"features":{"composableportal":true}}}`,
+			"patch_type":    "merge",
+			"namespace":     "krateo-system",
+		}
+
+		result, err := k8sTool.handlePatchResource(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Contains(t, resultText, "patched")
+	})
+
+	t.Run("invalid patch type", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		k8sTool := newTestK8sTool()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"resource_type": "deployment",
+			"resource_name": "test-deployment",
+			"patch":         `{"spec":{"replicas":5}}`,
+			"patch_type":    "bogus",
+		}
+
+		result, err := k8sTool.handlePatchResource(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
+
+		// No command should run for an invalid patch type.
+		assert.Len(t, mock.GetCallLog(), 0)
 	})
 }
 
@@ -1232,7 +1281,7 @@ log line 2`
 	t.Run("patch resource with bearer token", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `deployment.apps/test-deployment patched`
-		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "-p", `{"spec":{"replicas":5}}`, "-n", "default", "--token", "patch-token"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"patch", "deployment", "test-deployment", "--type=strategic", "-p", `{"spec":{"replicas":5}}`, "-n", "default", "--token", "patch-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)

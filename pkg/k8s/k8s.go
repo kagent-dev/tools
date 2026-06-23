@@ -132,9 +132,18 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 	resourceName := mcp.ParseString(request, "resource_name", "")
 	patch := mcp.ParseString(request, "patch", "")
 	namespace := mcp.ParseString(request, "namespace", "default")
+	patchType := mcp.ParseString(request, "patch_type", "strategic")
 
 	if resourceType == "" || resourceName == "" || patch == "" {
 		return mcp.NewToolResultError("resource_type, resource_name, and patch parameters are required"), nil
+	}
+
+	// Validate patch type. "strategic" is only implemented for built-in Kubernetes
+	// types; CustomResources (CRDs) reject it and require "merge" or "json".
+	switch patchType {
+	case "strategic", "merge", "json":
+	default:
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch_type %q: must be one of strategic, merge, json", patchType)), nil
 	}
 
 	// Validate resource name for security
@@ -152,7 +161,7 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch content: %v", err)), nil
 	}
 
-	args := []string{"patch", resourceType, resourceName, "-p", patch, "-n", namespace}
+	args := []string{"patch", resourceType, resourceName, "--type=" + patchType, "-p", patch, "-n", namespace}
 
 	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
@@ -717,10 +726,11 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_scale", k8sTool.handleScaleDeployment)))
 
 		s.AddTool(mcp.NewTool("k8s_patch_resource",
-			mcp.WithDescription("Patch a Kubernetes resource using strategic merge patch"),
+			mcp.WithDescription("Patch a Kubernetes resource. Defaults to a strategic merge patch, which is only supported for built-in types; set patch_type to \"merge\" (or \"json\") to patch a CustomResource/CRD."),
 			mcp.WithString("resource_type", mcp.Description("Type of resource (deployment, service, etc.)"), mcp.Required()),
 			mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
 			mcp.WithString("patch", mcp.Description("JSON patch to apply"), mcp.Required()),
+			mcp.WithString("patch_type", mcp.Description("Patch strategy: \"strategic\" (default; built-in Kubernetes types only), \"merge\" (RFC 7386 JSON merge patch; required for CustomResources/CRDs), or \"json\" (RFC 6902 JSON patch).")),
 			mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
 		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_patch_resource", k8sTool.handlePatchResource)))
 
