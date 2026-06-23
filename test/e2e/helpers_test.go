@@ -275,7 +275,13 @@ func GetMCPClient() (*MCPClient, error) {
 	}
 	initRequest.Params.Capabilities = mcp.ClientCapabilities{}
 
-	_, err = mcpClient.Initialize(ctx, initRequest)
+	err = retryUntilSuccess(45*time.Second, 2*time.Second, func() error {
+		initCtx, initCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer initCancel()
+
+		_, initErr := mcpClient.Initialize(initCtx, initRequest)
+		return initErr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize MCP client: %w", err)
 	}
@@ -285,13 +291,49 @@ func GetMCPClient() (*MCPClient, error) {
 		log:    slog.Default(),
 	}
 
-	// Validate connection by listing tools
-	tools, err := mcpHelper.listTools()
-	if len(tools) == 0 {
-		return nil, fmt.Errorf("no tools found in MCP server: %w", err)
+	// Validate connection by listing tools. This can fail briefly while tools finish registering.
+	var tools []interface{}
+	err = retryUntilSuccess(30*time.Second, 2*time.Second, func() error {
+		listedTools, listErr := mcpHelper.listTools()
+		if listErr != nil {
+			return listErr
+		}
+		if len(listedTools) == 0 {
+			return fmt.Errorf("no tools found in MCP server")
+		}
+		tools = listedTools
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate MCP client tools: %w", err)
 	}
 	slog.Default().Info("MCP Client created", "baseURL", "http://127.0.0.1:30885/mcp", "tools", len(tools))
 	return mcpHelper, err
+}
+
+func retryUntilSuccess(timeout, interval time.Duration, operation func() error) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+
+	for {
+		lastErr = operation()
+		if lastErr == nil {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+
+		sleepFor := interval
+		if remaining := time.Until(deadline); sleepFor > remaining {
+			sleepFor = remaining
+		}
+		if sleepFor <= 0 {
+			return lastErr
+		}
+		time.Sleep(sleepFor)
+	}
 }
 
 // listTools calls the tools/list method to get available tools
