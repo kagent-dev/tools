@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/errors"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/internal/security"
-	"github.com/kagent-dev/tools/internal/telemetry"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // clientKey is the context key for the http client.
@@ -26,24 +24,35 @@ func getHTTPClient(ctx context.Context) *http.Client {
 	return http.DefaultClient
 }
 
-// Prometheus tools using direct HTTP API calls
+// prometheusErrResult adapts ToolError to an MCP error result.
+func prometheusErrResult(toolErr *errors.ToolError) *mcp.CallToolResult {
+	return toolErr.ToMCPResult()
+}
 
-func handlePrometheusQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
-	query := mcp.ParseString(request, "query", "")
+type prometheusQueryInput struct {
+	Query         string `json:"query" jsonschema:"PromQL query to execute"`
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+}
+
+func handlePrometheusQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusQueryInput) (*mcp.CallToolResult, any, error) {
+	prometheusURL := in.PrometheusURL
+	if prometheusURL == "" {
+		prometheusURL = "http://localhost:9090"
+	}
+	query := in.Query
 
 	if query == "" {
-		return mcp.NewToolResultError("query parameter is required"), nil
+		return mcp.NewToolResultError("query parameter is required"), nil, nil
 	}
 
 	// Validate prometheus URL
 	if err := security.ValidateURL(prometheusURL); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil, nil
 	}
 
 	// Validate PromQL query
 	if err := security.ValidatePromQLQuery(query); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid PromQL query: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid PromQL query: %v", err)), nil, nil
 	}
 
 	// Make request to Prometheus API
@@ -60,7 +69,7 @@ func handlePrometheusQueryTool(ctx context.Context, request mcp.CallToolRequest)
 		toolErr := errors.NewPrometheusError("create_request", err).
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("query", query)
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 
 	resp, err := client.Do(req)
@@ -69,7 +78,7 @@ func handlePrometheusQueryTool(ctx context.Context, request mcp.CallToolRequest)
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("query", query).
 			WithContext("api_url", apiURL)
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 	defer resp.Body.Close()
 
@@ -79,7 +88,7 @@ func handlePrometheusQueryTool(ctx context.Context, request mcp.CallToolRequest)
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("query", query).
 			WithContext("status_code", resp.StatusCode)
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -88,58 +97,72 @@ func handlePrometheusQueryTool(ctx context.Context, request mcp.CallToolRequest)
 			WithContext("query", query).
 			WithContext("status_code", resp.StatusCode).
 			WithContext("response_body", string(body))
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 
 	// Parse the JSON response to pretty-print it
 	var result interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
 	prettyJSON, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
-	return mcp.NewToolResultText(string(prettyJSON)), nil
+	return mcp.NewToolResultText(string(prettyJSON)), nil, nil
 }
 
-func handlePrometheusRangeQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
-	query := mcp.ParseString(request, "query", "")
-	start := mcp.ParseString(request, "start", "")
-	end := mcp.ParseString(request, "end", "")
-	step := mcp.ParseString(request, "step", "15s")
+type prometheusRangeQueryInput struct {
+	Query         string `json:"query" jsonschema:"PromQL query to execute"`
+	Start         string `json:"start" jsonschema:"Start time (Unix timestamp or relative time)"`
+	End           string `json:"end" jsonschema:"End time (Unix timestamp or relative time)"`
+	Step          string `json:"step" jsonschema:"Query resolution step (default: 15s)"`
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+}
+
+func handlePrometheusRangeQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusRangeQueryInput) (*mcp.CallToolResult, any, error) {
+	prometheusURL := in.PrometheusURL
+	if prometheusURL == "" {
+		prometheusURL = "http://localhost:9090"
+	}
+	query := in.Query
+	start := in.Start
+	end := in.End
+	step := in.Step
+	if step == "" {
+		step = "15s"
+	}
 
 	if query == "" {
-		return mcp.NewToolResultError("query parameter is required"), nil
+		return mcp.NewToolResultError("query parameter is required"), nil, nil
 	}
 
 	// Validate prometheus URL
 	if err := security.ValidateURL(prometheusURL); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil, nil
 	}
 
 	// Validate PromQL query
 	if err := security.ValidatePromQLQuery(query); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid PromQL query: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid PromQL query: %v", err)), nil, nil
 	}
 
 	// Validate time parameters if provided
 	if start != "" {
 		if err := security.ValidateCommandInput(start); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid start time: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid start time: %v", err)), nil, nil
 		}
 	}
 	if end != "" {
 		if err := security.ValidateCommandInput(end); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid end time: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid end time: %v", err)), nil, nil
 		}
 	}
 	if step != "" {
 		if err := security.ValidateCommandInput(step); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid step parameter: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid step parameter: %v", err)), nil, nil
 		}
 	}
 
@@ -164,44 +187,51 @@ func handlePrometheusRangeQueryTool(ctx context.Context, request mcp.CallToolReq
 	client := getHTTPClient(ctx)
 	req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
 	if err != nil {
-		return mcp.NewToolResultError("failed to create request: " + err.Error()), nil
+		return mcp.NewToolResultError("failed to create request: " + err.Error()), nil, nil
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return mcp.NewToolResultError("failed to query Prometheus: " + err.Error()), nil
+		return mcp.NewToolResultError("failed to query Prometheus: " + err.Error()), nil, nil
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return mcp.NewToolResultError("failed to read response: " + err.Error()), nil
+		return mcp.NewToolResultError("failed to read response: " + err.Error()), nil, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return mcp.NewToolResultError(fmt.Sprintf("Prometheus API error (%d): %s", resp.StatusCode, string(body))), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Prometheus API error (%d): %s", resp.StatusCode, string(body))), nil, nil
 	}
 
 	// Parse the JSON response to pretty-print it
 	var result interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
 	prettyJSON, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
-	return mcp.NewToolResultText(string(prettyJSON)), nil
+	return mcp.NewToolResultText(string(prettyJSON)), nil, nil
 }
 
-func handlePrometheusLabelsQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
+type prometheusLabelsInput struct {
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+}
+
+func handlePrometheusLabelsQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusLabelsInput) (*mcp.CallToolResult, any, error) {
+	prometheusURL := in.PrometheusURL
+	if prometheusURL == "" {
+		prometheusURL = "http://localhost:9090"
+	}
 
 	// Validate prometheus URL
 	if err := security.ValidateURL(prometheusURL); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil, nil
 	}
 
 	// Make request to Prometheus API for labels
@@ -213,7 +243,7 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request mcp.CallToolRe
 		toolErr := errors.NewPrometheusError("create_request", err).
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("api_url", apiURL)
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 
 	resp, err := client.Do(req)
@@ -221,7 +251,7 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request mcp.CallToolRe
 		toolErr := errors.NewPrometheusError("query_execution", err).
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("api_url", apiURL)
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 	defer resp.Body.Close()
 
@@ -231,7 +261,7 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request mcp.CallToolRe
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("api_url", apiURL).
 			WithContext("status_code", resp.StatusCode)
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -240,29 +270,36 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request mcp.CallToolRe
 			WithContext("api_url", apiURL).
 			WithContext("status_code", resp.StatusCode).
 			WithContext("response_body", string(body))
-		return toolErr.ToMCPResult(), nil
+		return prometheusErrResult(toolErr), nil, nil
 	}
 
 	// Parse the JSON response to pretty-print it
 	var result interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
 	prettyJSON, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
-	return mcp.NewToolResultText(string(prettyJSON)), nil
+	return mcp.NewToolResultText(string(prettyJSON)), nil, nil
 }
 
-func handlePrometheusTargetsQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
+type prometheusTargetsInput struct {
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+}
+
+func handlePrometheusTargetsQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusTargetsInput) (*mcp.CallToolResult, any, error) {
+	prometheusURL := in.PrometheusURL
+	if prometheusURL == "" {
+		prometheusURL = "http://localhost:9090"
+	}
 
 	// Validate prometheus URL
 	if err := security.ValidateURL(prometheusURL); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid Prometheus URL: %v", err)), nil, nil
 	}
 
 	// Make request to Prometheus API for targets
@@ -271,66 +308,61 @@ func handlePrometheusTargetsQueryTool(ctx context.Context, request mcp.CallToolR
 	client := getHTTPClient(ctx)
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
-		return mcp.NewToolResultError("failed to create request: " + err.Error()), nil
+		return mcp.NewToolResultError("failed to create request: " + err.Error()), nil, nil
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return mcp.NewToolResultError("failed to query Prometheus: " + err.Error()), nil
+		return mcp.NewToolResultError("failed to query Prometheus: " + err.Error()), nil, nil
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return mcp.NewToolResultError("failed to read response: " + err.Error()), nil
+		return mcp.NewToolResultError("failed to read response: " + err.Error()), nil, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return mcp.NewToolResultError(fmt.Sprintf("Prometheus API error (%d): %s", resp.StatusCode, string(body))), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Prometheus API error (%d): %s", resp.StatusCode, string(body))), nil, nil
 	}
 
 	// Parse the JSON response to pretty-print it
 	var result interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
 	prettyJSON, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultText(string(body)), nil
+		return mcp.NewToolResultText(string(body)), nil, nil
 	}
 
-	return mcp.NewToolResultText(string(prettyJSON)), nil
+	return mcp.NewToolResultText(string(prettyJSON)), nil, nil
 }
 
-func RegisterTools(s *server.MCPServer, readOnly bool) {
-	s.AddTool(mcp.NewTool("prometheus_query_tool",
-		mcp.WithDescription("Execute a PromQL query against Prometheus"),
-		mcp.WithString("query", mcp.Description("PromQL query to execute"), mcp.Required()),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_query_tool", handlePrometheusQueryTool)))
+func RegisterTools(s *mcp.Server, readOnly bool) {
+	mcp.AddTool(s, "prometheus", &mcp.Tool{
+		Name:        "prometheus_query_tool",
+		Description: "Execute a PromQL query against Prometheus",
+	}, handlePrometheusQueryTool)
 
-	s.AddTool(mcp.NewTool("prometheus_query_range_tool",
-		mcp.WithDescription("Execute a PromQL range query against Prometheus"),
-		mcp.WithString("query", mcp.Description("PromQL query to execute"), mcp.Required()),
-		mcp.WithString("start", mcp.Description("Start time (Unix timestamp or relative time)")),
-		mcp.WithString("end", mcp.Description("End time (Unix timestamp or relative time)")),
-		mcp.WithString("step", mcp.Description("Query resolution step (default: 15s)")),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_query_range_tool", handlePrometheusRangeQueryTool)))
+	mcp.AddTool(s, "prometheus", &mcp.Tool{
+		Name:        "prometheus_query_range_tool",
+		Description: "Execute a PromQL range query against Prometheus",
+	}, handlePrometheusRangeQueryTool)
 
-	s.AddTool(mcp.NewTool("prometheus_label_names_tool",
-		mcp.WithDescription("Get all available labels from Prometheus"),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_label_names_tool", handlePrometheusLabelsQueryTool)))
+	mcp.AddTool(s, "prometheus", &mcp.Tool{
+		Name:        "prometheus_label_names_tool",
+		Description: "Get all available labels from Prometheus",
+	}, handlePrometheusLabelsQueryTool)
 
-	s.AddTool(mcp.NewTool("prometheus_targets_tool",
-		mcp.WithDescription("Get all Prometheus targets and their status"),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_targets_tool", handlePrometheusTargetsQueryTool)))
+	mcp.AddTool(s, "prometheus", &mcp.Tool{
+		Name:        "prometheus_targets_tool",
+		Description: "Get all Prometheus targets and their status",
+	}, handlePrometheusTargetsQueryTool)
 
-	s.AddTool(mcp.NewTool("prometheus_promql_tool",
-		mcp.WithDescription("Generate a PromQL query"),
-		mcp.WithString("query_description", mcp.Description("A string describing the query to generate"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_promql_tool", handlePromql)))
+	mcp.AddTool(s, "prometheus", &mcp.Tool{
+		Name:        "prometheus_promql_tool",
+		Description: "Generate a PromQL query",
+	}, handlePromql)
 }

@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRegisterTools(t *testing.T) {
-	s := server.NewMCPServer("test-server", "v0.0.1")
+	s := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
 	RegisterTools(s, false) // false = enable all tools including write operations
 }
 
@@ -20,14 +19,14 @@ func TestRegisterTools(t *testing.T) {
 func TestHandleHelmListReleases(t *testing.T) {
 	tests := []struct {
 		name           string
-		args           map[string]interface{}
+		input          helmListReleasesInput
 		expectedArgs   []string
 		expectedOutput string
 		expectError    bool
 	}{
 		{
 			name:         "basic_list_releases",
-			args:         map[string]interface{}{},
+			input:        helmListReleasesInput{},
 			expectedArgs: []string{"list"},
 			expectedOutput: `NAME    NAMESPACE       REVISION        STATUS          CHART
 app1    default         1               deployed        my-chart-1.0.0
@@ -36,8 +35,8 @@ app2    default         2               deployed        my-chart-2.0.0`,
 		},
 		{
 			name: "list_releases_with_namespace",
-			args: map[string]interface{}{
-				"namespace": "production",
+			input: helmListReleasesInput{
+				Namespace: "production",
 			},
 			expectedArgs: []string{"list", "-n", "production"},
 			expectedOutput: `NAME    NAMESPACE       REVISION        STATUS          CHART
@@ -46,8 +45,8 @@ prod-app    production      1               deployed        my-chart-1.0.0`,
 		},
 		{
 			name: "list_releases_with_all_namespaces",
-			args: map[string]interface{}{
-				"all_namespaces": "true",
+			input: helmListReleasesInput{
+				AllNamespaces: true,
 			},
 			expectedArgs: []string{"list", "-A"},
 			expectedOutput: `NAME    NAMESPACE       REVISION        STATUS          CHART
@@ -57,11 +56,11 @@ prod-app    production      1               deployed        my-chart-1.0.0`,
 		},
 		{
 			name: "list_releases_with_multiple_flags",
-			args: map[string]interface{}{
-				"all_namespaces": "true",
-				"all":            "true",
-				"failed":         "true",
-				"output":         "json",
+			input: helmListReleasesInput{
+				AllNamespaces: true,
+				All:           true,
+				Failed:        true,
+				Output:        "json",
 			},
 			expectedArgs: []string{"list", "-A", "-a", "--failed", "-o", "json"},
 			expectedOutput: `[
@@ -82,10 +81,7 @@ prod-app    production      1               deployed        my-chart-1.0.0`,
 			mock.AddCommandString("helm", tt.expectedArgs, tt.expectedOutput, nil)
 			ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-			request := mcp.CallToolRequest{}
-			request.Params.Arguments = tt.args
-
-			result, err := handleHelmListReleases(ctx, request)
+			result, _, err := handleHelmListReleases(ctx, &mcp.CallToolRequest{}, tt.input)
 
 			assert.NoError(t, err)
 			assert.False(t, result.IsError)
@@ -119,8 +115,7 @@ prod-app    production      1               deployed        my-chart-1.0.0`,
 		mock.AddCommandString("helm", []string{"list"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		result, err := handleHelmListReleases(ctx, request)
+		result, _, err := handleHelmListReleases(ctx, &mcp.CallToolRequest{}, helmListReleasesInput{})
 
 		assert.NoError(t, err) // MCP handlers should not return Go errors
 		assert.True(t, result.IsError)
@@ -141,13 +136,10 @@ replicaCount: 3`
 		mock.AddCommandString("helm", []string{"get", "all", "myapp", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name":      "myapp",
-			"namespace": "default",
-		}
-
-		result, err := handleHelmGetRelease(ctx, request)
+		result, _, err := handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+			Name:      "myapp",
+			Namespace: "default",
+		})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -165,14 +157,11 @@ replicaCount: 3`
 		mock.AddCommandString("helm", []string{"get", "values", "myapp", "-n", "default"}, "replicaCount: 3", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name":      "myapp",
-			"namespace": "default",
-			"resource":  "values",
-		}
-
-		result, err := handleHelmGetRelease(ctx, request)
+		result, _, err := handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+			Name:      "myapp",
+			Namespace: "default",
+			Resource:  "values",
+		})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -189,22 +178,17 @@ replicaCount: 3`
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing name
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"namespace": "default",
-		}
-
-		result, err := handleHelmGetRelease(ctx, request)
+		result, _, err := handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+			Namespace: "default",
+		})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "name parameter is required")
 
 		// Test missing namespace
-		request.Params.Arguments = map[string]interface{}{
-			"name": "myapp",
-		}
-
-		result, err = handleHelmGetRelease(ctx, request)
+		result, _, err = handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+			Name: "myapp",
+		})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "namespace parameter is required")
@@ -229,13 +213,10 @@ REVISION: 2`
 		mock.AddCommandString("helm", []string{"upgrade", "myapp", "stable/myapp", "--timeout", "30s"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name":  "myapp",
-			"chart": "stable/myapp",
-		}
-
-		result, err := handleHelmUpgradeRelease(ctx, request)
+		result, _, err := handleHelmUpgradeRelease(ctx, &mcp.CallToolRequest{}, helmUpgradeReleaseInput{
+			Name:  "myapp",
+			Chart: "stable/myapp",
+		})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -265,20 +246,17 @@ REVISION: 2`
 		mock.AddCommandString("helm", expectedArgs, "Upgraded with options", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name":      "myapp",
-			"chart":     "stable/myapp",
-			"namespace": "production",
-			"version":   "1.2.0",
-			"values":    "values.yaml",
-			"set":       "replicas=5,image.tag=v1.2.0",
-			"install":   "true",
-			"dry_run":   "true",
-			"wait":      "true",
-		}
-
-		result, err := handleHelmUpgradeRelease(ctx, request)
+		result, _, err := handleHelmUpgradeRelease(ctx, &mcp.CallToolRequest{}, helmUpgradeReleaseInput{
+			Name:      "myapp",
+			Chart:     "stable/myapp",
+			Namespace: "production",
+			Version:   "1.2.0",
+			Values:    "values.yaml",
+			Set:       "replicas=5,image.tag=v1.2.0",
+			Install:   true,
+			DryRun:    true,
+			Wait:      true,
+		})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -295,12 +273,9 @@ REVISION: 2`
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing chart
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name": "myapp",
-		}
-
-		result, err := handleHelmUpgradeRelease(ctx, request)
+		result, _, err := handleHelmUpgradeRelease(ctx, &mcp.CallToolRequest{}, helmUpgradeReleaseInput{
+			Name: "myapp",
+		})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "name and chart parameters are required")
@@ -320,13 +295,10 @@ func TestHandleHelmUninstall(t *testing.T) {
 		mock.AddCommandString("helm", []string{"uninstall", "myapp", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name":      "myapp",
-			"namespace": "default",
-		}
-
-		result, err := handleHelmUninstall(ctx, request)
+		result, _, err := handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+			Name:      "myapp",
+			Namespace: "default",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -347,15 +319,12 @@ func TestHandleHelmUninstall(t *testing.T) {
 		mock.AddCommandString("helm", []string{"uninstall", "myapp", "-n", "production", "--dry-run", "--wait"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name":      "myapp",
-			"namespace": "production",
-			"dry_run":   "true",
-			"wait":      "true",
-		}
-
-		result, err := handleHelmUninstall(ctx, request)
+		result, _, err := handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+			Name:      "myapp",
+			Namespace: "production",
+			DryRun:    true,
+			Wait:      true,
+		})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -372,22 +341,17 @@ func TestHandleHelmUninstall(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing name
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"namespace": "default",
-		}
-
-		result, err := handleHelmUninstall(ctx, request)
+		result, _, err := handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+			Namespace: "default",
+		})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "name and namespace parameters are required")
 
 		// Test missing namespace
-		request.Params.Arguments = map[string]interface{}{
-			"name": "myapp",
-		}
-
-		result, err = handleHelmUninstall(ctx, request)
+		result, _, err = handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+			Name: "myapp",
+		})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "name and namespace parameters are required")
@@ -407,13 +371,10 @@ func TestHandleHelmRepoAdd(t *testing.T) {
 		mock.AddCommandString("helm", []string{"repo", "add", "my-repo", "https://charts.example.com/"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"name": "my-repo",
-			"url":  "https://charts.example.com/",
-		}
-
-		result, err := handleHelmRepoAdd(ctx, request)
+		result, _, err := handleHelmRepoAdd(ctx, &mcp.CallToolRequest{}, helmRepoAddInput{
+			Name: "my-repo",
+			URL:  "https://charts.example.com/",
+		})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -431,12 +392,9 @@ func TestHandleHelmRepoAdd(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing name
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"url": "https://charts.example.com/",
-		}
-
-		result, err := handleHelmRepoAdd(ctx, request)
+		result, _, err := handleHelmRepoAdd(ctx, &mcp.CallToolRequest{}, helmRepoAddInput{
+			URL: "https://charts.example.com/",
+		})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "name and url parameters are required")
@@ -458,8 +416,7 @@ Update Complete. ⎈Happy Helming!⎈`
 		mock.AddCommandString("helm", []string{"repo", "update"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		request := mcp.CallToolRequest{}
-		result, err := handleHelmRepoUpdate(ctx, request)
+		result, _, err := handleHelmRepoUpdate(ctx, &mcp.CallToolRequest{}, helmRepoUpdateInput{})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -478,7 +435,7 @@ func getResultText(result *mcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""

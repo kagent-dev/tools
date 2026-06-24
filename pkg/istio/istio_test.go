@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRegisterTools(t *testing.T) {
-	s := server.NewMCPServer("test-server", "v0.0.1")
+	s := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
 	RegisterTools(s, false) // false = enable all tools including write operations
 }
 
@@ -25,7 +24,7 @@ func TestHandleIstioProxyStatus(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		result, err := handleIstioProxyStatus(ctx, mcp.CallToolRequest{})
+		result, _, err := handleIstioProxyStatus(ctx, &mcp.CallToolRequest{}, istioProxyStatusInput{})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -38,12 +37,9 @@ func TestHandleIstioProxyStatus(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"namespace": "istio-system",
-		}
-
-		result, err := handleIstioProxyStatus(ctx, request)
+		result, _, err := handleIstioProxyStatus(ctx, &mcp.CallToolRequest{}, istioProxyStatusInput{
+			Namespace: "istio-system",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -56,13 +52,10 @@ func TestHandleIstioProxyStatus(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"pod_name":  "test-pod",
-			"namespace": "default",
-		}
-
-		result, err := handleIstioProxyStatus(ctx, request)
+		result, _, err := handleIstioProxyStatus(ctx, &mcp.CallToolRequest{}, istioProxyStatusInput{
+			PodName:   "test-pod",
+			Namespace: "default",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -74,7 +67,7 @@ func TestHandleIstioProxyConfig(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("missing pod_name parameter", func(t *testing.T) {
-		result, err := handleIstioProxyConfig(ctx, mcp.CallToolRequest{})
+		result, _, err := handleIstioProxyConfig(ctx, &mcp.CallToolRequest{}, istioProxyConfigInput{})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -87,12 +80,9 @@ func TestHandleIstioProxyConfig(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"pod_name": "test-pod",
-		}
-
-		result, err := handleIstioProxyConfig(ctx, request)
+		result, _, err := handleIstioProxyConfig(ctx, &mcp.CallToolRequest{}, istioProxyConfigInput{
+			PodName: "test-pod",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -105,14 +95,11 @@ func TestHandleIstioProxyConfig(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"pod_name":    "test-pod",
-			"namespace":   "default",
-			"config_type": "cluster",
-		}
-
-		result, err := handleIstioProxyConfig(ctx, request)
+		result, _, err := handleIstioProxyConfig(ctx, &mcp.CallToolRequest{}, istioProxyConfigInput{
+			PodName:    "test-pod",
+			Namespace:  "default",
+			ConfigType: "cluster",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -129,7 +116,7 @@ func TestHandleIstioInstall(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		result, err := handleIstioInstall(ctx, mcp.CallToolRequest{})
+		result, _, err := handleIstioInstall(ctx, &mcp.CallToolRequest{}, istioInstallInput{})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -142,12 +129,9 @@ func TestHandleIstioInstall(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"profile": "demo",
-		}
-
-		result, err := handleIstioInstall(ctx, request)
+		result, _, err := handleIstioInstall(ctx, &mcp.CallToolRequest{}, istioInstallInput{
+			Profile: "demo",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -163,12 +147,9 @@ func TestHandleIstioGenerateManifest(t *testing.T) {
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"profile": "minimal",
-	}
-
-	result, err := handleIstioGenerateManifest(ctx, request)
+	result, _, err := handleIstioGenerateManifest(ctx, &mcp.CallToolRequest{}, istioGenerateManifestInput{
+		Profile: "minimal",
+	})
 
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -184,12 +165,9 @@ func TestHandleIstioAnalyzeClusterConfiguration(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"all_namespaces": "true",
-		}
-
-		result, err := handleIstioAnalyzeClusterConfiguration(ctx, request)
+		result, _, err := handleIstioAnalyzeClusterConfiguration(ctx, &mcp.CallToolRequest{}, istioAnalyzeClusterConfigurationInput{
+			AllNamespaces: true,
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -202,12 +180,9 @@ func TestHandleIstioAnalyzeClusterConfiguration(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"namespace": "default",
-		}
-
-		result, err := handleIstioAnalyzeClusterConfiguration(ctx, request)
+		result, _, err := handleIstioAnalyzeClusterConfiguration(ctx, &mcp.CallToolRequest{}, istioAnalyzeClusterConfigurationInput{
+			Namespace: "default",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -224,7 +199,7 @@ func TestHandleIstioVersion(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		result, err := handleIstioVersion(ctx, mcp.CallToolRequest{})
+		result, _, err := handleIstioVersion(ctx, &mcp.CallToolRequest{}, istioVersionInput{})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -237,12 +212,9 @@ func TestHandleIstioVersion(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"short": "true",
-		}
-
-		result, err := handleIstioVersion(ctx, request)
+		result, _, err := handleIstioVersion(ctx, &mcp.CallToolRequest{}, istioVersionInput{
+			Short: true,
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -258,7 +230,7 @@ func TestHandleIstioRemoteClusters(t *testing.T) {
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, err := handleIstioRemoteClusters(ctx, mcp.CallToolRequest{})
+	result, _, err := handleIstioRemoteClusters(ctx, &mcp.CallToolRequest{}, istioRemoteClustersInput{})
 
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -274,12 +246,9 @@ func TestHandleWaypointList(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"all_namespaces": "true",
-		}
-
-		result, err := handleWaypointList(ctx, request)
+		result, _, err := handleWaypointList(ctx, &mcp.CallToolRequest{}, waypointListInput{
+			AllNamespaces: true,
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -292,12 +261,9 @@ func TestHandleWaypointList(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"namespace": "default",
-		}
-
-		result, err := handleWaypointList(ctx, request)
+		result, _, err := handleWaypointList(ctx, &mcp.CallToolRequest{}, waypointListInput{
+			Namespace: "default",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -314,14 +280,11 @@ func TestHandleWaypointGenerate(t *testing.T) {
 
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"namespace":    "default",
-			"name":         "waypoint",
-			"traffic_type": "all",
-		}
-
-		result, err := handleWaypointGenerate(ctx, request)
+		result, _, err := handleWaypointGenerate(ctx, &mcp.CallToolRequest{}, waypointGenerateInput{
+			Namespace:   "default",
+			Name:        "waypoint",
+			TrafficType: "all",
+		})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -348,7 +311,7 @@ func TestIstioErrorHandling(t *testing.T) {
 		mock.AddCommandString("istioctl", []string{"proxy-status"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, err := handleIstioProxyStatus(ctx, mcp.CallToolRequest{})
+		result, _, err := handleIstioProxyStatus(ctx, &mcp.CallToolRequest{}, istioProxyStatusInput{})
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
@@ -362,9 +325,7 @@ func TestHandleWaypointApply(t *testing.T) {
 		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default"}, "applied", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"namespace": "default"}
-		result, err := handleWaypointApply(ctx, req)
+		result, _, err := handleWaypointApply(ctx, &mcp.CallToolRequest{}, waypointApplyInput{Namespace: "default"})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -374,9 +335,10 @@ func TestHandleWaypointApply(t *testing.T) {
 		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default", "--enroll-namespace"}, "applied", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"namespace": "default", "enroll_namespace": "true"}
-		result, err := handleWaypointApply(ctx, req)
+		result, _, err := handleWaypointApply(ctx, &mcp.CallToolRequest{}, waypointApplyInput{
+			Namespace:       "default",
+			EnrollNamespace: true,
+		})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -384,7 +346,7 @@ func TestHandleWaypointApply(t *testing.T) {
 	t.Run("missing namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, err := handleWaypointApply(ctx, mcp.CallToolRequest{})
+		result, _, err := handleWaypointApply(ctx, &mcp.CallToolRequest{}, waypointApplyInput{})
 		require.NoError(t, err)
 		assert.True(t, result.IsError)
 	})
@@ -393,9 +355,7 @@ func TestHandleWaypointApply(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"waypoint", "apply", "-n", "default"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"namespace": "default"}
-		result, err := handleWaypointApply(ctx, req)
+		result, _, err := handleWaypointApply(ctx, &mcp.CallToolRequest{}, waypointApplyInput{Namespace: "default"})
 		require.NoError(t, err)
 		assert.True(t, result.IsError)
 	})
@@ -406,9 +366,10 @@ func TestHandleWaypointDelete(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"waypoint", "delete", "--all", "-n", "default"}, "deleted", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"namespace": "default", "all": "true"}
-		result, err := handleWaypointDelete(ctx, req)
+		result, _, err := handleWaypointDelete(ctx, &mcp.CallToolRequest{}, waypointDeleteInput{
+			Namespace: "default",
+			All:       true,
+		})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -417,9 +378,10 @@ func TestHandleWaypointDelete(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"waypoint", "delete", "wp1", "wp2", "-n", "default"}, "deleted", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"namespace": "default", "names": "wp1, wp2"}
-		result, err := handleWaypointDelete(ctx, req)
+		result, _, err := handleWaypointDelete(ctx, &mcp.CallToolRequest{}, waypointDeleteInput{
+			Namespace: "default",
+			Names:     "wp1, wp2",
+		})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -427,7 +389,7 @@ func TestHandleWaypointDelete(t *testing.T) {
 	t.Run("missing namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, err := handleWaypointDelete(ctx, mcp.CallToolRequest{})
+		result, _, err := handleWaypointDelete(ctx, &mcp.CallToolRequest{}, waypointDeleteInput{})
 		require.NoError(t, err)
 		assert.True(t, result.IsError)
 	})
@@ -438,9 +400,10 @@ func TestHandleWaypointStatus(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"waypoint", "status", "wp1", "-n", "default"}, "status", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"namespace": "default", "name": "wp1"}
-		result, err := handleWaypointStatus(ctx, req)
+		result, _, err := handleWaypointStatus(ctx, &mcp.CallToolRequest{}, waypointStatusInput{
+			Namespace: "default",
+			Name:      "wp1",
+		})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -449,9 +412,9 @@ func TestHandleWaypointStatus(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"waypoint", "status", "-n", "default"}, "status", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"namespace": "default"}
-		result, err := handleWaypointStatus(ctx, req)
+		result, _, err := handleWaypointStatus(ctx, &mcp.CallToolRequest{}, waypointStatusInput{
+			Namespace: "default",
+		})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -459,7 +422,7 @@ func TestHandleWaypointStatus(t *testing.T) {
 	t.Run("missing namespace", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, err := handleWaypointStatus(ctx, mcp.CallToolRequest{})
+		result, _, err := handleWaypointStatus(ctx, &mcp.CallToolRequest{}, waypointStatusInput{})
 		require.NoError(t, err)
 		assert.True(t, result.IsError)
 	})
@@ -470,7 +433,7 @@ func TestHandleZtunnelConfig(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"ztunnel", "config", "all"}, "ztunnel config", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, err := handleZtunnelConfig(ctx, mcp.CallToolRequest{})
+		result, _, err := handleZtunnelConfig(ctx, &mcp.CallToolRequest{}, ztunnelConfigInput{})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -479,9 +442,10 @@ func TestHandleZtunnelConfig(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"ztunnel", "config", "workloads", "-n", "istio-system"}, "ztunnel config", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"config_type": "workloads", "namespace": "istio-system"}
-		result, err := handleZtunnelConfig(ctx, req)
+		result, _, err := handleZtunnelConfig(ctx, &mcp.CallToolRequest{}, ztunnelConfigInput{
+			ConfigType: "workloads",
+			Namespace:  "istio-system",
+		})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -490,7 +454,7 @@ func TestHandleZtunnelConfig(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("istioctl", []string{"ztunnel", "config", "all"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, err := handleZtunnelConfig(ctx, mcp.CallToolRequest{})
+		result, _, err := handleZtunnelConfig(ctx, &mcp.CallToolRequest{}, ztunnelConfigInput{})
 		require.NoError(t, err)
 		assert.True(t, result.IsError)
 	})

@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tmc/langchaingo/llms"
@@ -15,11 +14,11 @@ import (
 
 func TestRegisterTools(t *testing.T) {
 	t.Run("read-write", func(t *testing.T) {
-		s := server.NewMCPServer("test", "v0.0.1")
+		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, nil, "", false)
 	})
 	t.Run("read-only", func(t *testing.T) {
-		s := server.NewMCPServer("test", "v0.0.1")
+		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, nil, "/tmp/kubeconfig", true)
 	})
 }
@@ -51,7 +50,7 @@ func getResultText(result *mcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""
@@ -65,11 +64,8 @@ func headerWithBearerToken(token string) http.Header {
 }
 
 // Helper function to create a CallToolRequest with Bearer token
-func requestWithBearerToken(token string, args map[string]interface{}) mcp.CallToolRequest {
-	req := mcp.CallToolRequest{}
-	req.Header = headerWithBearerToken(token)
-	req.Params.Arguments = args
-	return req
+func requestWithBearerToken(token string) *mcp.CallToolRequest {
+	return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: headerWithBearerToken(token)}}
 }
 
 func TestHandleGetAvailableAPIResources(t *testing.T) {
@@ -85,8 +81,8 @@ services                          svc          v1                               
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		result, err := k8sTool.handleGetAvailableAPIResources(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGetAvailableAPIResources(ctx, req, noInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -103,8 +99,8 @@ services                          svc          v1                               
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		result, err := k8sTool.handleGetAvailableAPIResources(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGetAvailableAPIResources(ctx, req, noInput{})
 		assert.NoError(t, err) // MCP handlers should not return Go errors
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -122,13 +118,8 @@ func TestHandleScaleDeployment(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"name":     "test-deployment",
-			"replicas": float64(5), // JSON numbers come as float64
-		}
-
-		result, err := k8sTool.handleScaleDeployment(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleScaleDeployment(ctx, req, scaleInput{Name: "test-deployment", Replicas: 5})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -144,13 +135,8 @@ func TestHandleScaleDeployment(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			// Missing name parameter (this is the required one)
-			"replicas": float64(3),
-		}
-
-		result, err := k8sTool.handleScaleDeployment(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleScaleDeployment(ctx, req, scaleInput{Replicas: 3})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -169,12 +155,8 @@ func TestHandleScaleDeployment(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"name": "test-deployment",
-		}
-
-		result, err := k8sTool.handleScaleDeployment(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleScaleDeployment(ctx, req, scaleInput{Name: "test-deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -201,8 +183,8 @@ func TestHandleGetEvents(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		result, err := k8sTool.handleGetEvents(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGetEvents(ctx, req, eventsInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -219,12 +201,8 @@ func TestHandleGetEvents(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"namespace": "custom-namespace",
-		}
-
-		result, err := k8sTool.handleGetEvents(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGetEvents(ctx, req, eventsInput{Namespace: "custom-namespace"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -240,13 +218,8 @@ func TestHandlePatchResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			// Missing resource_name and patch
-		}
-
-		result, err := k8sTool.handlePatchResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handlePatchResource(ctx, req, patchResourceInput{ResourceType: "deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -264,14 +237,8 @@ func TestHandlePatchResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"patch":         `{"spec":{"replicas":5}}`,
-		}
-
-		result, err := k8sTool.handlePatchResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handlePatchResource(ctx, req, patchResourceInput{ResourceType: "deployment", ResourceName: "test-deployment", Patch: `{"spec":{"replicas":5}}`})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -288,16 +255,14 @@ func TestHandlePatchResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "installers.composition.krateo.io",
-			"resource_name": "installer",
-			"patch":         `{"spec":{"features":{"composableportal":true}}}`,
-			"patch_type":    "merge",
-			"namespace":     "krateo-system",
-		}
-
-		result, err := k8sTool.handlePatchResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handlePatchResource(ctx, req, patchResourceInput{
+			ResourceType: "installers.composition.krateo.io",
+			ResourceName: "installer",
+			Patch:        `{"spec":{"features":{"composableportal":true}}}`,
+			PatchType:    "merge",
+			Namespace:    "krateo-system",
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -312,15 +277,13 @@ func TestHandlePatchResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"patch":         `{"spec":{"replicas":5}}`,
-			"patch_type":    "bogus",
-		}
-
-		result, err := k8sTool.handlePatchResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handlePatchResource(ctx, req, patchResourceInput{
+			ResourceType: "deployment",
+			ResourceName: "test-deployment",
+			Patch:        `{"spec":{"replicas":5}}`,
+			PatchType:    "bogus",
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -339,13 +302,8 @@ func TestHandlePatchStatus(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "customresource",
-			// Missing resource_name and patch
-		}
-
-		result, err := k8sTool.handlePatchStatus(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handlePatchStatus(ctx, req, patchStatusInput{ResourceType: "customresource"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -363,14 +321,8 @@ func TestHandlePatchStatus(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "customresource",
-			"resource_name": "test-resource",
-			"patch":         `{"status":{"phase":"Ready"}}`,
-		}
-
-		result, err := k8sTool.handlePatchStatus(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handlePatchStatus(ctx, req, patchStatusInput{ResourceType: "customresource", ResourceName: "test-resource", Patch: `{"status":{"phase":"Ready"}}`})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -389,13 +341,8 @@ func TestHandleDeleteResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "pod",
-			// Missing resource_name
-		}
-
-		result, err := k8sTool.handleDeleteResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleDeleteResource(ctx, req, deleteResourceInput{ResourceType: "pod"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -413,13 +360,8 @@ func TestHandleDeleteResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-		}
-
-		result, err := k8sTool.handleDeleteResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleDeleteResource(ctx, req, deleteResourceInput{ResourceType: "deployment", ResourceName: "test-deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -438,10 +380,8 @@ func TestHandleCheckServiceConnectivity(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{}
-
-		result, err := k8sTool.handleCheckServiceConnectivity(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleCheckServiceConnectivity(ctx, req, serviceConnectivityInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -464,12 +404,8 @@ func TestHandleCheckServiceConnectivity(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"service_name": "test-service.default.svc.cluster.local:80",
-		}
-
-		result, err := k8sTool.handleCheckServiceConnectivity(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleCheckServiceConnectivity(ctx, req, serviceConnectivityInput{ServiceName: "test-service.default.svc.cluster.local:80"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		// Should attempt connectivity check (may succeed or fail but validates params)
@@ -485,13 +421,8 @@ func TestHandleKubectlDescribeTool(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			// Missing resource_name
-		}
-
-		result, err := k8sTool.handleKubectlDescribeTool(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlDescribeTool(ctx, req, describeInput{ResourceType: "deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -511,14 +442,8 @@ Labels:             app=test`
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"namespace":     "default",
-		}
-
-		result, err := k8sTool.handleKubectlDescribeTool(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlDescribeTool(ctx, req, describeInput{ResourceType: "deployment", ResourceName: "test-deployment", Namespace: "default"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -536,8 +461,8 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
-		req := mcp.CallToolRequest{}
-		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlGetEnhanced(ctx, req, getResourcesInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -554,9 +479,8 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
-		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlGetEnhanced(ctx, req, getResourcesInput{ResourceType: "pods"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -571,8 +495,8 @@ func TestHandleKubectlLogsEnhanced(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		k8sTool := newTestK8sTool()
-		req := mcp.CallToolRequest{}
-		result, err := k8sTool.handleKubectlLogsEnhanced(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlLogsEnhanced(ctx, req, logsInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -590,9 +514,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"pod_name": "test-pod"}
-		result, err := k8sTool.handleKubectlLogsEnhanced(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlLogsEnhanced(ctx, req, logsInput{PodName: "test-pod"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -619,12 +542,8 @@ spec:
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"manifest": manifest,
-		}
-
-		result, err := k8sTool.handleApplyManifest(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleApplyManifest(ctx, req, applyManifestInput{Manifest: manifest})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -650,12 +569,8 @@ spec:
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			// Missing manifest parameter
-		}
-
-		result, err := k8sTool.handleApplyManifest(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleApplyManifest(ctx, req, applyManifestInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -681,14 +596,8 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"pod_name":  "mypod",
-			"namespace": "default",
-			"command":   "ls -la",
-		}
-
-		result, err := k8sTool.handleExecCommand(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleExecCommand(ctx, req, execCommandInput{PodName: "mypod", Namespace: "default", Command: "ls -la"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -710,13 +619,8 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"pod_name": "mypod",
-			// Missing command parameter
-		}
-
-		result, err := k8sTool.handleExecCommand(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleExecCommand(ctx, req, execCommandInput{PodName: "mypod"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -739,15 +643,13 @@ func TestHandleRollout(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"action":        "restart",
-			"resource_type": "deployment",
-			"resource_name": "myapp",
-			"namespace":     "default",
-		}
-
-		result, err := k8sTool.handleRollout(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleRollout(ctx, req, rolloutInput{
+			Action:       "restart",
+			ResourceType: "deployment",
+			ResourceName: "myapp",
+			Namespace:    "default",
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -769,13 +671,8 @@ func TestHandleRollout(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"action": "restart",
-			// Missing resource_type and resource_name
-		}
-
-		result, err := k8sTool.handleRollout(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleRollout(ctx, req, rolloutInput{Action: "restart"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -831,13 +728,8 @@ spec:
 
 		k8sTool := newTestK8sToolWithLLM(mockLLM)
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type":        "istio_auth_policy",
-			"resource_description": "A peer authentication policy for strict mTLS",
-		}
-
-		result, err := k8sTool.handleGenerateResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGenerateResource(ctx, req, generateResourceInput{ResourceType: "istio_auth_policy", ResourceDescription: "A peer authentication policy for strict mTLS"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -853,13 +745,8 @@ spec:
 	t.Run("missing parameters", func(t *testing.T) {
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "istio_auth_policy",
-			// Missing resource_description
-		}
-
-		result, err := k8sTool.handleGenerateResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGenerateResource(ctx, req, generateResourceInput{ResourceType: "istio_auth_policy"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -869,13 +756,8 @@ spec:
 	t.Run("no LLM model", func(t *testing.T) {
 		k8sTool := newTestK8sTool() // No LLM model
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type":        "istio_auth_policy",
-			"resource_description": "A peer authentication policy for strict mTLS",
-		}
-
-		result, err := k8sTool.handleGenerateResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGenerateResource(ctx, req, generateResourceInput{ResourceType: "istio_auth_policy", ResourceDescription: "A peer authentication policy for strict mTLS"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -891,13 +773,8 @@ spec:
 
 		k8sTool := newTestK8sToolWithLLM(mockLLM)
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type":        "invalid_resource_type",
-			"resource_description": "A test resource",
-		}
-
-		result, err := k8sTool.handleGenerateResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGenerateResource(ctx, req, generateResourceInput{ResourceType: "invalid_resource_type", ResourceDescription: "A test resource"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -920,15 +797,13 @@ func TestHandleAnnotateResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"annotations":   "key1=value1 key2=value2",
-			"namespace":     "default",
-		}
-
-		result, err := k8sTool.handleAnnotateResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleAnnotateResource(ctx, req, annotateInput{
+			ResourceType: "deployment",
+			ResourceName: "test-deployment",
+			Annotations:  "key1=value1 key2=value2",
+			Namespace:    "default",
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -943,13 +818,8 @@ func TestHandleAnnotateResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			// Missing resource_name and annotations
-		}
-
-		result, err := k8sTool.handleAnnotateResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleAnnotateResource(ctx, req, annotateInput{ResourceType: "deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -972,15 +842,13 @@ func TestHandleLabelResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"labels":        "env=prod version=1.0",
-			"namespace":     "default",
-		}
-
-		result, err := k8sTool.handleLabelResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleLabelResource(ctx, req, labelInput{
+			ResourceType: "deployment",
+			ResourceName: "test-deployment",
+			Labels:       "env=prod version=1.0",
+			Namespace:    "default",
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -995,13 +863,8 @@ func TestHandleLabelResource(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			// Missing resource_name and labels
-		}
-
-		result, err := k8sTool.handleLabelResource(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleLabelResource(ctx, req, labelInput{ResourceType: "deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -1024,15 +887,13 @@ func TestHandleRemoveAnnotation(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type":  "deployment",
-			"resource_name":  "test-deployment",
-			"annotation_key": "key1",
-			"namespace":      "default",
-		}
-
-		result, err := k8sTool.handleRemoveAnnotation(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleRemoveAnnotation(ctx, req, removeAnnotationInput{
+			ResourceType:  "deployment",
+			ResourceName:  "test-deployment",
+			AnnotationKey: "key1",
+			Namespace:     "default",
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1047,13 +908,8 @@ func TestHandleRemoveAnnotation(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			// Missing resource_name and annotation_key
-		}
-
-		result, err := k8sTool.handleRemoveAnnotation(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleRemoveAnnotation(ctx, req, removeAnnotationInput{ResourceType: "deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -1076,15 +932,13 @@ func TestHandleRemoveLabel(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"label_key":     "env",
-			"namespace":     "default",
-		}
-
-		result, err := k8sTool.handleRemoveLabel(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleRemoveLabel(ctx, req, removeLabelInput{
+			ResourceType: "deployment",
+			ResourceName: "test-deployment",
+			LabelKey:     "env",
+			Namespace:    "default",
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1099,13 +953,8 @@ func TestHandleRemoveLabel(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"resource_type": "deployment",
-			// Missing resource_name and label_key
-		}
-
-		result, err := k8sTool.handleRemoveLabel(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleRemoveLabel(ctx, req, removeLabelInput{ResourceType: "deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -1128,13 +977,8 @@ func TestHandleCreateResourceFromURL(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			"url":       "https://example.com/manifest.yaml",
-			"namespace": "default",
-		}
-
-		result, err := k8sTool.handleCreateResourceFromURL(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleCreateResourceFromURL(ctx, req, createFromURLInput{URL: "https://example.com/manifest.yaml", Namespace: "default"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1149,12 +993,8 @@ func TestHandleCreateResourceFromURL(t *testing.T) {
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{
-			// Missing url parameter
-		}
-
-		result, err := k8sTool.handleCreateResourceFromURL(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleCreateResourceFromURL(ctx, req, createFromURLInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -1191,8 +1031,8 @@ users:
 
 		k8sTool := newTestK8sTool()
 
-		req := mcp.CallToolRequest{}
-		result, err := k8sTool.handleGetClusterConfiguration(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleGetClusterConfiguration(ctx, req, noInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1214,8 +1054,8 @@ func TestBearerTokenPassthrough(t *testing.T) {
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("test-token-123", map[string]interface{}{"resource_type": "pods"})
-		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		req := requestWithBearerToken("test-token-123")
+		result, _, err := k8sTool.handleKubectlGetEnhanced(ctx, req, getResourcesInput{ResourceType: "pods"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1235,12 +1075,8 @@ func TestBearerTokenPassthrough(t *testing.T) {
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("my-auth-token", map[string]interface{}{
-			"name":     "test-deployment",
-			"replicas": float64(5),
-		})
-
-		result, err := k8sTool.handleScaleDeployment(ctx, req)
+		req := requestWithBearerToken("my-auth-token")
+		result, _, err := k8sTool.handleScaleDeployment(ctx, req, scaleInput{Name: "test-deployment", Replicas: 5})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1260,8 +1096,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("logs-token", map[string]interface{}{"pod_name": "test-pod"})
-		result, err := k8sTool.handleKubectlLogsEnhanced(ctx, req)
+		req := requestWithBearerToken("logs-token")
+		result, _, err := k8sTool.handleKubectlLogsEnhanced(ctx, req, logsInput{PodName: "test-pod"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1279,12 +1115,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("delete-token", map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-		})
-
-		result, err := k8sTool.handleDeleteResource(ctx, req)
+		req := requestWithBearerToken("delete-token")
+		result, _, err := k8sTool.handleDeleteResource(ctx, req, deleteResourceInput{ResourceType: "deployment", ResourceName: "test-deployment"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1302,13 +1134,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("patch-token", map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"patch":         `{"spec":{"replicas":5}}`,
-		})
-
-		result, err := k8sTool.handlePatchResource(ctx, req)
+		req := requestWithBearerToken("patch-token")
+		result, _, err := k8sTool.handlePatchResource(ctx, req, patchResourceInput{ResourceType: "deployment", ResourceName: "test-deployment", Patch: `{"spec":{"replicas":5}}`})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1326,13 +1153,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("describe-token", map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"namespace":     "default",
-		})
-
-		result, err := k8sTool.handleKubectlDescribeTool(ctx, req)
+		req := requestWithBearerToken("describe-token")
+		result, _, err := k8sTool.handleKubectlDescribeTool(ctx, req, describeInput{ResourceType: "deployment", ResourceName: "test-deployment", Namespace: "default"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1350,14 +1172,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("rollout-token", map[string]interface{}{
-			"action":        "restart",
-			"resource_type": "deployment",
-			"resource_name": "myapp",
-			"namespace":     "default",
-		})
-
-		result, err := k8sTool.handleRollout(ctx, req)
+		req := requestWithBearerToken("rollout-token")
+		result, _, err := k8sTool.handleRollout(ctx, req, rolloutInput{Action: "restart", ResourceType: "deployment", ResourceName: "myapp", Namespace: "default"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1375,8 +1191,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("events-token", nil)
-		result, err := k8sTool.handleGetEvents(ctx, req)
+		req := requestWithBearerToken("events-token")
+		result, _, err := k8sTool.handleGetEvents(ctx, req, eventsInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1394,13 +1210,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("exec-token", map[string]interface{}{
-			"pod_name":  "mypod",
-			"namespace": "default",
-			"command":   "ls -la",
-		})
-
-		result, err := k8sTool.handleExecCommand(ctx, req)
+		req := requestWithBearerToken("exec-token")
+		result, _, err := k8sTool.handleExecCommand(ctx, req, execCommandInput{PodName: "mypod", Namespace: "default", Command: "ls -la"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1418,13 +1229,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("annotate-token", map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"annotations":   "key1=value1",
-		})
-
-		result, err := k8sTool.handleAnnotateResource(ctx, req)
+		req := requestWithBearerToken("annotate-token")
+		result, _, err := k8sTool.handleAnnotateResource(ctx, req, annotateInput{ResourceType: "deployment", ResourceName: "test-deployment", Annotations: "key1=value1"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1442,13 +1248,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("label-token", map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"labels":        "env=prod",
-		})
-
-		result, err := k8sTool.handleLabelResource(ctx, req)
+		req := requestWithBearerToken("label-token")
+		result, _, err := k8sTool.handleLabelResource(ctx, req, labelInput{ResourceType: "deployment", ResourceName: "test-deployment", Labels: "env=prod"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1466,8 +1267,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("api-token", nil)
-		result, err := k8sTool.handleGetAvailableAPIResources(ctx, req)
+		req := requestWithBearerToken("api-token")
+		result, _, err := k8sTool.handleGetAvailableAPIResources(ctx, req, noInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1485,8 +1286,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("config-token", nil)
-		result, err := k8sTool.handleGetClusterConfiguration(ctx, req)
+		req := requestWithBearerToken("config-token")
+		result, _, err := k8sTool.handleGetClusterConfiguration(ctx, req, noInput{})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1504,13 +1305,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("remove-anno-token", map[string]interface{}{
-			"resource_type":  "deployment",
-			"resource_name":  "test-deployment",
-			"annotation_key": "key1",
-		})
-
-		result, err := k8sTool.handleRemoveAnnotation(ctx, req)
+		req := requestWithBearerToken("remove-anno-token")
+		result, _, err := k8sTool.handleRemoveAnnotation(ctx, req, removeAnnotationInput{ResourceType: "deployment", ResourceName: "test-deployment", AnnotationKey: "key1"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1528,13 +1324,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("remove-label-token", map[string]interface{}{
-			"resource_type": "deployment",
-			"resource_name": "test-deployment",
-			"label_key":     "env",
-		})
-
-		result, err := k8sTool.handleRemoveLabel(ctx, req)
+		req := requestWithBearerToken("remove-label-token")
+		result, _, err := k8sTool.handleRemoveLabel(ctx, req, removeLabelInput{ResourceType: "deployment", ResourceName: "test-deployment", LabelKey: "env"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1552,12 +1343,8 @@ log line 2`
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("url-token", map[string]interface{}{
-			"url":       "https://example.com/manifest.yaml",
-			"namespace": "default",
-		})
-
-		result, err := k8sTool.handleCreateResourceFromURL(ctx, req)
+		req := requestWithBearerToken("url-token")
+		result, _, err := k8sTool.handleCreateResourceFromURL(ctx, req, createFromURLInput{URL: "https://example.com/manifest.yaml", Namespace: "default"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1580,11 +1367,8 @@ metadata:
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := requestWithBearerToken("apply-token", map[string]interface{}{
-			"manifest": manifest,
-		})
-
-		result, err := k8sTool.handleApplyManifest(ctx, req)
+		req := requestWithBearerToken("apply-token")
+		result, _, err := k8sTool.handleApplyManifest(ctx, req, applyManifestInput{Manifest: manifest})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1597,9 +1381,8 @@ metadata:
 
 	t.Run("returns error when passthrough true and authorization header missing", func(t *testing.T) {
 		k8sTool := newTestK8sToolWithPassthrough(true)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
-		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlGetEnhanced(ctx, req, getResourcesInput{ResourceType: "pods"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -1614,10 +1397,8 @@ metadata:
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(false)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
-		// No Header set on request
-		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		req := &mcp.CallToolRequest{}
+		result, _, err := k8sTool.handleKubectlGetEnhanced(ctx, req, getResourcesInput{ResourceType: "pods"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -1636,11 +1417,9 @@ metadata:
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(false)
-		req := mcp.CallToolRequest{}
-		req.Header = http.Header{}
-		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
-		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
-		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: http.Header{}}}
+		req.Extra.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+		result, _, err := k8sTool.handleKubectlGetEnhanced(ctx, req, getResourcesInput{ResourceType: "pods"})
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)

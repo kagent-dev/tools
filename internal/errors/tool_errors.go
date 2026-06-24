@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 )
 
 // ToolError represents a structured error with context and recovery suggestions
