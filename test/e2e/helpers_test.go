@@ -20,6 +20,23 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// toolResultText concatenates the text content of a tool result. The go-sdk
+// represents content as []mcp.Content (a slice of pointers), so formatting it
+// with %v yields opaque addresses; this returns the human-readable message so
+// failed tool calls surface the real error.
+func toolResultText(result *mcp.CallToolResult) string {
+	if result == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, c := range result.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String()
+}
+
 // getBinaryName returns the platform-specific binary name
 func getBinaryName() string {
 	osName := runtime.GOOS
@@ -319,7 +336,7 @@ func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
 		return nil, err
 	}
 	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %v", result.Content)
+		return nil, fmt.Errorf("tool call failed: %s", toolResultText(result))
 	}
 	return result, nil
 }
@@ -347,7 +364,7 @@ func (c *MCPClient) helmListReleases() (interface{}, error) {
 		return nil, err
 	}
 	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %v", result.Content)
+		return nil, fmt.Errorf("tool call failed: %s", toolResultText(result))
 	}
 	return result, nil
 }
@@ -373,7 +390,7 @@ func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
 		return nil, err
 	}
 	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %v", result.Content)
+		return nil, fmt.Errorf("tool call failed: %s", toolResultText(result))
 	}
 	return result, nil
 }
@@ -401,7 +418,7 @@ func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
 		return nil, err
 	}
 	if result.IsError {
-		return nil, fmt.Errorf("tool call failed: %v", result.Content)
+		return nil, fmt.Errorf("tool call failed: %s", toolResultText(result))
 	}
 	return result, nil
 }

@@ -138,6 +138,16 @@ func RegisterTools(server *server.MCPServer, readOnly bool) {
 
 Handler functions are prefixed with `handle` (e.g., `handleKubectlGetEnhanced`, `handleHelmList`).
 
+### Typed MCP Inputs and Outputs
+
+All MCP tool inputs and outputs must be strongly typed:
+
+- Define a concrete input struct for every tool with `json` and `jsonschema` tags.
+- Define a concrete output DTO for every structured response. Raw CLI text may use a shared typed wrapper such as `TextOutput` with an `Output string` field.
+- When using the Go MCP SDK wrapper, do not register handlers with `Out=any`; typed outputs enable output schema inference and validation.
+- Do not use `any`, `interface{}`, `map[string]any`, `map[string]interface{}`, `[]any`, or `[]interface{}` for handler inputs, handler outputs, public response DTOs, or tests.
+- If a payload is genuinely dynamic JSON, isolate it as `json.RawMessage` behind a typed envelope instead of spreading loose maps through handlers.
+
 ### CommandBuilder Pattern
 
 Use the fluent `CommandBuilder` interface for executing CLI commands:
@@ -228,6 +238,7 @@ ctx := cmd.WithShellExecutor(context.Background(), mockExecutor)
 - Unit tests: co-located `*_test.go` files in each package
 - E2E tests: `test/e2e/` (requires Kind cluster)
 - All public functions require unit tests
+- Decode structured tool results into the same output DTOs used by production code. Avoid `map[string]interface{}` / `[]interface{}` assertions in tests.
 
 ---
 
@@ -281,6 +292,7 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
 - Do not return Go errors from MCP handlers — use `ToolError.ToMCPResult()` instead.
 - Do not duplicate logic across providers — extract to `internal/` packages.
 - Do not bypass the cache for read operations.
+- Do not use untyped maps or `any` for MCP tool input/output schemas or public response bodies.
 - Do not add new tool providers without a corresponding `RegisterTools` function.
 - Do not commit without running `make fmt && make lint && make test`.
 
@@ -294,10 +306,11 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
 4. Register the provider in `cmd/main.go` inside `registerMCP()`.
 5. Add input validation using `internal/security/`.
 6. Use `CommandBuilder` for CLI execution.
-7. Return errors via `ToolError.ToMCPResult()`.
-8. Write unit tests with mock shell executor (80% coverage minimum).
-9. Add E2E tests if the tool interacts with a cluster.
-10. Run `make fmt && make lint && make test` before submitting.
+7. Define concrete typed input and output DTOs; avoid `any`, `interface{}`, and untyped maps.
+8. Return errors via `ToolError.ToMCPResult()`.
+9. Write unit tests with mock shell executor (80% coverage minimum).
+10. Add E2E tests if the tool interacts with a cluster.
+11. Run `make fmt && make lint && make test` before submitting.
 
 ---
 

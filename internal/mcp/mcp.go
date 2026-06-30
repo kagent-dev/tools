@@ -8,9 +8,11 @@ package mcp
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kagent-dev/tools/internal/metrics"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
@@ -65,11 +67,40 @@ func Header(req *sdk.CallToolRequest) http.Header {
 var providerByTool sync.Map
 
 // AddTool registers a typed tool and records its provider for metrics. The input
-// schema is inferred from In's json/jsonschema struct tags by the SDK.
+// schema is inferred from In's json/jsonschema struct tags by the SDK, then
+// relaxed by relaxInputSchema to preserve the pre-migration tool-calling contract.
 func AddTool[In, Out any](s *sdk.Server, provider string, t *sdk.Tool, h sdk.ToolHandlerFor[In, Out]) {
 	providerByTool.Store(t.Name, provider)
 	metrics.KagentToolsMCPRegisteredTools.WithLabelValues(t.Name, provider).Set(1)
+	relaxInputSchema[In](t)
 	sdk.AddTool(s, t, h)
+}
+
+// relaxInputSchema restores the input-validation contract the providers were
+// written against. The previous mark3labs API made every argument optional
+// unless explicitly marked Required() and ignored unknown arguments. The go-sdk
+// instead infers every non-omitempty struct field as required and sets
+// additionalProperties:false, so a client that omits an optional field (or sends
+// an extra one) is rejected before the handler runs. That silently broke tools
+// such as k8s_get_resources, where only resource_type is truly required.
+//
+// We re-infer the schema, drop the required list, and allow additional
+// properties. Handlers continue to validate their own mandatory inputs and
+// return a tool error when one is missing, so correctness is unchanged.
+func relaxInputSchema[In any](t *sdk.Tool) {
+	if t.InputSchema != nil {
+		return // caller supplied an explicit schema; respect it
+	}
+	if reflect.TypeFor[In]() == reflect.TypeFor[any]() {
+		return // SDK has dedicated handling for an "any" input
+	}
+	schema, err := jsonschema.For[In](nil)
+	if err != nil || schema.Type != "object" {
+		return // fall back to the SDK's own inference
+	}
+	schema.Required = nil
+	schema.AdditionalProperties = nil
+	t.InputSchema = schema
 }
 
 func providerOf(tool string) string {
