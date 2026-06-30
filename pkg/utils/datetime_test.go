@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 )
 
 // Test the actual MCP tool handler functions
@@ -13,9 +13,8 @@ import (
 
 func TestHandleGetCurrentDateTimeTool(t *testing.T) {
 	ctx := context.Background()
-	request := mcp.CallToolRequest{}
 
-	result, err := handleGetCurrentDateTimeTool(ctx, request)
+	result, _, err := handleGetCurrentDateTimeTool(ctx, &mcp.CallToolRequest{}, datetimeInput{})
 	if err != nil {
 		t.Fatalf("handleGetCurrentDateTimeTool failed: %v", err)
 	}
@@ -30,7 +29,7 @@ func TestHandleGetCurrentDateTimeTool(t *testing.T) {
 
 	// Verify the result is a valid RFC3339 timestamp (ISO 8601 format)
 	if len(result.Content) > 0 {
-		if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+		if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
 			_, err := time.Parse(time.RFC3339, textContent.Text)
 			if err != nil {
 				t.Errorf("Result is not valid RFC3339 timestamp: %v", err)
@@ -51,10 +50,8 @@ func TestHandleGetCurrentDateTimeTool(t *testing.T) {
 func TestHandleGetCurrentDateTimeToolNoParameters(t *testing.T) {
 	// Test that the tool works without any parameters (as per Python implementation)
 	ctx := context.Background()
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{} // Empty arguments
 
-	result, err := handleGetCurrentDateTimeTool(ctx, request)
+	result, _, err := handleGetCurrentDateTimeTool(ctx, &mcp.CallToolRequest{}, datetimeInput{})
 	if err != nil {
 		t.Fatalf("handleGetCurrentDateTimeTool failed with empty args: %v", err)
 	}
@@ -69,7 +66,7 @@ func TestHandleGetCurrentDateTimeToolNoParameters(t *testing.T) {
 
 	// Verify we get a valid timestamp
 	if len(result.Content) > 0 {
-		if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+		if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
 			_, err := time.Parse(time.RFC3339, textContent.Text)
 			if err != nil {
 				t.Errorf("Result is not valid RFC3339 timestamp: %v", err)
@@ -85,15 +82,14 @@ func TestHandleGetCurrentDateTimeToolNoParameters(t *testing.T) {
 func TestDateTimeFormatConsistency(t *testing.T) {
 	// Test that our Go implementation produces ISO 8601 format consistent with Python
 	ctx := context.Background()
-	request := mcp.CallToolRequest{}
 
-	result, err := handleGetCurrentDateTimeTool(ctx, request)
+	result, _, err := handleGetCurrentDateTimeTool(ctx, &mcp.CallToolRequest{}, datetimeInput{})
 	if err != nil {
 		t.Fatalf("handleGetCurrentDateTimeTool failed: %v", err)
 	}
 
 	if len(result.Content) > 0 {
-		if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+		if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
 			timestamp := textContent.Text
 
 			// Check that it follows RFC3339 format (which is ISO 8601 compliant)

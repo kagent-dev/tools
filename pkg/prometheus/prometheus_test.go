@@ -7,18 +7,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRegisterTools(t *testing.T) {
 	t.Run("read-write", func(t *testing.T) {
-		s := server.NewMCPServer("test", "v0.0.1")
+		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, false)
 	})
 	t.Run("read-only", func(t *testing.T) {
-		s := server.NewMCPServer("test", "v0.0.1")
+		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, true)
 	})
 }
@@ -26,75 +25,74 @@ func TestRegisterTools(t *testing.T) {
 func TestPrometheusInputValidation(t *testing.T) {
 	ctx := context.Background()
 
-	invalidURL := map[string]interface{}{"prometheus_url": "not a url", "query": "up"}
-	invalidQuery := map[string]interface{}{"prometheus_url": "http://localhost:9090", "query": "up; drop"}
-
 	t.Run("query invalid url", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = invalidURL
-		res, err := handlePrometheusQueryTool(ctx, req)
+		res, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			PrometheusURL: "not a url",
+			Query:         "up",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 
 	t.Run("range invalid url", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = invalidURL
-		res, err := handlePrometheusRangeQueryTool(ctx, req)
+		res, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+			PrometheusURL: "not a url",
+			Query:         "up",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 
 	t.Run("labels invalid url", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"prometheus_url": "not a url"}
-		res, err := handlePrometheusLabelsQueryTool(ctx, req)
+		res, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+			PrometheusURL: "not a url",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 
 	t.Run("targets invalid url", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"prometheus_url": "not a url"}
-		res, err := handlePrometheusTargetsQueryTool(ctx, req)
+		res, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{
+			PrometheusURL: "not a url",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 
 	t.Run("query invalid promql", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = invalidQuery
-		res, err := handlePrometheusQueryTool(ctx, req)
+		res, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			PrometheusURL: "http://localhost:9090",
+			Query:         "up; drop",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 
 	t.Run("range invalid promql", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = invalidQuery
-		res, err := handlePrometheusRangeQueryTool(ctx, req)
+		res, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+			PrometheusURL: "http://localhost:9090",
+			Query:         "up; drop",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 }
 
 func TestPrometheusLabelsTargetsErrorPaths(t *testing.T) {
-	args := map[string]interface{}{"prometheus_url": "http://localhost:9090"}
-
 	t.Run("labels client error", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(nil, assert.AnError))
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		res, err := handlePrometheusLabelsQueryTool(ctx, req)
+		res, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+			PrometheusURL: "http://localhost:9090",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 
 	t.Run("labels malformed json", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(createMockResponse(200, "not json"), nil))
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		res, err := handlePrometheusLabelsQueryTool(ctx, req)
+		res, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+			PrometheusURL: "http://localhost:9090",
+		})
 		assert.NoError(t, err)
 		assert.False(t, res.IsError)
 		assert.Contains(t, getResultText(res), "not json")
@@ -102,18 +100,18 @@ func TestPrometheusLabelsTargetsErrorPaths(t *testing.T) {
 
 	t.Run("targets client error", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(nil, assert.AnError))
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		res, err := handlePrometheusTargetsQueryTool(ctx, req)
+		res, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{
+			PrometheusURL: "http://localhost:9090",
+		})
 		assert.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
 
 	t.Run("targets malformed json", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(createMockResponse(200, "not json"), nil))
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = args
-		res, err := handlePrometheusTargetsQueryTool(ctx, req)
+		res, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{
+			PrometheusURL: "http://localhost:9090",
+		})
 		assert.NoError(t, err)
 		assert.False(t, res.IsError)
 		assert.Contains(t, getResultText(res), "not json")
@@ -154,7 +152,7 @@ func getResultText(result *mcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""
@@ -192,13 +190,10 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query":          "up",
-			"prometheus_url": "http://localhost:9090",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query:         "up",
+			PrometheusURL: "http://localhost:9090",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -211,12 +206,9 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 
 	t.Run("missing query parameter", func(t *testing.T) {
 		ctx := context.Background()
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"prometheus_url": "http://localhost:9090",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			PrometheusURL: "http://localhost:9090",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -228,12 +220,9 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(nil, assert.AnError)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: "up",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -245,12 +234,9 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(500, "Internal Server Error"), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: "up",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -262,12 +248,9 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, "invalid json {"), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: "up",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -281,12 +264,9 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: "up",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -312,15 +292,12 @@ func TestHandlePrometheusRangeQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-			"start": "1609459200",
-			"end":   "1609459260",
-			"step":  "60s",
-		}
-
-		result, err := handlePrometheusRangeQueryTool(ctx, request)
+		result, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+			Query: "up",
+			Start: "1609459200",
+			End:   "1609459260",
+			Step:  "60s",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -333,10 +310,7 @@ func TestHandlePrometheusRangeQueryTool(t *testing.T) {
 
 	t.Run("missing query parameter", func(t *testing.T) {
 		ctx := context.Background()
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{}
-
-		result, err := handlePrometheusRangeQueryTool(ctx, request)
+		result, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -349,12 +323,9 @@ func TestHandlePrometheusRangeQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusRangeQueryTool(ctx, request)
+		result, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+			Query: "up",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -372,10 +343,7 @@ func TestHandlePrometheusLabelsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{}
-
-		result, err := handlePrometheusLabelsQueryTool(ctx, request)
+		result, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -391,10 +359,7 @@ func TestHandlePrometheusLabelsQueryTool(t *testing.T) {
 		client := newTestClient(nil, assert.AnError)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{}
-
-		result, err := handlePrometheusLabelsQueryTool(ctx, request)
+		result, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -407,12 +372,9 @@ func TestHandlePrometheusLabelsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"prometheus_url": "http://custom:9090",
-		}
-
-		result, err := handlePrometheusLabelsQueryTool(ctx, request)
+		result, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+			PrometheusURL: "http://custom:9090",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -440,10 +402,7 @@ func TestHandlePrometheusTargetsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{}
-
-		result, err := handlePrometheusTargetsQueryTool(ctx, request)
+		result, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -459,10 +418,7 @@ func TestHandlePrometheusTargetsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(404, "Not Found"), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{}
-
-		result, err := handlePrometheusTargetsQueryTool(ctx, request)
+		result, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -474,10 +430,7 @@ func TestHandlePrometheusTargetsQueryTool(t *testing.T) {
 func TestHandlePromql(t *testing.T) {
 	t.Run("missing query description", func(t *testing.T) {
 		ctx := context.Background()
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{}
-
-		result, err := handlePromql(ctx, request)
+		result, _, err := handlePromql(ctx, &mcp.CallToolRequest{}, promqlInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -487,12 +440,9 @@ func TestHandlePromql(t *testing.T) {
 
 	t.Run("with query description", func(t *testing.T) {
 		ctx := context.Background()
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query_description": "CPU usage percentage",
-		}
-
-		result, err := handlePromql(ctx, request)
+		result, _, err := handlePromql(ctx, &mcp.CallToolRequest{}, promqlInput{
+			QueryDescription: "CPU usage percentage",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -522,12 +472,9 @@ func TestPrometheusToolsContextCancellation(t *testing.T) {
 		ctx := contextWithMockClient(client)
 		_ = cancelCtx
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: "up",
+		})
 
 		// Should handle cancellation gracefully
 		assert.NoError(t, err)
@@ -551,12 +498,9 @@ func TestPrometheusToolsEdgeCases(t *testing.T) {
 		client := newTestClient(createMockResponse(200, largeResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: "up",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -571,12 +515,9 @@ func TestPrometheusToolsEdgeCases(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": `up{instance=~".*:9090"}`,
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: `up{instance=~".*:9090"}`,
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -587,12 +528,9 @@ func TestPrometheusToolsEdgeCases(t *testing.T) {
 		client := newTestClient(createMockResponse(200, ""), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: "up",
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -607,12 +545,9 @@ func TestPrometheusURLEncoding(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		request := mcp.CallToolRequest{}
-		request.Params.Arguments = map[string]interface{}{
-			"query": "up{job=\"test service\"}",
-		}
-
-		result, err := handlePrometheusQueryTool(ctx, request)
+		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+			Query: `up{job="test service"}`,
+		})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)

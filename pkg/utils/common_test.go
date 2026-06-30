@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,12 +67,12 @@ func TestShellTool(t *testing.T) {
 
 func TestRegisterTools(t *testing.T) {
 	t.Run("read-write registers shell", func(t *testing.T) {
-		s := server.NewMCPServer("test", "v0.0.1")
+		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, false)
 	})
 
 	t.Run("read-only omits shell", func(t *testing.T) {
-		s := server.NewMCPServer("test", "v0.0.1")
+		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, true)
 	})
 }
@@ -84,17 +83,13 @@ func TestHandleShellTool(t *testing.T) {
 	ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 	t.Run("success", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"command": "echo hi"}
-		res, err := handleShellTool(ctx, req)
+		res, _, err := handleShellTool(ctx, &mcp.CallToolRequest{}, shellParams{Command: "echo hi"})
 		require.NoError(t, err)
 		assert.False(t, res.IsError)
 	})
 
 	t.Run("missing command", func(t *testing.T) {
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{}
-		res, err := handleShellTool(ctx, req)
+		res, _, err := handleShellTool(ctx, &mcp.CallToolRequest{}, shellParams{})
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.Contains(t, getResultText(res), "command parameter is required")
@@ -104,9 +99,7 @@ func TestHandleShellTool(t *testing.T) {
 		m := cmd.NewMockShellExecutor()
 		m.AddCommandString("false", []string{}, "", assert.AnError)
 		errCtx := cmd.WithShellExecutor(context.Background(), m)
-		req := mcp.CallToolRequest{}
-		req.Params.Arguments = map[string]interface{}{"command": "false"}
-		res, err := handleShellTool(errCtx, req)
+		res, _, err := handleShellTool(errCtx, &mcp.CallToolRequest{}, shellParams{Command: "false"})
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
@@ -116,7 +109,7 @@ func getResultText(result *mcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""

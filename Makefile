@@ -58,11 +58,11 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 
 .PHONY: test
 test: build lint ## Run all tests with build, lint, and coverage
-	go test -tags=test -v -cover ./pkg/... ./internal/...
+	go test -tags=test -v -cover ./pkg/... ./internal/... ./cmd/...
 
 .PHONY: test-only
 test-only: ## Run tests only (without build/lint for faster iteration)
-	go test -tags=test -v -cover ./pkg/... ./internal/...
+	go test -tags=test -v -cover ./pkg/... ./internal/... ./cmd/...
 
 .PHONY: e2e
 e2e: test retag

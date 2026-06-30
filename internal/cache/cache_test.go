@@ -8,6 +8,33 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestInvalidateHelpers(t *testing.T) {
+	// Seed each cache, then assert the type-specific invalidators clear it.
+	InitCaches()
+	for _, ct := range []CacheType{CacheTypeKubernetes, CacheTypeHelm, CacheTypeIstio, CacheTypeCommand} {
+		GetCacheByType(ct).Set("k", "v")
+	}
+
+	InvalidateKubernetesCache()
+	InvalidateHelmCache()
+	InvalidateIstioCache()
+	InvalidateCommandCache()
+
+	for _, ct := range []CacheType{CacheTypeKubernetes, CacheTypeHelm, CacheTypeIstio, CacheTypeCommand} {
+		if _, ok := GetCacheByType(ct).Get("k"); ok {
+			t.Errorf("expected %s cache to be invalidated", ct.String())
+		}
+	}
+
+	// Known command routes to its mapped cache; unknown falls back to command cache.
+	GetCacheByType(CacheTypeKubernetes).Set("k", "v")
+	InvalidateCacheForCommand("kubectl")
+	if _, ok := GetCacheByType(CacheTypeKubernetes).Get("k"); ok {
+		t.Error("expected kubectl command to invalidate kubernetes cache")
+	}
+	assert.NotPanics(t, func() { InvalidateCacheForCommand("totally-unknown-cmd") })
+}
+
 func TestNewCache(t *testing.T) {
 	cache := NewCache[string]("test-cache", 1*time.Minute, 100, 10*time.Second)
 
