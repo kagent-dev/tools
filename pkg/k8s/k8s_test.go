@@ -669,14 +669,13 @@ spec:
 
 func TestHandleExecCommand(t *testing.T) {
 	ctx := context.Background()
-	t.Run("exec command in pod", func(t *testing.T) {
+	t.Run("exec command in pod splits legacy command string", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `total 8
 drwxr-xr-x 1 root root 4096 Jan  1 12:00 .
 drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 
-		// The implementation passes the command as a single string after --
-		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls -la"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls", "-la"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sTool()
@@ -701,7 +700,39 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "ls -la"}, callLog[0].Args)
+		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "ls", "-la"}, callLog[0].Args)
+	})
+
+	t.Run("exec command in pod with explicit args and container", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `Linux test-node 6.12.0`
+
+		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "-c", "app", "--", "uname", "-a"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"pod_name":  "mypod",
+			"namespace": "default",
+			"container": "app",
+			"command":   "uname",
+			"args":      []interface{}{"-a"},
+		}
+
+		result, err := k8sTool.handleExecCommand(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		content := getResultText(result)
+		assert.Contains(t, content, "Linux test-node")
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, "kubectl", callLog[0].Command)
+		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "-c", "app", "--", "uname", "-a"}, callLog[0].Args)
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {
@@ -1390,7 +1421,7 @@ log line 2`
 	t.Run("exec command with bearer token", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		expectedOutput := `total 8`
-		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls -la", "--token", "exec-token"}, expectedOutput, nil)
+		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "ls", "-la", "--token", "exec-token"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(ctx, mock)
 
 		k8sTool := newTestK8sToolWithPassthrough(true)

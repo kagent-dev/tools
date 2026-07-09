@@ -316,7 +316,12 @@ func (k *K8sTool) handleGetEvents(ctx context.Context, request mcp.CallToolReque
 func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	podName := mcp.ParseString(request, "pod_name", "")
 	namespace := mcp.ParseString(request, "namespace", "default")
+	container := mcp.ParseString(request, "container", "")
 	command := mcp.ParseString(request, "command", "")
+	commandArgs, err := parseStringSliceArgument(request, "args")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid args: %v", err)), nil
+	}
 
 	if podName == "" || command == "" {
 		return mcp.NewToolResultError("pod_name and command parameters are required"), nil
@@ -332,14 +337,60 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil
 	}
 
-	// Validate command input for security
-	if err := security.ValidateCommandInput(command); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid command: %v", err)), nil
+	commandParts := append(strings.Fields(command), commandArgs...)
+	if len(commandParts) == 0 {
+		return mcp.NewToolResultError("command parameter is required"), nil
 	}
 
-	args := []string{"exec", podName, "-n", namespace, "--", command}
+	for _, part := range commandParts {
+		if err := security.ValidateCommandInput(part); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid command: %v", err)), nil
+		}
+	}
+
+	if container != "" {
+		if err := security.ValidateK8sResourceName(container); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid container name: %v", err)), nil
+		}
+	}
+
+	args := []string{"exec", podName, "-n", namespace}
+	if container != "" {
+		args = append(args, "-c", container)
+	}
+	args = append(args, "--")
+	args = append(args, commandParts...)
 
 	return k.runKubectlCommand(ctx, request.Header, args...)
+}
+
+func parseStringSliceArgument(request mcp.CallToolRequest, name string) ([]string, error) {
+	arguments, ok := request.Params.Arguments.(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+
+	raw, ok := arguments[name]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+
+	switch value := raw.(type) {
+	case []string:
+		return value, nil
+	case []any:
+		values := make([]string, 0, len(value))
+		for _, item := range value {
+			text, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("%s must only contain strings", name)
+			}
+			values = append(values, text)
+		}
+		return values, nil
+	default:
+		return nil, fmt.Errorf("%s must be an array of strings", name)
+	}
 }
 
 // Get available API resources
@@ -765,7 +816,8 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 			mcp.WithString("pod_name", mcp.Description("Name of the pod to execute in"), mcp.Required()),
 			mcp.WithString("namespace", mcp.Description("Namespace of the pod (default: default)")),
 			mcp.WithString("container", mcp.Description("Container name (for multi-container pods)")),
-			mcp.WithString("command", mcp.Description("Command to execute"), mcp.Required()),
+			mcp.WithString("command", mcp.Description("Command executable to run. For backward compatibility, simple whitespace-separated commands are split into argv tokens."), mcp.Required()),
+			mcp.WithArray("args", mcp.Description("Command arguments to pass after command. Prefer this for flags and arguments, for example command='uname', args=['-a']."), mcp.WithStringItems()),
 		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_execute_command", k8sTool.handleExecCommand)))
 
 		s.AddTool(mcp.NewTool("k8s_rollout",
