@@ -59,7 +59,11 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request mcp.Call
 	resourceType := mcp.ParseString(request, "resource_type", "")
 	resourceName := mcp.ParseString(request, "resource_name", "")
 	namespace := mcp.ParseString(request, "namespace", "")
-	allNamespaces := mcp.ParseString(request, "all_namespaces", "") == "true"
+	// The schema declares all_namespaces as a string, but models routinely send a
+	// JSON boolean instead. Comparing only against the string "true" dropped
+	// --all-namespaces silently: the caller asked for the cluster and got a single
+	// namespace back with no error. ParseBoolean accepts both spellings.
+	allNamespaces := mcp.ParseBoolean(request, "all_namespaces", false)
 	output := mcp.ParseString(request, "output", "wide")
 
 	if resourceType == "" {
@@ -647,12 +651,19 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 
 	// Read-only tools - always registered
 	s.AddTool(mcp.NewTool("k8s_get_resources",
-		mcp.WithDescription("Get Kubernetes resources using kubectl"),
+		mcp.WithDescription("List Kubernetes resources with kubectl. "+
+			"Scope: with neither all_namespaces nor namespace, this queries ONLY the namespace this tool "+
+			"runs in, not the cluster. "+
+			"Images: the default wide output has a CONTAINERS/IMAGES column for workloads "+
+			"(deployment, daemonset, statefulset, replicaset, job, cronjob) but NOT for pods, so a pod "+
+			"listing is never a source of image versions. Read versions from a workload listing, or use "+
+			"k8s_get_resource_yaml for static pods (the control plane) and for the authoritative spec. "+
+			"Node versions (kubelet, container runtime): resource_type=node."),
 		mcp.WithString("resource_type", mcp.Description("Type of resource (pod, service, deployment, etc.)"), mcp.Required()),
 		mcp.WithString("resource_name", mcp.Description("Name of specific resource (optional)")),
-		mcp.WithString("namespace", mcp.Description("Namespace to query (optional)")),
-		mcp.WithString("all_namespaces", mcp.Description("Query all namespaces (true/false)")),
-		mcp.WithString("output", mcp.Description("Output format (json, yaml, wide)"), mcp.DefaultString("wide")),
+		mcp.WithString("namespace", mcp.Description("Namespace to query. Omitted, and without all_namespaces, the tool queries its own namespace")),
+		mcp.WithString("all_namespaces", mcp.Description(`Query all namespaces ("true"/"false")`)),
+		mcp.WithString("output", mcp.Description("Output format (json, yaml, wide). Defaults to wide"), mcp.DefaultString("wide")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_get_resources", k8sTool.handleKubectlGetEnhanced)))
 
 	s.AddTool(mcp.NewTool("k8s_get_pod_logs",
