@@ -45,7 +45,12 @@ tools:
     # When false: kubectl uses in-cluster ServiceAccount.
     tokenPassthrough: false
   prometheus:
-    url: "prometheus.kagent.svc.cluster.local:9090"
+    # Default Prometheus server URL for the prometheus_* tools (rendered as PROMETHEUS_URL),
+    # used when a tool call omits the optional prometheus_url parameter. MUST include the
+    # scheme - the tools reject a URL that does not start with http:// or https://.
+    # Empty (the default) renders no env var, so the tools fall back to http://localhost:9090.
+    # e.g. "http://prometheus.kagent.svc.cluster.local:9090"
+    url: ""
     username: ""
     password: ""
   grafana: # kubectl port-forward svc/grafana 3000:3000

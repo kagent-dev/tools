@@ -251,7 +251,7 @@ This Go implementation provides feature parity with the original Python tools wh
 
 Tools can be configured through environment variables:
 - `KUBECONFIG`: Kubernetes configuration file path
-- `PROMETHEUS_URL`: Default Prometheus server URL
+- `PROMETHEUS_URL`: Default Prometheus server URL for the `prometheus_*` tools, used when a call omits the optional `prometheus_url` parameter (which still wins when supplied). Must include the scheme; defaults to `http://localhost:9090`. In the Helm chart set `tools.prometheus.url`.
 - `GRAFANA_URL`: Default Grafana server URL
 - `GRAFANA_API_KEY`: Default Grafana API key
 

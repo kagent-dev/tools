@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/errors"
@@ -15,6 +17,33 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
+
+// fallbackPrometheusURL is used when neither the prometheus_url parameter nor the
+// PROMETHEUS_URL environment variable is set.
+const fallbackPrometheusURL = "http://localhost:9090"
+
+// defaultPrometheusURL is the server URL used when a tool call omits the optional
+// prometheus_url parameter. It reads the PROMETHEUS_URL environment variable, which the
+// README already documents ("Default Prometheus server URL") but which was never honored.
+//
+// Without it, the only way to reach a non-localhost Prometheus is for the model to pass
+// prometheus_url on every single call - and because the parameter is optional and its
+// advertised default looks reasonable, models routinely omit it and the call fails with
+// "connection refused" against a port nothing serves inside the tool server's pod.
+// The env var lets an operator set the address once, per deployment.
+func defaultPrometheusURL() string {
+	if url := strings.TrimSpace(os.Getenv("PROMETHEUS_URL")); url != "" {
+		return url
+	}
+	return fallbackPrometheusURL
+}
+
+// prometheusURLDescription describes the prometheus_url parameter in the tool schema.
+// It names the URL that is ACTUALLY used when the parameter is omitted, so a model reading
+// the schema is not told the default is localhost when the deployment points somewhere else.
+func prometheusURLDescription() string {
+	return fmt.Sprintf("Prometheus server URL (default: %s)", defaultPrometheusURL())
+}
 
 // clientKey is the context key for the http client.
 type clientKey struct{}
@@ -29,7 +58,7 @@ func getHTTPClient(ctx context.Context) *http.Client {
 // Prometheus tools using direct HTTP API calls
 
 func handlePrometheusQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
+	prometheusURL := mcp.ParseString(request, "prometheus_url", defaultPrometheusURL())
 	query := mcp.ParseString(request, "query", "")
 
 	if query == "" {
@@ -106,7 +135,7 @@ func handlePrometheusQueryTool(ctx context.Context, request mcp.CallToolRequest)
 }
 
 func handlePrometheusRangeQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
+	prometheusURL := mcp.ParseString(request, "prometheus_url", defaultPrometheusURL())
 	query := mcp.ParseString(request, "query", "")
 	start := mcp.ParseString(request, "start", "")
 	end := mcp.ParseString(request, "end", "")
@@ -197,7 +226,7 @@ func handlePrometheusRangeQueryTool(ctx context.Context, request mcp.CallToolReq
 }
 
 func handlePrometheusLabelsQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
+	prometheusURL := mcp.ParseString(request, "prometheus_url", defaultPrometheusURL())
 
 	// Validate prometheus URL
 	if err := security.ValidateURL(prometheusURL); err != nil {
@@ -258,7 +287,7 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request mcp.CallToolRe
 }
 
 func handlePrometheusTargetsQueryTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	prometheusURL := mcp.ParseString(request, "prometheus_url", "http://localhost:9090")
+	prometheusURL := mcp.ParseString(request, "prometheus_url", defaultPrometheusURL())
 
 	// Validate prometheus URL
 	if err := security.ValidateURL(prometheusURL); err != nil {
@@ -307,7 +336,7 @@ func RegisterTools(s *server.MCPServer, readOnly bool) {
 	s.AddTool(mcp.NewTool("prometheus_query_tool",
 		mcp.WithDescription("Execute a PromQL query against Prometheus"),
 		mcp.WithString("query", mcp.Description("PromQL query to execute"), mcp.Required()),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
+		mcp.WithString("prometheus_url", mcp.Description(prometheusURLDescription())),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_query_tool", handlePrometheusQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_query_range_tool",
@@ -316,17 +345,17 @@ func RegisterTools(s *server.MCPServer, readOnly bool) {
 		mcp.WithString("start", mcp.Description("Start time (Unix timestamp or relative time)")),
 		mcp.WithString("end", mcp.Description("End time (Unix timestamp or relative time)")),
 		mcp.WithString("step", mcp.Description("Query resolution step (default: 15s)")),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
+		mcp.WithString("prometheus_url", mcp.Description(prometheusURLDescription())),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_query_range_tool", handlePrometheusRangeQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_label_names_tool",
 		mcp.WithDescription("Get all available labels from Prometheus"),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
+		mcp.WithString("prometheus_url", mcp.Description(prometheusURLDescription())),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_label_names_tool", handlePrometheusLabelsQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_targets_tool",
 		mcp.WithDescription("Get all Prometheus targets and their status"),
-		mcp.WithString("prometheus_url", mcp.Description("Prometheus server URL (default: http://localhost:9090)")),
+		mcp.WithString("prometheus_url", mcp.Description(prometheusURLDescription())),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("prometheus_targets_tool", handlePrometheusTargetsQueryTool)))
 
 	s.AddTool(mcp.NewTool("prometheus_promql_tool",
