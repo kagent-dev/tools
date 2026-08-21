@@ -78,6 +78,9 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# Annotations to add to the deployment
+deploymentAnnotations: {}
+
 podAnnotations: {}
 
 podSecurityContext: {}
@@ -90,6 +93,15 @@ securityContext: {}
   # readOnlyRootFilesystem: true
   # runAsNonRoot: true
   # runAsUser: 1000
+
+# PodDisruptionBudget configuration
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+  # labels: {}
+  # annotations: {}
+  # unhealthyPodEvictionPolicy: IfHealthyBudget
   
 # Node taints which will be tolerated for Pod.
 tolerations: []
