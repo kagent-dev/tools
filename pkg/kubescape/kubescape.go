@@ -461,10 +461,13 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 		queryNamespace = namespace
 	}
 
-	// Filtering is done client-side below rather than with a labelSelector: the
-	// Kubescape storage API server ignores labelSelector on list and returns
-	// every object regardless (kubescape/storage#363), so a server-side filter
-	// silently returns unfiltered results.
+	// Filtering is done client-side below rather than with a labelSelector.
+	// Storage servers before v0.0.305 ignore labelSelector on list and return
+	// every object regardless, so a server-side filter silently returns
+	// unfiltered results. kubescape/storage#362 added selector support in
+	// v0.0.305, but the kubescape-operator chart still pins v0.0.298 and this
+	// provider cannot know which version it is talking to -- filtering here
+	// gives the same answer against either.
 	manifests, err := k.spdxClient.VulnerabilityManifests(queryNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		toolErr := errors.NewKubescapeError("list_vulnerability_manifests", err).

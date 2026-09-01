@@ -1342,11 +1342,12 @@ func TestHandleListVulnerabilityManifests_LevelFilter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			spdxClient := kubescapefake.NewClientset(imageLevel, workloadLevel)
 
-			// The real Kubescape storage API server IGNORES labelSelector on
-			// list (kubescape/storage#363) -- it returns every object no matter
-			// what is asked for. The fake clientset honours selectors, which
-			// would let a server-side filter pass this test while failing on a
-			// real cluster. This reactor reproduces the server's actual
+			// Storage servers before v0.0.305 IGNORE labelSelector on list --
+			// they return every object no matter what is asked for -- and the
+			// kubescape-operator chart still pins v0.0.298. The fake clientset
+			// honours selectors, which would let a server-side filter pass this
+			// test while returning unfiltered results against the storage
+			// version actually deployed. This reactor reproduces that server's
 			// behaviour, and records what the provider asked for.
 			var sentSelector string
 			spdxClient.PrependReactor("list", "vulnerabilitymanifests", func(action k8stesting.Action) (bool, runtime.Object, error) {
