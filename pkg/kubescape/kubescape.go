@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/errors"
@@ -15,8 +14,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -26,24 +25,31 @@ import (
 const (
 	defaultKubescapeNamespace = "kubescape"
 
-	// CRD names
-	vulnerabilityManifestsCRD     = "vulnerabilitymanifests.spdx.softwarecomposition.kubescape.io"
-	workloadConfigurationScansCRD = "workloadconfigurationscans.spdx.softwarecomposition.kubescape.io"
-	applicationProfilesCRD        = "applicationprofiles.spdx.softwarecomposition.kubescape.io"
-	networkNeighborhoodsCRD       = "networkneighborhoods.spdx.softwarecomposition.kubescape.io"
-	sbomSyftsCRD                  = "sbomsyfts.spdx.softwarecomposition.kubescape.io"
+	// Pod labels.
+	//
+	// Every pod the kubescape-operator chart creates carries the chart-wide
+	// label app.kubernetes.io/name=kubescape-operator, so it cannot identify a
+	// single component. Per-component identity lives in the plain `app` label.
+	operatorPodLabel = "app=operator"
+	storagePodLabel  = "app=storage"
 
-	// Pod labels
-	operatorPodLabel = "app.kubernetes.io/name=kubescape-operator"
-	storagePodLabel  = "app.kubernetes.io/name=storage"
+	// Vulnerability manifest levels accepted by the `level` argument of
+	// kubescape_list_vulnerability_manifests.
+	levelImage    = "image"
+	levelWorkload = "workload"
+	levelBoth     = "both"
+
+	// Helm remediation offered when a capability looks disabled.
+	enableVulnerabilityScan    = "Enable vulnerability scanning: helm upgrade --install kubescape kubescape/kubescape-operator -n kubescape --set capabilities.vulnerabilityScan=enable"
+	enableContinuousScan       = "Enable configuration scanning: helm upgrade --install kubescape kubescape/kubescape-operator -n kubescape --set capabilities.continuousScan=enable"
+	enableRuntimeObservability = "Enable runtime observability for workload behavior and network analysis: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.runtimeObservability=enable"
 )
 
 // KubescapeTool holds the clients for Kubescape and Kubernetes APIs
 type KubescapeTool struct {
-	spdxClient   spdxv1beta1.SpdxV1beta1Interface
-	k8sClient    kubernetes.Interface
-	apiExtClient apiextensionsclientset.Interface
-	initError    error
+	spdxClient spdxv1beta1.SpdxV1beta1Interface
+	k8sClient  kubernetes.Interface
+	initError  error
 }
 
 // NewKubescapeTool creates a new KubescapeTool with Kubernetes clients
@@ -63,14 +69,6 @@ func NewKubescapeTool(kubeconfig string) *KubescapeTool {
 		return tool
 	}
 	tool.k8sClient = k8sClient
-
-	// Create API extensions client for CRD checks
-	apiExtClient, err := apiextensionsclientset.NewForConfig(config)
-	if err != nil {
-		tool.initError = fmt.Errorf("failed to create apiextensions client: %w", err)
-		return tool
-	}
-	tool.apiExtClient = apiExtClient
 
 	// Create Kubescape storage client
 	spdxClient, err := spdxv1beta1.NewForConfig(config)
@@ -112,6 +110,123 @@ type CheckStatus struct {
 	Status  string      `json:"status"`
 	Message string      `json:"message"`
 	Details interface{} `json:"details,omitempty"`
+}
+
+// storageResource describes one resource served by the Kubescape storage
+// service through the aggregated API server, and how check_health reports it.
+type storageResource struct {
+	// apiCheckKey and dataCheckKey are the keys this resource contributes to
+	// the health result. They keep their historical *_crd names so existing
+	// consumers of this tool's output are unaffected; the resources themselves
+	// are not CRDs.
+	apiCheckKey  string
+	dataCheckKey string
+	// displayName is the resource kind as users see it, e.g. "VulnerabilityManifests".
+	displayName string
+	// dataNoun names the objects in prose, e.g. "vulnerability manifests".
+	dataNoun string
+	// capability is the Kubescape capability that produces this data.
+	capability string
+	// required marks resources whose absence makes Kubescape unusable and so
+	// fails the health check. Runtime-observability resources only warn.
+	required bool
+	// apiRecommendation is offered when the API itself is unreachable,
+	// dataRecommendation when it responds but holds no data.
+	apiRecommendation  string
+	dataRecommendation string
+	// list reports how many objects exist, or why they could not be read.
+	list func(ctx context.Context) (int, error)
+}
+
+// storageResources returns the resources check_health probes, in report order.
+func (k *KubescapeTool) storageResources() []storageResource {
+	return []storageResource{
+		{
+			apiCheckKey:        "vulnerability_crd",
+			dataCheckKey:       "vulnerability_scan_data",
+			displayName:        "VulnerabilityManifests",
+			dataNoun:           "vulnerability manifests",
+			capability:         "vulnerability scanning",
+			required:           true,
+			apiRecommendation:  enableVulnerabilityScan,
+			dataRecommendation: enableVulnerabilityScan,
+			list: func(ctx context.Context) (int, error) {
+				list, err := k.spdxClient.VulnerabilityManifests(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+				if err != nil {
+					return 0, err
+				}
+				return len(list.Items), nil
+			},
+		},
+		{
+			apiCheckKey:        "configuration_crd",
+			dataCheckKey:       "configuration_scan_data",
+			displayName:        "WorkloadConfigurationScans",
+			dataNoun:           "configuration scans",
+			capability:         "configuration scanning",
+			required:           true,
+			apiRecommendation:  enableContinuousScan,
+			dataRecommendation: enableContinuousScan,
+			list: func(ctx context.Context) (int, error) {
+				list, err := k.spdxClient.WorkloadConfigurationScans(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+				if err != nil {
+					return 0, err
+				}
+				return len(list.Items), nil
+			},
+		},
+		{
+			apiCheckKey:       "application_profiles_crd",
+			dataCheckKey:      "application_profiles_data",
+			displayName:       "ApplicationProfiles",
+			dataNoun:          "application profiles",
+			capability:        "runtime observability",
+			apiRecommendation: enableRuntimeObservability,
+			list: func(ctx context.Context) (int, error) {
+				list, err := k.spdxClient.ApplicationProfiles(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+				if err != nil {
+					return 0, err
+				}
+				return len(list.Items), nil
+			},
+		},
+		{
+			apiCheckKey:       "network_neighborhoods_crd",
+			dataCheckKey:      "network_neighborhoods_data",
+			displayName:       "NetworkNeighborhoods",
+			dataNoun:          "network neighborhoods",
+			capability:        "runtime observability",
+			apiRecommendation: enableRuntimeObservability,
+			list: func(ctx context.Context) (int, error) {
+				list, err := k.spdxClient.NetworkNeighborhoods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+				if err != nil {
+					return 0, err
+				}
+				return len(list.Items), nil
+			},
+		},
+	}
+}
+
+// isStorageAPIUnavailable reports whether err means the aggregated API could
+// not be reached at all, as opposed to a request that reached it and failed.
+// The API server returns 503 when the storage service is down, and 404 when the
+// API group is not registered.
+func isStorageAPIUnavailable(err error) bool {
+	return k8serrors.IsNotFound(err) ||
+		k8serrors.IsServiceUnavailable(err) ||
+		meta.IsNoMatchError(err)
+}
+
+// appendUnique adds rec unless it is already present, so resources that share a
+// capability do not recommend the same fix twice.
+func appendUnique(recommendations []string, rec string) []string {
+	for _, existing := range recommendations {
+		if existing == rec {
+			return recommendations
+		}
+	}
+	return append(recommendations, rec)
 }
 
 // handleCheckHealth verifies Kubescape operator installation and readiness
@@ -211,10 +326,14 @@ func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallT
 		}
 		result.Healthy = false
 	} else if len(storagePods.Items) == 0 {
+		// The storage service backs every read this provider makes, so its
+		// absence is fatal rather than advisory.
 		result.Checks["storage_pods"] = CheckStatus{
-			Status:  "warning",
-			Message: "No storage pods found (may be using external storage)",
+			Status:  "error",
+			Message: "No storage pods found - every Kubescape data tool depends on the storage service",
 		}
+		result.Healthy = false
+		recommendations = append(recommendations, fmt.Sprintf("Check the storage deployment: kubectl get pods -n %s -l %s", namespace, storagePodLabel))
 	} else {
 		runningCount := 0
 		for _, pod := range storagePods.Items {
@@ -235,210 +354,66 @@ func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallT
 		}
 	}
 
-	// Check 4: VulnerabilityManifests CRD exists
-	_, err = k.apiExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, vulnerabilityManifestsCRD, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			result.Checks["vulnerability_crd"] = CheckStatus{
-				Status:  "error",
-				Message: "VulnerabilityManifests CRD not installed - vulnerability scanning may not be enabled",
-			}
-			result.Healthy = false
-			recommendations = append(recommendations,
-				"Enable vulnerability scanning in Kubescape Helm chart: helm upgrade --install kubescape kubescape/kubescape-operator -n kubescape --set capabilities.vulnerabilityScan=enable")
-		} else {
-			result.Checks["vulnerability_crd"] = CheckStatus{
-				Status:  "error",
-				Message: fmt.Sprintf("Failed to check CRD: %v", err),
-			}
-			result.Healthy = false
-		}
-	} else {
-		result.Checks["vulnerability_crd"] = CheckStatus{
-			Status:  "ok",
-			Message: "CRD installed",
-		}
-	}
-
-	// Check 5: WorkloadConfigurationScans CRD exists
-	_, err = k.apiExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, workloadConfigurationScansCRD, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			result.Checks["configuration_crd"] = CheckStatus{
-				Status:  "error",
-				Message: "WorkloadConfigurationScans CRD not installed - configuration scanning may not be enabled",
-			}
-			result.Healthy = false
-			recommendations = append(recommendations,
-				"Enable configuration scanning in Kubescape Helm chart: helm upgrade --install kubescape kubescape/kubescape-operator -n kubescape --set capabilities.continuousScan=enable")
-		} else {
-			result.Checks["configuration_crd"] = CheckStatus{
-				Status:  "error",
-				Message: fmt.Sprintf("Failed to check CRD: %v", err),
-			}
-			result.Healthy = false
-		}
-	} else {
-		result.Checks["configuration_crd"] = CheckStatus{
-			Status:  "ok",
-			Message: "CRD installed",
-		}
-	}
-
-	// Check 6: Vulnerability scan data available
-	manifests, err := k.spdxClient.VulnerabilityManifests(metav1.NamespaceAll).List(ctx, metav1.ListOptions{Limit: 1})
-	if err != nil {
-		result.Checks["vulnerability_scan_data"] = CheckStatus{
-			Status:  "warning",
-			Message: fmt.Sprintf("Failed to list vulnerability manifests: %v", err),
-		}
-	} else if len(manifests.Items) == 0 {
-		result.Checks["vulnerability_scan_data"] = CheckStatus{
-			Status:  "warning",
-			Message: "No vulnerability manifests found - scans may not have completed yet or vulnerability scanning may be disabled",
-		}
-		recommendations = append(recommendations,
-			"If vulnerability scanning is not working, ensure it is enabled: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.vulnerabilityScan=enable")
-	} else {
-		// Get actual count
-		allManifests, _ := k.spdxClient.VulnerabilityManifests(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-		count := 0
-		if allManifests != nil {
-			count = len(allManifests.Items)
-		}
-		result.Checks["vulnerability_scan_data"] = CheckStatus{
-			Status:  "ok",
-			Message: fmt.Sprintf("%d vulnerability manifests found", count),
-		}
-	}
-
-	// Check 7: Configuration scan data available
-	configScans, err := k.spdxClient.WorkloadConfigurationScans(metav1.NamespaceAll).List(ctx, metav1.ListOptions{Limit: 1})
-	if err != nil {
-		result.Checks["configuration_scan_data"] = CheckStatus{
-			Status:  "warning",
-			Message: fmt.Sprintf("Failed to list configuration scans: %v", err),
-		}
-	} else if len(configScans.Items) == 0 {
-		result.Checks["configuration_scan_data"] = CheckStatus{
-			Status:  "warning",
-			Message: "No configuration scans found - scans may not have completed yet or continuous scanning may be disabled",
-		}
-		recommendations = append(recommendations,
-			"If configuration scanning is not working, ensure it is enabled: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.continuousScan=enable")
-	} else {
-		// Get actual count
-		allConfigScans, _ := k.spdxClient.WorkloadConfigurationScans(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-		count := 0
-		if allConfigScans != nil {
-			count = len(allConfigScans.Items)
-		}
-		result.Checks["configuration_scan_data"] = CheckStatus{
-			Status:  "ok",
-			Message: fmt.Sprintf("%d configuration scans found", count),
-		}
-	}
-
-	// Check 8: ApplicationProfiles CRD exists (runtime observability)
-	_, err = k.apiExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, applicationProfilesCRD, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			result.Checks["application_profiles_crd"] = CheckStatus{
-				Status:  "warning",
-				Message: "ApplicationProfiles CRD not installed - runtime observability may not be enabled",
-			}
-			recommendations = append(recommendations,
-				"Enable runtime observability for workload behavior analysis: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.runtimeObservability=enable")
-		} else {
-			result.Checks["application_profiles_crd"] = CheckStatus{
-				Status:  "error",
-				Message: fmt.Sprintf("Failed to check CRD: %v", err),
-			}
-		}
-	} else {
-		result.Checks["application_profiles_crd"] = CheckStatus{
-			Status:  "ok",
-			Message: "CRD installed",
-		}
-
-		// Check for ApplicationProfile data
-		profiles, listErr := k.spdxClient.ApplicationProfiles(metav1.NamespaceAll).List(ctx, metav1.ListOptions{Limit: 1})
-		if listErr != nil {
-			result.Checks["application_profiles_data"] = CheckStatus{
-				Status:  "warning",
-				Message: fmt.Sprintf("Failed to list application profiles: %v", listErr),
-			}
-		} else if len(profiles.Items) == 0 {
-			result.Checks["application_profiles_data"] = CheckStatus{
-				Status:  "warning",
-				Message: "No application profiles found - runtime learning may not have completed yet",
-			}
-		} else {
-			allProfiles, _ := k.spdxClient.ApplicationProfiles(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-			count := 0
-			if allProfiles != nil {
-				count = len(allProfiles.Items)
-			}
-			result.Checks["application_profiles_data"] = CheckStatus{
+	// Checks 4-9: the storage-backed resources.
+	//
+	// These resources are served by the Kubescape storage service through an
+	// aggregated API server, NOT by CRDs -- so their availability is probed by
+	// listing them, which is also exactly what the data tools do. A single list
+	// per resource answers both "is the API there?" and "is there any data?".
+	for _, res := range k.storageResources() {
+		count, listErr := res.list(ctx)
+		switch {
+		case listErr == nil:
+			result.Checks[res.apiCheckKey] = CheckStatus{
 				Status:  "ok",
-				Message: fmt.Sprintf("%d application profiles found", count),
+				Message: fmt.Sprintf("%s API available", res.displayName),
 			}
-		}
-	}
-
-	// Check 9: NetworkNeighborhoods CRD exists (runtime observability)
-	_, err = k.apiExtClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, networkNeighborhoodsCRD, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			result.Checks["network_neighborhoods_crd"] = CheckStatus{
-				Status:  "warning",
-				Message: "NetworkNeighborhoods CRD not installed - runtime observability may not be enabled",
-			}
-			// Only add recommendation if not already added from ApplicationProfiles check
-			hasRuntimeRecommendation := false
-			for _, r := range recommendations {
-				if strings.Contains(r, "runtimeObservability") {
-					hasRuntimeRecommendation = true
-					break
+			if count == 0 {
+				result.Checks[res.dataCheckKey] = CheckStatus{
+					Status:  "warning",
+					Message: fmt.Sprintf("No %s found - scans may not have completed yet", res.dataNoun),
+				}
+				if res.dataRecommendation != "" {
+					recommendations = appendUnique(recommendations, res.dataRecommendation)
+				}
+			} else {
+				result.Checks[res.dataCheckKey] = CheckStatus{
+					Status:  "ok",
+					Message: fmt.Sprintf("%d %s found", count, res.dataNoun),
 				}
 			}
-			if !hasRuntimeRecommendation {
-				recommendations = append(recommendations,
-					"Enable runtime observability for network analysis: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.runtimeObservability=enable")
-			}
-		} else {
-			result.Checks["network_neighborhoods_crd"] = CheckStatus{
-				Status:  "error",
-				Message: fmt.Sprintf("Failed to check CRD: %v", err),
-			}
-		}
-	} else {
-		result.Checks["network_neighborhoods_crd"] = CheckStatus{
-			Status:  "ok",
-			Message: "CRD installed",
-		}
 
-		// Check for NetworkNeighborhood data
-		neighborhoods, listErr := k.spdxClient.NetworkNeighborhoods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{Limit: 1})
-		if listErr != nil {
-			result.Checks["network_neighborhoods_data"] = CheckStatus{
-				Status:  "warning",
-				Message: fmt.Sprintf("Failed to list network neighborhoods: %v", listErr),
+		case isStorageAPIUnavailable(listErr):
+			status := "warning"
+			if res.required {
+				status = "error"
+				result.Healthy = false
 			}
-		} else if len(neighborhoods.Items) == 0 {
-			result.Checks["network_neighborhoods_data"] = CheckStatus{
-				Status:  "warning",
-				Message: "No network neighborhoods found - runtime learning may not have completed yet",
+			result.Checks[res.apiCheckKey] = CheckStatus{
+				Status: status,
+				Message: fmt.Sprintf(
+					"%s API not available - the Kubescape storage service may be unavailable, or %s may not be enabled",
+					res.displayName, res.capability),
 			}
-		} else {
-			allNeighborhoods, _ := k.spdxClient.NetworkNeighborhoods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-			count := 0
-			if allNeighborhoods != nil {
-				count = len(allNeighborhoods.Items)
+			result.Checks[res.dataCheckKey] = CheckStatus{
+				Status:  status,
+				Message: fmt.Sprintf("Cannot read %s while the %s API is unavailable", res.dataNoun, res.displayName),
 			}
-			result.Checks["network_neighborhoods_data"] = CheckStatus{
-				Status:  "ok",
-				Message: fmt.Sprintf("%d network neighborhoods found", count),
+			if res.apiRecommendation != "" {
+				recommendations = appendUnique(recommendations, res.apiRecommendation)
+			}
+
+		default:
+			result.Checks[res.apiCheckKey] = CheckStatus{
+				Status:  "error",
+				Message: fmt.Sprintf("Failed to query %s: %v", res.displayName, listErr),
+			}
+			result.Checks[res.dataCheckKey] = CheckStatus{
+				Status:  "error",
+				Message: fmt.Sprintf("Failed to list %s: %v", res.dataNoun, listErr),
+			}
+			if res.required {
+				result.Healthy = false
 			}
 		}
 	}
@@ -472,13 +447,12 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 	namespace := mcp.ParseString(request, "namespace", "")
 	level := mcp.ParseString(request, "level", "both")
 
-	// Build label selector based on level
-	labelSelector := ""
 	switch level {
-	case "workload":
-		labelSelector = "kubescape.io/context=filtered"
-	case "image":
-		labelSelector = "kubescape.io/context=non-filtered"
+	case levelImage, levelWorkload, levelBoth:
+	default:
+		toolErr := errors.NewKubescapeError("list_vulnerability_manifests",
+			fmt.Errorf("invalid level %q: must be one of %q, %q or %q", level, levelImage, levelWorkload, levelBoth))
+		return toolErr.ToMCPResult(), nil
 	}
 
 	// Determine namespace to query
@@ -487,13 +461,11 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 		queryNamespace = namespace
 	}
 
-	// List manifests
-	listOpts := metav1.ListOptions{}
-	if labelSelector != "" {
-		listOpts.LabelSelector = labelSelector
-	}
-
-	manifests, err := k.spdxClient.VulnerabilityManifests(queryNamespace).List(ctx, listOpts)
+	// Filtering is done client-side below rather than with a labelSelector: the
+	// Kubescape storage API server ignores labelSelector on list and returns
+	// every object regardless (kubescape/storage#363), so a server-side filter
+	// silently returns unfiltered results.
+	manifests, err := k.spdxClient.VulnerabilityManifests(queryNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		toolErr := errors.NewKubescapeError("list_vulnerability_manifests", err).
 			WithContext("namespace", namespace).
@@ -504,7 +476,14 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 	// Build response
 	vulnerabilityManifests := []map[string]interface{}{}
 	for _, manifest := range manifests.Items {
+		// A workload-level manifest carries the workload it was filtered for;
+		// an image-level one does not. This is the same predicate reported as
+		// image_level/workload_level below, so the filter and the output can
+		// never disagree.
 		isImageLevel := manifest.Annotations[helpersv1.WlidMetadataKey] == ""
+		if (level == levelImage && !isImageLevel) || (level == levelWorkload && isImageLevel) {
+			continue
+		}
 		manifestMap := map[string]interface{}{
 			"namespace":               manifest.Namespace,
 			"manifest_name":           manifest.Name,
