@@ -538,8 +538,15 @@ func fullSpecList() metav1.ListOptions {
 // `relevant` is `json:"relevant,omitempty"` upstream, so a zero is
 // indistinguishable from "relevancy was never computed" -- node-agent needs a
 // learning period before it reports anything. Emitting a zero there would tell
-// an agent that no vulnerability is runtime-reachable when the truth is that
-// nobody has looked yet, so the key is omitted unless it holds a real value.
+// an agent that no vulnerability is runtime-reachable when the truth may be that
+// nobody has looked yet, so the key is omitted unless it holds a real value and
+// the tool description spells out that its absence is ambiguous.
+//
+// There is deliberately no derived "relevancy: available|unavailable" field.
+// The obvious signal for one does not work: workloads carrying
+// kubescape.io/status=ready were measured with `relevant` absent, so the
+// annotation says nothing about whether relevancy was computed. Reporting a
+// confident availability verdict from it would be a guess dressed as a fact.
 func severityCounts(s v1beta1.SeveritySummary) map[string]map[string]int64 {
 	out := map[string]map[string]int64{}
 	for name, c := range map[string]v1beta1.VulnerabilityCounters{
@@ -1402,8 +1409,9 @@ func RegisterTools(s *server.MCPServer, kubeconfig string, readOnly bool) {
 	s.AddTool(mcp.NewTool("kubescape_vulnerability_overview",
 		mcp.WithDescription("START HERE for any question about cluster-wide or namespace-wide vulnerabilities. "+
 			"Returns severity totals per namespace from Kubescape's server-side aggregates in a single cheap call, worst namespace first. "+
-			"Counts are 'all' plus, where computed, 'relevant' (the vulnerable code was observed loaded at runtime). "+
-			"A missing 'relevant' means it was not computed, NOT that the count is zero. "+
+			"Counts are 'all' plus 'relevant' (the vulnerable code was observed loaded at runtime). "+
+			"'relevant' is reported only when greater than zero; when it is absent that means EITHER no runtime-relevant CVEs OR that relevancy "+
+			"has not been computed for those workloads yet, and the two cannot be distinguished here -- so do not report an absent 'relevant' as a measured zero. "+
 			"Then narrow with kubescape_list_vulnerable_workloads."),
 		mcp.WithString("namespace", mcp.Description("Restrict to one namespace (optional; omit for the whole cluster)")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_vulnerability_overview", tool.handleVulnerabilityOverview)))
