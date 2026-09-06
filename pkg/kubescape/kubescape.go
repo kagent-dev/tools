@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/errors"
@@ -38,49 +39,114 @@ const (
 	storagePodLabel  = "app.kubernetes.io/name=storage"
 )
 
-// KubescapeTool holds the clients for Kubescape and Kubernetes APIs
+// clientRetryInterval is how long a failed client construction is cached
+// before another attempt is made. Retrying on every call would let a loop of
+// failing tool calls hammer the API server -- and each attempt can block for a
+// full dial timeout -- while waiting much longer would leave the provider dead
+// well after the cluster recovered.
+const clientRetryInterval = 30 * time.Second
+
+// kubescapeClients is the set of API clients the handlers need. They are built
+// together because they share one rest.Config: if one can be built they all
+// can, so there is no partially-usable state to represent.
+type kubescapeClients struct {
+	spdx   spdxv1beta1.SpdxV1beta1Interface
+	k8s    kubernetes.Interface
+	apiExt apiextensionsclientset.Interface
+}
+
+// KubescapeTool holds the clients for Kubescape and Kubernetes APIs.
+//
+// The clients are built on first use rather than at registration. In-cluster
+// the provider can start before the API server is reachable or before its RBAC
+// has been applied; building once at startup meant such a transient failure
+// disabled every Kubescape tool until the pod was restarted.
+//
+// Every field below is read and written only while holding mu, so a failed
+// start recovers safely even with concurrent tool calls.
 type KubescapeTool struct {
+	mu           sync.Mutex
 	spdxClient   spdxv1beta1.SpdxV1beta1Interface
 	k8sClient    kubernetes.Interface
 	apiExtClient apiextensionsclientset.Interface
-	initError    error
+	lastErr      error
+	lastAttempt  time.Time
+
+	// buildClients and now are injected so tests can exercise recovery and the
+	// retry interval without a cluster and without sleeping.
+	buildClients func() (*kubescapeClients, error)
+	now          func() time.Time
 }
 
-// NewKubescapeTool creates a new KubescapeTool with Kubernetes clients
+// NewKubescapeTool creates a new KubescapeTool. It cannot fail: connection
+// problems surface on the first tool call, where they are retried, instead of
+// permanently at registration time. Use kubescape_check_health to verify the
+// installation.
 func NewKubescapeTool(kubeconfig string) *KubescapeTool {
-	tool := &KubescapeTool{}
+	return &KubescapeTool{
+		buildClients: func() (*kubescapeClients, error) { return newClients(kubeconfig) },
+		now:          time.Now,
+	}
+}
 
+// newClients builds all three API clients from a single rest.Config.
+func newClients(kubeconfig string) (*kubescapeClients, error) {
 	config, err := getKubeConfig(kubeconfig)
 	if err != nil {
-		tool.initError = fmt.Errorf("failed to create kubernetes config: %w", err)
-		return tool
+		return nil, fmt.Errorf("failed to create kubernetes config: %w", err)
 	}
 
-	// Create standard Kubernetes client
+	// Standard Kubernetes client
 	k8sClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		tool.initError = fmt.Errorf("failed to create kubernetes client: %w", err)
-		return tool
+		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
-	tool.k8sClient = k8sClient
 
-	// Create API extensions client for CRD checks
+	// API extensions client for CRD checks
 	apiExtClient, err := apiextensionsclientset.NewForConfig(config)
 	if err != nil {
-		tool.initError = fmt.Errorf("failed to create apiextensions client: %w", err)
-		return tool
+		return nil, fmt.Errorf("failed to create apiextensions client: %w", err)
 	}
-	tool.apiExtClient = apiExtClient
 
-	// Create Kubescape storage client
+	// Kubescape storage client
 	spdxClient, err := spdxv1beta1.NewForConfig(config)
 	if err != nil {
-		tool.initError = fmt.Errorf("failed to create kubescape client: %w", err)
-		return tool
+		return nil, fmt.Errorf("failed to create kubescape client: %w", err)
 	}
-	tool.spdxClient = spdxClient
 
-	return tool
+	return &kubescapeClients{spdx: spdxClient, k8s: k8sClient, apiExt: apiExtClient}, nil
+}
+
+// ensureClients returns nil once the clients are usable. A previous failure is
+// reported without a retry for clientRetryInterval and retried after that, so
+// the provider recovers on its own once the cluster becomes reachable.
+//
+// Handlers must call this before touching any client, and must call it after
+// validating their arguments -- argument errors need no cluster, and reporting
+// a connection error for a malformed call misdirects the caller.
+func (k *KubescapeTool) ensureClients() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	if k.spdxClient != nil {
+		return nil
+	}
+	if k.lastErr != nil && k.now().Sub(k.lastAttempt) < clientRetryInterval {
+		return k.lastErr
+	}
+
+	k.lastAttempt = k.now()
+	clients, err := k.buildClients()
+	if err != nil {
+		k.lastErr = err
+		return err
+	}
+
+	k.spdxClient = clients.spdx
+	k.k8sClient = clients.k8s
+	k.apiExtClient = clients.apiExt
+	k.lastErr = nil
+	return nil
 }
 
 func getKubeConfig(kubeconfig string) (*rest.Config, error) {
@@ -116,8 +182,8 @@ type CheckStatus struct {
 
 // handleCheckHealth verifies Kubescape operator installation and readiness
 func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("check_health", k.initError)
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("check_health", err)
 		return toolErr.ToMCPResult(), nil
 	}
 
@@ -464,8 +530,8 @@ func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallT
 
 // handleListVulnerabilityManifests lists vulnerability manifests at image and workload levels
 func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("list_vulnerability_manifests", k.initError)
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("list_vulnerability_manifests", err)
 		return toolErr.ToMCPResult(), nil
 	}
 
@@ -534,16 +600,16 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 
 // handleListVulnerabilitiesInManifest lists all CVEs in a specific manifest
 func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("list_vulnerabilities", k.initError)
-		return toolErr.ToMCPResult(), nil
-	}
-
 	namespace := mcp.ParseString(request, "namespace", defaultKubescapeNamespace)
 	manifestName := mcp.ParseString(request, "manifest_name", "")
 
 	if manifestName == "" {
 		return mcp.NewToolResultError("manifest_name parameter is required"), nil
+	}
+
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("list_vulnerabilities", err)
+		return toolErr.ToMCPResult(), nil
 	}
 
 	manifest, err := k.spdxClient.VulnerabilityManifests(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -606,11 +672,6 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 
 // handleGetVulnerabilityDetails gets detailed info about a specific CVE in a manifest
 func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("get_vulnerability_details", k.initError)
-		return toolErr.ToMCPResult(), nil
-	}
-
 	namespace := mcp.ParseString(request, "namespace", defaultKubescapeNamespace)
 	manifestName := mcp.ParseString(request, "manifest_name", "")
 	cveID := mcp.ParseString(request, "cve_id", "")
@@ -620,6 +681,11 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 	}
 	if cveID == "" {
 		return mcp.NewToolResultError("cve_id parameter is required"), nil
+	}
+
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("get_vulnerability_details", err)
+		return toolErr.ToMCPResult(), nil
 	}
 
 	manifest, err := k.spdxClient.VulnerabilityManifests(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -652,8 +718,8 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 
 // handleListConfigurationScans lists configuration security scan results
 func (k *KubescapeTool) handleListConfigurationScans(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("list_configuration_scans", k.initError)
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("list_configuration_scans", err)
 		return toolErr.ToMCPResult(), nil
 	}
 
@@ -696,16 +762,16 @@ func (k *KubescapeTool) handleListConfigurationScans(ctx context.Context, reques
 
 // handleGetConfigurationScan gets details of a specific configuration scan
 func (k *KubescapeTool) handleGetConfigurationScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("get_configuration_scan", k.initError)
-		return toolErr.ToMCPResult(), nil
-	}
-
 	namespace := mcp.ParseString(request, "namespace", defaultKubescapeNamespace)
 	manifestName := mcp.ParseString(request, "manifest_name", "")
 
 	if manifestName == "" {
 		return mcp.NewToolResultError("manifest_name parameter is required"), nil
+	}
+
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("get_configuration_scan", err)
+		return toolErr.ToMCPResult(), nil
 	}
 
 	manifest, err := k.spdxClient.WorkloadConfigurationScans(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -726,8 +792,8 @@ func (k *KubescapeTool) handleGetConfigurationScan(ctx context.Context, request 
 
 // handleListApplicationProfiles lists application profiles showing runtime behavior data
 func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("list_application_profiles", k.initError)
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("list_application_profiles", err)
 		return toolErr.ToMCPResult(), nil
 	}
 
@@ -801,11 +867,6 @@ func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, reque
 
 // handleGetApplicationProfile gets detailed runtime behavior for a specific workload
 func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("get_application_profile", k.initError)
-		return toolErr.ToMCPResult(), nil
-	}
-
 	namespace := mcp.ParseString(request, "namespace", "")
 	name := mcp.ParseString(request, "name", "")
 
@@ -814,6 +875,11 @@ func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request
 	}
 	if namespace == "" {
 		return mcp.NewToolResultError("namespace parameter is required"), nil
+	}
+
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("get_application_profile", err)
+		return toolErr.ToMCPResult(), nil
 	}
 
 	profile, err := k.spdxClient.ApplicationProfiles(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -877,8 +943,8 @@ func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request
 
 // handleListNetworkNeighborhoods lists network communication patterns for workloads
 func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("list_network_neighborhoods", k.initError)
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("list_network_neighborhoods", err)
 		return toolErr.ToMCPResult(), nil
 	}
 
@@ -935,11 +1001,6 @@ func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, requ
 
 // handleGetNetworkNeighborhood gets detailed network connections for a specific workload
 func (k *KubescapeTool) handleGetNetworkNeighborhood(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if k.initError != nil {
-		toolErr := errors.NewKubescapeError("get_network_neighborhood", k.initError)
-		return toolErr.ToMCPResult(), nil
-	}
-
 	namespace := mcp.ParseString(request, "namespace", "")
 	name := mcp.ParseString(request, "name", "")
 
@@ -948,6 +1009,11 @@ func (k *KubescapeTool) handleGetNetworkNeighborhood(ctx context.Context, reques
 	}
 	if namespace == "" {
 		return mcp.NewToolResultError("namespace parameter is required"), nil
+	}
+
+	if err := k.ensureClients(); err != nil {
+		toolErr := errors.NewKubescapeError("get_network_neighborhood", err)
+		return toolErr.ToMCPResult(), nil
 	}
 
 	nn, err := k.spdxClient.NetworkNeighborhoods(namespace).Get(ctx, name, metav1.GetOptions{})
