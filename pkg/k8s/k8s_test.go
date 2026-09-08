@@ -597,6 +597,30 @@ log line 2`
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
 	})
+
+	t.Run("previous container logs", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `previous log line`
+		mock.AddCommandString("kubectl", []string{"logs", "test-pod", "-n", "default", "-c", "app", "--previous", "--tail", "200"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"pod_name":   "test-pod",
+			"container":  "app",
+			"previous":   true,
+			"tail_lines": float64(200),
+		}
+		result, err := k8sTool.handleKubectlLogsEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, []string{"logs", "test-pod", "-n", "default", "-c", "app", "--previous", "--tail", "200"}, callLog[0].Args)
+	})
 }
 
 func TestHandleApplyManifest(t *testing.T) {

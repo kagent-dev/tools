@@ -93,6 +93,7 @@ func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request mcp.Cal
 	namespace := mcp.ParseString(request, "namespace", "default")
 	container := mcp.ParseString(request, "container", "")
 	tailLines := mcp.ParseInt(request, "tail_lines", 50)
+	previous := mcp.ParseBoolean(request, "previous", false)
 
 	if podName == "" {
 		return mcp.NewToolResultError("pod_name parameter is required"), nil
@@ -102,6 +103,10 @@ func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request mcp.Cal
 
 	if container != "" {
 		args = append(args, "-c", container)
+	}
+
+	if previous {
+		args = append(args, "--previous")
 	}
 
 	if tailLines > 0 {
@@ -661,6 +666,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 		mcp.WithString("namespace", mcp.Description("Namespace of the pod (default: default)")),
 		mcp.WithString("container", mcp.Description("Container name (for multi-container pods)")),
 		mcp.WithNumber("tail_lines", mcp.Description("Number of lines to show from the end (default: 50)")),
+		mcp.WithBoolean("previous", mcp.Description("Return logs from the previous terminated container (kubectl logs --previous)")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_get_pod_logs", k8sTool.handleKubectlLogsEnhanced)))
 
 	s.AddTool(mcp.NewTool("k8s_get_events",
