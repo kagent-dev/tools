@@ -19,10 +19,7 @@ spec:
       labels:
         {{- include "kagent-tools.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- with include "kagent-tools.imagePullSecrets" . }}{{- . | nindent 6 }}{{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -69,8 +66,8 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.tools.image.registry }}/{{ .Values.tools.image.repository }}:{{ coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version }}"
-          imagePullPolicy: {{ .Values.tools.image.pullPolicy }}
+          image: {{ include "kagent-tools.image" . | quote }}
+          imagePullPolicy: {{ include "kagent-tools.imagePullPolicy" (dict "root" . "local" .Values.tools.image.pullPolicy) }}
           resources:
             {{- toYaml .Values.tools.resources | nindent 12 }}
           env:
