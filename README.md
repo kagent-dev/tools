@@ -164,6 +164,7 @@ Provides documentation query functionality:
 Provides general utility functions:
 
 - **shell**: Execute shell commands
+- **mcp_inspect**: Echo input and return request headers for MCP client debugging
 
 ## Building and Running
 

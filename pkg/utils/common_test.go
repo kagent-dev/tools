@@ -2,6 +2,8 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
@@ -102,6 +104,47 @@ func TestHandleShellTool(t *testing.T) {
 		res, _, err := handleShellTool(errCtx, &mcp.CallToolRequest{}, shellParams{Command: "false"})
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
+	})
+}
+
+func TestHandleMCPInspectTool(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("echoes input and headers", func(t *testing.T) {
+		req := &mcp.CallToolRequest{
+			Extra: &mcp.RequestExtra{
+				Header: http.Header{
+					"Authorization": []string{"Bearer test-token"},
+					"X-Debug":       []string{"one", "two"},
+				},
+			},
+		}
+
+		result, output, err := handleMCPInspectTool(ctx, req, inspectInput{Echo: "hello"})
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		expected := &inspectOutput{
+			Echo: "hello",
+			Headers: []inspectHeader{
+				{Name: "Authorization", Values: []string{"Bearer test-token"}},
+				{Name: "X-Debug", Values: []string{"one", "two"}},
+			},
+		}
+		assert.Equal(t, expected, output)
+
+		var rendered inspectOutput
+		require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &rendered))
+		assert.Equal(t, *expected, rendered)
+	})
+
+	t.Run("works without headers", func(t *testing.T) {
+		result, output, err := handleMCPInspectTool(ctx, &mcp.CallToolRequest{}, inspectInput{Echo: "stdio"})
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Equal(t, &inspectOutput{Echo: "stdio", Headers: []inspectHeader{}}, output)
 	})
 }
 

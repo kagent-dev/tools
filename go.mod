@@ -1,13 +1,13 @@
 module github.com/kagent-dev/tools
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/joho/godotenv v1.5.1
 	github.com/kubescape/k8s-interface v0.0.203
 	github.com/kubescape/storage v0.0.239
-	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus/client_golang v1.23.2
