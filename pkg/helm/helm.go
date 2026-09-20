@@ -112,7 +112,7 @@ func runHelmCommand(ctx context.Context, args []string) (string, error) {
 			if len(args) > 0 {
 				toolErr = toolErr.WithContext("helm_operation", args[0])
 			}
-			toolErr = toolErr.WithContext("helm_args", args)
+			toolErr = toolErr.WithContext("helm_args", strings.Join(args, " "))
 			return "", toolErr
 		}
 		return "", err

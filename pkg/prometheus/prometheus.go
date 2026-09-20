@@ -87,7 +87,7 @@ func handlePrometheusQueryTool(ctx context.Context, request *mcp.CallToolRequest
 		toolErr := errors.NewPrometheusError("read_response", err).
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("query", query).
-			WithContext("status_code", resp.StatusCode)
+			WithContext("status_code", fmt.Sprintf("%d", resp.StatusCode))
 		return prometheusErrResult(toolErr), nil, nil
 	}
 
@@ -95,7 +95,7 @@ func handlePrometheusQueryTool(ctx context.Context, request *mcp.CallToolRequest
 		toolErr := errors.NewPrometheusError("api_error", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))).
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("query", query).
-			WithContext("status_code", resp.StatusCode).
+			WithContext("status_code", fmt.Sprintf("%d", resp.StatusCode)).
 			WithContext("response_body", string(body))
 		return prometheusErrResult(toolErr), nil, nil
 	}
@@ -260,7 +260,7 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request *mcp.CallToolR
 		toolErr := errors.NewPrometheusError("read_response", err).
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("api_url", apiURL).
-			WithContext("status_code", resp.StatusCode)
+			WithContext("status_code", fmt.Sprintf("%d", resp.StatusCode))
 		return prometheusErrResult(toolErr), nil, nil
 	}
 
@@ -268,7 +268,7 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request *mcp.CallToolR
 		toolErr := errors.NewPrometheusError("api_error", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))).
 			WithContext("prometheus_url", prometheusURL).
 			WithContext("api_url", apiURL).
-			WithContext("status_code", resp.StatusCode).
+			WithContext("status_code", fmt.Sprintf("%d", resp.StatusCode)).
 			WithContext("response_body", string(body))
 		return prometheusErrResult(toolErr), nil, nil
 	}

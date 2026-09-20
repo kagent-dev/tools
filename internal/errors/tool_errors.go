@@ -17,9 +17,9 @@ type ToolError struct {
 	Timestamp    time.Time              `json:"timestamp"`
 	ErrorCode    string                 `json:"error_code"`
 	Component    string                 `json:"component"`
-	ResourceType string                 `json:"resource_type,omitempty"`
-	ResourceName string                 `json:"resource_name,omitempty"`
-	Context      map[string]interface{} `json:"context,omitempty"`
+	ResourceType string            `json:"resource_type,omitempty"`
+	ResourceName string            `json:"resource_name,omitempty"`
+	Context      map[string]string `json:"context,omitempty"`
 }
 
 // Error implements the error interface
@@ -80,7 +80,7 @@ func NewToolError(component, operation string, cause error) *ToolError {
 		Timestamp:   time.Now(),
 		ErrorCode:   "UNKNOWN",
 		Component:   component,
-		Context:     make(map[string]interface{}),
+		Context:     make(map[string]string),
 	}
 }
 
@@ -110,7 +110,7 @@ func (e *ToolError) WithResource(resourceType, resourceName string) *ToolError {
 }
 
 // WithContext adds contextual information to the error
-func (e *ToolError) WithContext(key string, value interface{}) *ToolError {
+func (e *ToolError) WithContext(key, value string) *ToolError {
 	e.Context[key] = value
 	return e
 }
