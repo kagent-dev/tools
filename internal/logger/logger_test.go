@@ -103,12 +103,14 @@ func TestWithContextAddsTraceID(t *testing.T) {
 	loggerWithTrace := logger.With("trace_id", span.SpanContext().TraceID().String())
 	loggerWithTrace.InfoContext(ctx, "test message")
 
-	var logOutput map[string]interface{}
+	var logOutput struct {
+		TraceID string `json:"trace_id"`
+	}
 	err := json.Unmarshal(buf.Bytes(), &logOutput)
 	require.NoError(t, err)
 
 	traceID := span.SpanContext().TraceID().String()
-	assert.Equal(t, traceID, logOutput["trace_id"])
+	assert.Equal(t, traceID, logOutput.TraceID)
 }
 
 func TestGet(t *testing.T) {

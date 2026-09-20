@@ -106,6 +106,9 @@ func TestAddToolRelaxesInputSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
+	// jsonschema.Resolved.Validate requires a JSON value for an object schema
+	// and explicitly rejects structs (google/jsonschema-go#23), so this payload
+	// must stay a map. It is a test fixture, not a tool parameter container.
 	partial := map[string]any{"resource_type": "namespace", "output": "json"}
 	if err := resolved.Validate(partial); err != nil {
 		t.Errorf("partial payload should validate, got: %v", err)

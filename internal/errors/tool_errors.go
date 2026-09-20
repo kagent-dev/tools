@@ -10,13 +10,13 @@ import (
 
 // ToolError represents a structured error with context and recovery suggestions
 type ToolError struct {
-	Operation    string                 `json:"operation"`
-	Cause        error                  `json:"cause"`
-	Suggestions  []string               `json:"suggestions"`
-	IsRetryable  bool                   `json:"is_retryable"`
-	Timestamp    time.Time              `json:"timestamp"`
-	ErrorCode    string                 `json:"error_code"`
-	Component    string                 `json:"component"`
+	Operation    string            `json:"operation"`
+	Cause        error             `json:"cause"`
+	Suggestions  []string          `json:"suggestions"`
+	IsRetryable  bool              `json:"is_retryable"`
+	Timestamp    time.Time         `json:"timestamp"`
+	ErrorCode    string            `json:"error_code"`
+	Component    string            `json:"component"`
 	ResourceType string            `json:"resource_type,omitempty"`
 	ResourceName string            `json:"resource_name,omitempty"`
 	Context      map[string]string `json:"context,omitempty"`
