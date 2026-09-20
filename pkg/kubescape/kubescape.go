@@ -164,6 +164,143 @@ type getNetworkNeighborhoodInput struct {
 	Name      string `json:"name" jsonschema:"Name of the network neighborhood"`
 }
 
+// Typed response shapes for the read-only scan/report tools. These replace the
+// untyped map[string]interface{} builders so the JSON returned to the client is
+// produced from concrete Go types.
+
+type vulnerabilityManifestSummary struct {
+	Namespace             string `json:"namespace"`
+	ManifestName          string `json:"manifest_name"`
+	ImageLevel            bool   `json:"image_level"`
+	WorkloadLevel         bool   `json:"workload_level"`
+	ImageID               string `json:"image_id"`
+	ImageTag              string `json:"image_tag"`
+	WorkloadID            string `json:"workload_id"`
+	WorkloadContainerName string `json:"workload_container_name"`
+	VulnerabilityCount    int    `json:"vulnerability_count"`
+}
+
+type listVulnerabilityManifestsOutput struct {
+	VulnerabilityManifests []vulnerabilityManifestSummary `json:"vulnerability_manifests"`
+	TotalCount             int                            `json:"total_count"`
+}
+
+type severitySummary struct {
+	Critical int `json:"Critical"`
+	High     int `json:"High"`
+	Medium   int `json:"Medium"`
+	Low      int `json:"Low"`
+	Unknown  int `json:"Unknown"`
+}
+
+type vulnerabilitySummary struct {
+	ID          string   `json:"id"`
+	Severity    string   `json:"severity"`
+	Description string   `json:"description"`
+	DataSource  string   `json:"data_source"`
+	FixState    string   `json:"fix_state,omitempty"`
+	FixVersions []string `json:"fix_versions,omitempty"`
+}
+
+type listVulnerabilitiesInManifestOutput struct {
+	ManifestName    string                 `json:"manifest_name"`
+	Namespace       string                 `json:"namespace"`
+	TotalCount      int                    `json:"total_count"`
+	SeveritySummary severitySummary        `json:"severity_summary"`
+	Vulnerabilities []vulnerabilitySummary `json:"vulnerabilities"`
+}
+
+type configurationScanSummary struct {
+	Namespace    string `json:"namespace"`
+	ManifestName string `json:"manifest_name"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type listConfigurationScansOutput struct {
+	ConfigurationScans []configurationScanSummary `json:"configuration_scans"`
+	TotalCount         int                        `json:"total_count"`
+}
+
+type applicationProfileSummary struct {
+	Namespace                string `json:"namespace"`
+	Name                     string `json:"name"`
+	ContainersCount          int    `json:"containers_count"`
+	InitContainersCount      int    `json:"init_containers_count"`
+	EphemeralContainersCount int    `json:"ephemeral_containers_count"`
+	TotalExecs               int    `json:"total_execs"`
+	TotalOpens               int    `json:"total_opens"`
+	TotalSyscalls            int    `json:"total_syscalls"`
+	TotalCapabilities        int    `json:"total_capabilities"`
+	TotalEndpoints           int    `json:"total_endpoints"`
+	CreatedAt                string `json:"created_at"`
+}
+
+type listApplicationProfilesOutput struct {
+	ApplicationProfiles []applicationProfileSummary `json:"application_profiles"`
+	TotalCount          int                         `json:"total_count"`
+	Description         string                      `json:"description"`
+}
+
+type containerBehavior struct {
+	Name           string                        `json:"name"`
+	Execs          []v1beta1.ExecCalls           `json:"execs"`
+	Opens          []v1beta1.OpenCalls           `json:"opens"`
+	Syscalls       []string                      `json:"syscalls"`
+	Capabilities   []string                      `json:"capabilities"`
+	Endpoints      []v1beta1.HTTPEndpoint        `json:"endpoints"`
+	SeccompProfile *v1beta1.SingleSeccompProfile `json:"seccomp_profile,omitempty"`
+}
+
+type getApplicationProfileOutput struct {
+	Namespace      string              `json:"namespace"`
+	Name           string              `json:"name"`
+	Containers     []containerBehavior `json:"containers"`
+	InitContainers []containerBehavior `json:"init_containers"`
+	Annotations    map[string]string   `json:"annotations"`
+	Labels         map[string]string   `json:"labels"`
+	Description    string              `json:"description"`
+}
+
+type networkNeighborhoodSummary struct {
+	Namespace       string `json:"namespace"`
+	Name            string `json:"name"`
+	ContainersCount int    `json:"containers_count"`
+	TotalIngress    int    `json:"total_ingress"`
+	TotalEgress     int    `json:"total_egress"`
+	CreatedAt       string `json:"created_at"`
+}
+
+type listNetworkNeighborhoodsOutput struct {
+	NetworkNeighborhoods []networkNeighborhoodSummary `json:"network_neighborhoods"`
+	TotalCount           int                          `json:"total_count"`
+	Description          string                       `json:"description"`
+}
+
+type networkConnection struct {
+	Identifier        string                    `json:"identifier"`
+	Type              v1beta1.CommunicationType `json:"type"`
+	DNS               string                    `json:"dns,omitempty"`
+	Ports             []v1beta1.NetworkPort     `json:"ports,omitempty"`
+	IPAddress         string                    `json:"ip_address,omitempty"`
+	PodSelector       *metav1.LabelSelector     `json:"pod_selector,omitempty"`
+	NamespaceSelector *metav1.LabelSelector     `json:"namespace_selector,omitempty"`
+}
+
+type networkContainer struct {
+	Name    string              `json:"name"`
+	Ingress []networkConnection `json:"ingress"`
+	Egress  []networkConnection `json:"egress"`
+}
+
+type getNetworkNeighborhoodOutput struct {
+	Namespace   string             `json:"namespace"`
+	Name        string             `json:"name"`
+	Containers  []networkContainer `json:"containers"`
+	Annotations map[string]string  `json:"annotations"`
+	Labels      map[string]string  `json:"labels"`
+	Description string             `json:"description"`
+}
+
 // handleCheckHealth verifies Kubescape operator installation and readiness
 func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request *mcp.CallToolRequest, in checkHealthInput) (*mcp.CallToolResult, any, error) {
 	if k.initError != nil {
@@ -558,26 +695,25 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 	}
 
 	// Build response
-	vulnerabilityManifests := []map[string]interface{}{}
+	vulnerabilityManifests := []vulnerabilityManifestSummary{}
 	for _, manifest := range manifests.Items {
 		isImageLevel := manifest.Annotations[helpersv1.WlidMetadataKey] == ""
-		manifestMap := map[string]interface{}{
-			"namespace":               manifest.Namespace,
-			"manifest_name":           manifest.Name,
-			"image_level":             isImageLevel,
-			"workload_level":          !isImageLevel,
-			"image_id":                manifest.Annotations[helpersv1.ImageIDMetadataKey],
-			"image_tag":               manifest.Annotations[helpersv1.ImageTagMetadataKey],
-			"workload_id":             manifest.Annotations[helpersv1.WlidMetadataKey],
-			"workload_container_name": manifest.Annotations[helpersv1.ContainerNameMetadataKey],
-			"vulnerability_count":     len(manifest.Spec.Payload.Matches),
-		}
-		vulnerabilityManifests = append(vulnerabilityManifests, manifestMap)
+		vulnerabilityManifests = append(vulnerabilityManifests, vulnerabilityManifestSummary{
+			Namespace:             manifest.Namespace,
+			ManifestName:          manifest.Name,
+			ImageLevel:            isImageLevel,
+			WorkloadLevel:         !isImageLevel,
+			ImageID:               manifest.Annotations[helpersv1.ImageIDMetadataKey],
+			ImageTag:              manifest.Annotations[helpersv1.ImageTagMetadataKey],
+			WorkloadID:            manifest.Annotations[helpersv1.WlidMetadataKey],
+			WorkloadContainerName: manifest.Annotations[helpersv1.ContainerNameMetadataKey],
+			VulnerabilityCount:    len(manifest.Spec.Payload.Matches),
+		})
 	}
 
-	result := map[string]interface{}{
-		"vulnerability_manifests": vulnerabilityManifests,
-		"total_count":             len(vulnerabilityManifests),
+	result := listVulnerabilityManifestsOutput{
+		VulnerabilityManifests: vulnerabilityManifests,
+		TotalCount:             len(vulnerabilityManifests),
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
@@ -614,45 +750,46 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 	}
 
 	// Extract vulnerabilities with summary info
-	vulnerabilities := []map[string]interface{}{}
-	severityCounts := map[string]int{
-		"Critical": 0,
-		"High":     0,
-		"Medium":   0,
-		"Low":      0,
-		"Unknown":  0,
-	}
+	vulnerabilities := []vulnerabilitySummary{}
+	severityCounts := severitySummary{}
 
 	for _, match := range manifest.Spec.Payload.Matches {
 		vuln := match.Vulnerability
 		severity := string(vuln.Severity)
-		if _, exists := severityCounts[severity]; exists {
-			severityCounts[severity]++
-		} else {
-			severityCounts["Unknown"]++
+		switch severity {
+		case "Critical":
+			severityCounts.Critical++
+		case "High":
+			severityCounts.High++
+		case "Medium":
+			severityCounts.Medium++
+		case "Low":
+			severityCounts.Low++
+		default:
+			severityCounts.Unknown++
 		}
 
-		vulnInfo := map[string]interface{}{
-			"id":          vuln.ID,
-			"severity":    severity,
-			"description": truncateString(vuln.Description, 200),
-			"data_source": vuln.DataSource,
+		vulnInfo := vulnerabilitySummary{
+			ID:          vuln.ID,
+			Severity:    severity,
+			Description: truncateString(vuln.Description, 200),
+			DataSource:  vuln.DataSource,
 		}
 
 		if vuln.Fix.State != "" {
-			vulnInfo["fix_state"] = vuln.Fix.State
-			vulnInfo["fix_versions"] = vuln.Fix.Versions
+			vulnInfo.FixState = vuln.Fix.State
+			vulnInfo.FixVersions = vuln.Fix.Versions
 		}
 
 		vulnerabilities = append(vulnerabilities, vulnInfo)
 	}
 
-	result := map[string]interface{}{
-		"manifest_name":    manifestName,
-		"namespace":        namespace,
-		"total_count":      len(vulnerabilities),
-		"severity_summary": severityCounts,
-		"vulnerabilities":  vulnerabilities,
+	result := listVulnerabilitiesInManifestOutput{
+		ManifestName:    manifestName,
+		Namespace:       namespace,
+		TotalCount:      len(vulnerabilities),
+		SeveritySummary: severityCounts,
+		Vulnerabilities: vulnerabilities,
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
@@ -733,19 +870,18 @@ func (k *KubescapeTool) handleListConfigurationScans(ctx context.Context, reques
 		return kubescapeErrResult(toolErr), nil, nil
 	}
 
-	configManifests := []map[string]interface{}{}
+	configManifests := []configurationScanSummary{}
 	for _, manifest := range manifests.Items {
-		item := map[string]interface{}{
-			"namespace":     manifest.Namespace,
-			"manifest_name": manifest.Name,
-			"created_at":    manifest.CreationTimestamp.Format(time.RFC3339),
-		}
-		configManifests = append(configManifests, item)
+		configManifests = append(configManifests, configurationScanSummary{
+			Namespace:    manifest.Namespace,
+			ManifestName: manifest.Name,
+			CreatedAt:    manifest.CreationTimestamp.Format(time.RFC3339),
+		})
 	}
 
-	result := map[string]interface{}{
-		"configuration_scans": configManifests,
-		"total_count":         len(configManifests),
+	result := listConfigurationScansOutput{
+		ConfigurationScans: configManifests,
+		TotalCount:         len(configManifests),
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
@@ -810,7 +946,7 @@ func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, reque
 		return kubescapeErrResult(toolErr), nil, nil
 	}
 
-	profileList := []map[string]interface{}{}
+	profileList := []applicationProfileSummary{}
 	for _, profile := range profiles.Items {
 		// Summarize what data is captured per container
 		containersCount := len(profile.Spec.Containers)
@@ -831,26 +967,25 @@ func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, reque
 			totalEndpoints += len(c.Endpoints)
 		}
 
-		profileMap := map[string]interface{}{
-			"namespace":                  profile.Namespace,
-			"name":                       profile.Name,
-			"containers_count":           containersCount,
-			"init_containers_count":      initContainersCount,
-			"ephemeral_containers_count": ephemeralContainersCount,
-			"total_execs":                totalExecs,
-			"total_opens":                totalOpens,
-			"total_syscalls":             totalSyscalls,
-			"total_capabilities":         totalCapabilities,
-			"total_endpoints":            totalEndpoints,
-			"created_at":                 profile.CreationTimestamp.Format(time.RFC3339),
-		}
-		profileList = append(profileList, profileMap)
+		profileList = append(profileList, applicationProfileSummary{
+			Namespace:                profile.Namespace,
+			Name:                     profile.Name,
+			ContainersCount:          containersCount,
+			InitContainersCount:      initContainersCount,
+			EphemeralContainersCount: ephemeralContainersCount,
+			TotalExecs:               totalExecs,
+			TotalOpens:               totalOpens,
+			TotalSyscalls:            totalSyscalls,
+			TotalCapabilities:        totalCapabilities,
+			TotalEndpoints:           totalEndpoints,
+			CreatedAt:                profile.CreationTimestamp.Format(time.RFC3339),
+		})
 	}
 
-	result := map[string]interface{}{
-		"application_profiles": profileList,
-		"total_count":          len(profileList),
-		"description": "ApplicationProfiles capture runtime behavior of workloads including: " +
+	result := listApplicationProfilesOutput{
+		ApplicationProfiles: profileList,
+		TotalCount:          len(profileList),
+		Description: "ApplicationProfiles capture runtime behavior of workloads including: " +
 			"executed processes (Execs), file access patterns (Opens), system calls (Syscalls), " +
 			"Linux capabilities used, and HTTP endpoints accessed. " +
 			"Use this data to prioritize vulnerabilities - a CVE in an unused package is lower priority than one in an actively running process.",
@@ -890,43 +1025,43 @@ func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request
 	}
 
 	// Build detailed response with container behaviors
-	containers := []map[string]interface{}{}
+	containers := []containerBehavior{}
 	for _, c := range profile.Spec.Containers {
-		containerInfo := map[string]interface{}{
-			"name":         c.Name,
-			"execs":        c.Execs,
-			"opens":        c.Opens,
-			"syscalls":     c.Syscalls,
-			"capabilities": c.Capabilities,
-			"endpoints":    c.Endpoints,
+		containerInfo := containerBehavior{
+			Name:         c.Name,
+			Execs:        c.Execs,
+			Opens:        c.Opens,
+			Syscalls:     c.Syscalls,
+			Capabilities: c.Capabilities,
+			Endpoints:    c.Endpoints,
 		}
 		if c.SeccompProfile.Name != "" || c.SeccompProfile.Path != "" {
-			containerInfo["seccomp_profile"] = c.SeccompProfile
+			seccompProfile := c.SeccompProfile
+			containerInfo.SeccompProfile = &seccompProfile
 		}
 		containers = append(containers, containerInfo)
 	}
 
-	initContainers := []map[string]interface{}{}
+	initContainers := []containerBehavior{}
 	for _, c := range profile.Spec.InitContainers {
-		containerInfo := map[string]interface{}{
-			"name":         c.Name,
-			"execs":        c.Execs,
-			"opens":        c.Opens,
-			"syscalls":     c.Syscalls,
-			"capabilities": c.Capabilities,
-			"endpoints":    c.Endpoints,
-		}
-		initContainers = append(initContainers, containerInfo)
+		initContainers = append(initContainers, containerBehavior{
+			Name:         c.Name,
+			Execs:        c.Execs,
+			Opens:        c.Opens,
+			Syscalls:     c.Syscalls,
+			Capabilities: c.Capabilities,
+			Endpoints:    c.Endpoints,
+		})
 	}
 
-	result := map[string]interface{}{
-		"namespace":       namespace,
-		"name":            name,
-		"containers":      containers,
-		"init_containers": initContainers,
-		"annotations":     profile.Annotations,
-		"labels":          profile.Labels,
-		"description": "This ApplicationProfile shows what the workload containers actually execute at runtime. " +
+	result := getApplicationProfileOutput{
+		Namespace:      namespace,
+		Name:           name,
+		Containers:     containers,
+		InitContainers: initContainers,
+		Annotations:    profile.Annotations,
+		Labels:         profile.Labels,
+		Description: "This ApplicationProfile shows what the workload containers actually execute at runtime. " +
 			"Execs: processes that run; Opens: files read/written; Syscalls: kernel-level operations; " +
 			"Capabilities: special Linux privileges; Endpoints: HTTP APIs called. " +
 			"Compare this with vulnerability findings to prioritize remediation - focus on CVEs affecting actively used components.",
@@ -961,7 +1096,7 @@ func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, requ
 		return kubescapeErrResult(toolErr), nil, nil
 	}
 
-	neighborhoodList := []map[string]interface{}{}
+	neighborhoodList := []networkNeighborhoodSummary{}
 	for _, nn := range neighborhoods.Items {
 		totalIngress := 0
 		totalEgress := 0
@@ -970,21 +1105,20 @@ func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, requ
 			totalEgress += len(c.Egress)
 		}
 
-		nnMap := map[string]interface{}{
-			"namespace":        nn.Namespace,
-			"name":             nn.Name,
-			"containers_count": len(nn.Spec.Containers),
-			"total_ingress":    totalIngress,
-			"total_egress":     totalEgress,
-			"created_at":       nn.CreationTimestamp.Format(time.RFC3339),
-		}
-		neighborhoodList = append(neighborhoodList, nnMap)
+		neighborhoodList = append(neighborhoodList, networkNeighborhoodSummary{
+			Namespace:       nn.Namespace,
+			Name:            nn.Name,
+			ContainersCount: len(nn.Spec.Containers),
+			TotalIngress:    totalIngress,
+			TotalEgress:     totalEgress,
+			CreatedAt:       nn.CreationTimestamp.Format(time.RFC3339),
+		})
 	}
 
-	result := map[string]interface{}{
-		"network_neighborhoods": neighborhoodList,
-		"total_count":           len(neighborhoodList),
-		"description": "NetworkNeighborhoods capture actual network communication patterns of workloads. " +
+	result := listNetworkNeighborhoodsOutput{
+		NetworkNeighborhoods: neighborhoodList,
+		TotalCount:           len(neighborhoodList),
+		Description: "NetworkNeighborhoods capture actual network communication patterns of workloads. " +
 			"Ingress: connections coming INTO the workload; Egress: connections going OUT from the workload. " +
 			"Includes DNS names, IP addresses, ports, and protocols. " +
 			"Use this data to understand attack surface and prioritize network-related security findings.",
@@ -1024,73 +1158,72 @@ func (k *KubescapeTool) handleGetNetworkNeighborhood(ctx context.Context, reques
 	}
 
 	// Build detailed response with container network data
-	containers := []map[string]interface{}{}
+	containers := []networkContainer{}
 	for _, c := range nn.Spec.Containers {
 		// Format ingress connections
-		ingressList := []map[string]interface{}{}
+		ingressList := []networkConnection{}
 		for _, ing := range c.Ingress {
-			ingressInfo := map[string]interface{}{
-				"identifier": ing.Identifier,
-				"type":       ing.Type,
+			ingressInfo := networkConnection{
+				Identifier: ing.Identifier,
+				Type:       ing.Type,
 			}
 			if ing.DNS != "" {
-				ingressInfo["dns"] = ing.DNS
+				ingressInfo.DNS = ing.DNS
 			}
 			if len(ing.Ports) > 0 {
-				ingressInfo["ports"] = ing.Ports
+				ingressInfo.Ports = ing.Ports
 			}
 			if len(ing.IPAddress) > 0 {
-				ingressInfo["ip_address"] = ing.IPAddress
+				ingressInfo.IPAddress = ing.IPAddress
 			}
 			if ing.PodSelector != nil {
-				ingressInfo["pod_selector"] = ing.PodSelector
+				ingressInfo.PodSelector = ing.PodSelector
 			}
 			if ing.NamespaceSelector != nil {
-				ingressInfo["namespace_selector"] = ing.NamespaceSelector
+				ingressInfo.NamespaceSelector = ing.NamespaceSelector
 			}
 			ingressList = append(ingressList, ingressInfo)
 		}
 
 		// Format egress connections
-		egressList := []map[string]interface{}{}
+		egressList := []networkConnection{}
 		for _, egr := range c.Egress {
-			egressInfo := map[string]interface{}{
-				"identifier": egr.Identifier,
-				"type":       egr.Type,
+			egressInfo := networkConnection{
+				Identifier: egr.Identifier,
+				Type:       egr.Type,
 			}
 			if egr.DNS != "" {
-				egressInfo["dns"] = egr.DNS
+				egressInfo.DNS = egr.DNS
 			}
 			if len(egr.Ports) > 0 {
-				egressInfo["ports"] = egr.Ports
+				egressInfo.Ports = egr.Ports
 			}
 			if len(egr.IPAddress) > 0 {
-				egressInfo["ip_address"] = egr.IPAddress
+				egressInfo.IPAddress = egr.IPAddress
 			}
 			if egr.PodSelector != nil {
-				egressInfo["pod_selector"] = egr.PodSelector
+				egressInfo.PodSelector = egr.PodSelector
 			}
 			if egr.NamespaceSelector != nil {
-				egressInfo["namespace_selector"] = egr.NamespaceSelector
+				egressInfo.NamespaceSelector = egr.NamespaceSelector
 			}
 			egressList = append(egressList, egressInfo)
 		}
 
-		containerInfo := map[string]interface{}{
-			"name":    c.Name,
-			"ingress": ingressList,
-			"egress":  egressList,
-		}
-		containers = append(containers, containerInfo)
+		containers = append(containers, networkContainer{
+			Name:    c.Name,
+			Ingress: ingressList,
+			Egress:  egressList,
+		})
 	}
 
-	result := map[string]interface{}{
-		"namespace":   namespace,
-		"name":        name,
-		"containers":  containers,
-		"annotations": nn.Annotations,
-		"labels":      nn.Labels,
-		"description": "This NetworkNeighborhood shows actual network connections observed for this workload. " +
+	result := getNetworkNeighborhoodOutput{
+		Namespace:   namespace,
+		Name:        name,
+		Containers:  containers,
+		Annotations: nn.Annotations,
+		Labels:      nn.Labels,
+		Description: "This NetworkNeighborhood shows actual network connections observed for this workload. " +
 			"Ingress connections show what talks TO this workload. Egress connections show what this workload talks TO. " +
 			"Use this to verify if a workload with a vulnerability is actually exposed to the network.",
 	}

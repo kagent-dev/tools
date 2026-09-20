@@ -397,13 +397,12 @@ func TestHandleListVulnerabilityManifests_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listVulnerabilityManifestsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	manifests := response["vulnerability_manifests"].([]interface{})
-	assert.Len(t, manifests, 2)
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Len(t, response.VulnerabilityManifests, 2)
 }
 
 func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
@@ -424,11 +423,11 @@ func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listVulnerabilityManifestsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListVulnerabilityManifests_EmptyResults(t *testing.T) {
@@ -439,11 +438,11 @@ func TestHandleListVulnerabilityManifests_EmptyResults(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listVulnerabilityManifestsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleListVulnerabilityManifests_InitError(t *testing.T) {
@@ -497,14 +496,13 @@ func TestHandleListVulnerabilitiesInManifest_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listVulnerabilitiesInManifestOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	severitySummary := response["severity_summary"].(map[string]interface{})
-	assert.Equal(t, float64(1), severitySummary["Critical"])
-	assert.Equal(t, float64(1), severitySummary["High"])
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Equal(t, 1, response.SeveritySummary.Critical)
+	assert.Equal(t, 1, response.SeveritySummary.High)
 }
 
 func TestHandleListVulnerabilitiesInManifest_MissingManifestName(t *testing.T) {
@@ -653,11 +651,11 @@ func TestHandleListConfigurationScans_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listConfigurationScansOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
+	assert.Equal(t, 2, response.TotalCount)
 }
 
 func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
@@ -678,11 +676,11 @@ func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listConfigurationScansOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListConfigurationScans_EmptyResults(t *testing.T) {
@@ -693,11 +691,11 @@ func TestHandleListConfigurationScans_EmptyResults(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listConfigurationScansOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleGetConfigurationScan_Success(t *testing.T) {
@@ -814,14 +812,13 @@ func TestHandleListApplicationProfiles_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listApplicationProfilesOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	assert.Contains(t, response["description"], "ApplicationProfiles capture runtime behavior")
-	profiles := response["application_profiles"].([]interface{})
-	assert.Len(t, profiles, 2)
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Contains(t, response.Description, "ApplicationProfiles capture runtime behavior")
+	assert.Len(t, response.ApplicationProfiles, 2)
 }
 
 func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
@@ -842,11 +839,11 @@ func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listApplicationProfilesOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListApplicationProfiles_EmptyResults(t *testing.T) {
@@ -857,11 +854,11 @@ func TestHandleListApplicationProfiles_EmptyResults(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listApplicationProfilesOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleListApplicationProfiles_InitError(t *testing.T) {
@@ -908,13 +905,13 @@ func TestHandleGetApplicationProfile_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response getApplicationProfileOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, "default", response["namespace"])
-	assert.Equal(t, "test-profile", response["name"])
-	assert.Contains(t, response["description"], "ApplicationProfile shows what the workload containers actually execute")
+	assert.Equal(t, "default", response.Namespace)
+	assert.Equal(t, "test-profile", response.Name)
+	assert.Contains(t, response.Description, "ApplicationProfile shows what the workload containers actually execute")
 }
 
 func TestHandleGetApplicationProfile_MissingName(t *testing.T) {
@@ -994,14 +991,13 @@ func TestHandleListNetworkNeighborhoods_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listNetworkNeighborhoodsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	assert.Contains(t, response["description"], "NetworkNeighborhoods capture actual network communication patterns")
-	neighborhoods := response["network_neighborhoods"].([]interface{})
-	assert.Len(t, neighborhoods, 2)
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Contains(t, response.Description, "NetworkNeighborhoods capture actual network communication patterns")
+	assert.Len(t, response.NetworkNeighborhoods, 2)
 }
 
 func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
@@ -1022,11 +1018,11 @@ func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listNetworkNeighborhoodsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListNetworkNeighborhoods_EmptyResults(t *testing.T) {
@@ -1037,11 +1033,11 @@ func TestHandleListNetworkNeighborhoods_EmptyResults(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listNetworkNeighborhoodsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleListNetworkNeighborhoods_InitError(t *testing.T) {
@@ -1086,13 +1082,13 @@ func TestHandleGetNetworkNeighborhood_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response getNetworkNeighborhoodOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, "default", response["namespace"])
-	assert.Equal(t, "test-nn", response["name"])
-	assert.Contains(t, response["description"], "NetworkNeighborhood shows actual network connections")
+	assert.Equal(t, "default", response.Namespace)
+	assert.Equal(t, "test-nn", response.Name)
+	assert.Contains(t, response.Description, "NetworkNeighborhood shows actual network connections")
 }
 
 func TestHandleGetNetworkNeighborhood_MissingName(t *testing.T) {
