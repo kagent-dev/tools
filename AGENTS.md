@@ -248,7 +248,11 @@ The `internal/cache` package provides a thread-safe generic `Cache[T]` with TTL:
 - **Ginkgo v2 + Gomega** for behavioral tests
 - **testify** for assertions and mocking
 - Table-driven tests for comprehensive coverage
-- **Minimum 80% test coverage** enforced by CI
+- **Minimum 80% test coverage** is the repository standard. CI runs
+  `go test -v -cover` and reports coverage but has no threshold gate, so the
+  standard is on you to check (`go test -cover ./pkg/...`). Every `pkg/` package
+  currently exceeds it; `internal/commands` and `internal/cmd` are below it and
+  predate the standard.
 
 ### Mock Infrastructure
 
