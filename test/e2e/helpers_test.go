@@ -296,7 +296,7 @@ func GetMCPClient() (*MCPClient, error) {
 }
 
 // listTools calls the tools/list method to get available tools
-func (c *MCPClient) listTools() ([]interface{}, error) {
+func (c *MCPClient) listTools() ([]*mcp.Tool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -305,16 +305,11 @@ func (c *MCPClient) listTools() ([]interface{}, error) {
 		return nil, err
 	}
 
-	tools := make([]interface{}, len(result.Tools))
-	for i, tool := range result.Tools {
-		tools[i] = tool
-	}
-
-	return tools, nil
+	return result.Tools, nil
 }
 
 // k8sListResources calls the k8s_get_resources tool
-func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
+func (c *MCPClient) k8sListResources(resourceType string) (*mcp.CallToolResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -342,7 +337,7 @@ func (c *MCPClient) k8sListResources(resourceType string) (interface{}, error) {
 }
 
 // helmListReleases calls the helm_list_releases tool
-func (c *MCPClient) helmListReleases() (interface{}, error) {
+func (c *MCPClient) helmListReleases() (*mcp.CallToolResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -370,7 +365,7 @@ func (c *MCPClient) helmListReleases() (interface{}, error) {
 }
 
 // istioInstall calls the istio_install_istio tool
-func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
+func (c *MCPClient) istioInstall(profile string) (*mcp.CallToolResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second) // Istio install can take time
 	defer cancel()
 
@@ -396,7 +391,7 @@ func (c *MCPClient) istioInstall(profile string) (interface{}, error) {
 }
 
 // argoRolloutsList calls the argo_rollouts_get tool to list rollouts
-func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
+func (c *MCPClient) argoRolloutsList(namespace string) (*mcp.CallToolResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -424,7 +419,7 @@ func (c *MCPClient) argoRolloutsList(namespace string) (interface{}, error) {
 }
 
 // ciliumStatus calls the cilium_status_and_version tool
-func (c *MCPClient) ciliumStatus() (interface{}, error) {
+func (c *MCPClient) ciliumStatus() (*mcp.CallToolResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

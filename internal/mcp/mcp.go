@@ -9,6 +9,7 @@ import (
 	"context"
 	"net/http"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,6 +62,46 @@ func Header(req *sdk.CallToolRequest) http.Header {
 		return req.Extra.Header
 	}
 	return nil
+}
+
+// TextOutput is the typed output for tools whose result is raw CLI text. It is
+// the shared wrapper described by the repository's typed-I/O convention: rather
+// than registering a handler with Out=any, a text tool returns a concrete
+// TextOutput so the SDK can infer an output schema and populate
+// CallToolResult.StructuredContent.
+type TextOutput struct {
+	Output string `json:"output"`
+}
+
+// TextResult is the typed equivalent of NewToolResultText for a handler whose
+// Out type is TextOutput. The human-readable text stays in Content, so existing
+// clients (and pre-SEP-2106 clients that only read Content) are unaffected,
+// while StructuredContent carries the same value as a typed object.
+func TextResult(text string) (*sdk.CallToolResult, TextOutput, error) {
+	return NewToolResultText(text), TextOutput{Output: text}, nil
+}
+
+// TextError is the typed equivalent of NewToolResultError for a handler whose
+// Out type is TextOutput. It returns an empty TextOutput so the zero value still
+// satisfies the inferred output schema on the error path.
+func TextError(message string) (*sdk.CallToolResult, TextOutput, error) {
+	return NewToolResultError(message), TextOutput{}, nil
+}
+
+// TextOf extracts the concatenated text content of a result as a TextOutput, so
+// handlers that build a *CallToolResult in a helper can still return a typed
+// output value. A nil result yields an empty TextOutput.
+func TextOf(res *sdk.CallToolResult) TextOutput {
+	if res == nil {
+		return TextOutput{}
+	}
+	var b strings.Builder
+	for _, content := range res.Content {
+		if textContent, ok := content.(*sdk.TextContent); ok {
+			b.WriteString(textContent.Text)
+		}
+	}
+	return TextOutput{Output: b.String()}
 }
 
 // providerByTool maps a registered tool name to its provider for metric labels.

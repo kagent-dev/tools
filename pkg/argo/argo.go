@@ -23,7 +23,7 @@ type verifyArgoRolloutsControllerInstallInput struct {
 	Label     string `json:"label" jsonschema:"The label of the Argo Rollouts controller pods"`
 }
 
-func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp.CallToolRequest, in verifyArgoRolloutsControllerInstallInput) (*mcp.CallToolResult, any, error) {
+func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp.CallToolRequest, in verifyArgoRolloutsControllerInstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	ns := in.Namespace
 	if ns == "" {
 		ns = "argo-rollouts"
@@ -36,21 +36,21 @@ func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp
 	cmd := []string{"get", "pods", "-n", ns, "-l", label, "-o", "jsonpath={.items[*].status.phase}"}
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error: " + err.Error()), nil, nil
+		return mcp.TextError("Error: " + err.Error())
 	}
 
 	output = strings.TrimSpace(output)
 	if output == "" {
-		return mcp.NewToolResultText("Error: No pods found"), nil, nil
+		return mcp.TextResult("Error: No pods found")
 	}
 
 	if strings.HasPrefix(output, "Error") {
-		return mcp.NewToolResultText(output), nil, nil
+		return mcp.TextResult(output)
 	}
 
 	podStatuses := strings.Fields(output)
 	if len(podStatuses) == 0 {
-		return mcp.NewToolResultText("Error: No pod statuses returned"), nil, nil
+		return mcp.TextResult("Error: No pod statuses returned")
 	}
 
 	allRunning := true
@@ -62,25 +62,25 @@ func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp
 	}
 
 	if allRunning {
-		return mcp.NewToolResultText("All pods are running"), nil, nil
+		return mcp.TextResult("All pods are running")
 	}
-	return mcp.NewToolResultText("Error: Not all pods are running (" + strings.Join(podStatuses, " ") + ")"), nil, nil
+	return mcp.TextResult("Error: Not all pods are running (" + strings.Join(podStatuses, " ") + ")")
 }
 
 type verifyKubectlPluginInstallInput struct{}
 
-func handleVerifyKubectlPluginInstall(ctx context.Context, request *mcp.CallToolRequest, in verifyKubectlPluginInstallInput) (*mcp.CallToolResult, any, error) {
+func handleVerifyKubectlPluginInstall(ctx context.Context, request *mcp.CallToolRequest, in verifyKubectlPluginInstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"argo", "rollouts", "version"}
 	output, err := runArgoRolloutCommand(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultText("Kubectl Argo Rollouts plugin is not installed: " + err.Error()), nil, nil
+		return mcp.TextResult("Kubectl Argo Rollouts plugin is not installed: " + err.Error())
 	}
 
 	if strings.HasPrefix(output, "Error") {
-		return mcp.NewToolResultText("Kubectl Argo Rollouts plugin is not installed: " + output), nil, nil
+		return mcp.TextResult("Kubectl Argo Rollouts plugin is not installed: " + output)
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
 func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
@@ -97,9 +97,9 @@ type promoteRolloutInput struct {
 	Full        bool   `json:"full" jsonschema:"Promote the rollout to the final step"`
 }
 
-func handlePromoteRollout(ctx context.Context, request *mcp.CallToolRequest, in promoteRolloutInput) (*mcp.CallToolResult, any, error) {
+func handlePromoteRollout(ctx context.Context, request *mcp.CallToolRequest, in promoteRolloutInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.RolloutName == "" {
-		return mcp.NewToolResultError("rollout_name parameter is required"), nil, nil
+		return mcp.TextError("rollout_name parameter is required")
 	}
 
 	cmd := []string{"argo", "rollouts", "promote"}
@@ -113,10 +113,10 @@ func handlePromoteRollout(ctx context.Context, request *mcp.CallToolRequest, in 
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error promoting rollout: " + err.Error()), nil, nil
+		return mcp.TextError("Error promoting rollout: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
 type pauseRolloutInput struct {
@@ -124,9 +124,9 @@ type pauseRolloutInput struct {
 	Namespace   string `json:"namespace" jsonschema:"The namespace of the rollout"`
 }
 
-func handlePauseRollout(ctx context.Context, request *mcp.CallToolRequest, in pauseRolloutInput) (*mcp.CallToolResult, any, error) {
+func handlePauseRollout(ctx context.Context, request *mcp.CallToolRequest, in pauseRolloutInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.RolloutName == "" {
-		return mcp.NewToolResultError("rollout_name parameter is required"), nil, nil
+		return mcp.TextError("rollout_name parameter is required")
 	}
 
 	cmd := []string{"argo", "rollouts", "pause"}
@@ -137,10 +137,10 @@ func handlePauseRollout(ctx context.Context, request *mcp.CallToolRequest, in pa
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error pausing rollout: " + err.Error()), nil, nil
+		return mcp.TextError("Error pausing rollout: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
 type setRolloutImageInput struct {
@@ -149,12 +149,12 @@ type setRolloutImageInput struct {
 	Namespace      string `json:"namespace" jsonschema:"The namespace of the rollout"`
 }
 
-func handleSetRolloutImage(ctx context.Context, request *mcp.CallToolRequest, in setRolloutImageInput) (*mcp.CallToolResult, any, error) {
+func handleSetRolloutImage(ctx context.Context, request *mcp.CallToolRequest, in setRolloutImageInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.RolloutName == "" {
-		return mcp.NewToolResultError("rollout_name parameter is required"), nil, nil
+		return mcp.TextError("rollout_name parameter is required")
 	}
 	if in.ContainerImage == "" {
-		return mcp.NewToolResultError("container_image parameter is required"), nil, nil
+		return mcp.TextError("container_image parameter is required")
 	}
 
 	cmd := []string{"argo", "rollouts", "set", "image", in.RolloutName, in.ContainerImage}
@@ -164,10 +164,10 @@ func handleSetRolloutImage(ctx context.Context, request *mcp.CallToolRequest, in
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error setting rollout image: " + err.Error()), nil, nil
+		return mcp.TextError("Error setting rollout image: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
 // GatewayPluginStatus struct
@@ -303,7 +303,7 @@ type verifyGatewayPluginInput struct {
 	ShouldInstall *bool  `json:"should_install" jsonschema:"Whether to install the plugin if not found"`
 }
 
-func handleVerifyGatewayPlugin(ctx context.Context, request *mcp.CallToolRequest, in verifyGatewayPluginInput) (*mcp.CallToolResult, any, error) {
+func handleVerifyGatewayPlugin(ctx context.Context, request *mcp.CallToolRequest, in verifyGatewayPluginInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	version := in.Version
 	namespace := in.Namespace
 	if namespace == "" {
@@ -322,7 +322,7 @@ func handleVerifyGatewayPlugin(ctx context.Context, request *mcp.CallToolRequest
 			Installed:    true,
 			ErrorMessage: "Gateway API plugin is already configured",
 		}
-		return mcp.NewToolResultText(status.String()), nil, nil
+		return mcp.TextResult(status.String())
 	}
 
 	if !shouldInstall {
@@ -330,12 +330,12 @@ func handleVerifyGatewayPlugin(ctx context.Context, request *mcp.CallToolRequest
 			Installed:    false,
 			ErrorMessage: "Gateway API plugin is not configured and installation is disabled",
 		}
-		return mcp.NewToolResultText(status.String()), nil, nil
+		return mcp.TextResult(status.String())
 	}
 
 	// Configure plugin
 	status := configureGatewayPlugin(ctx, version, namespace)
-	return mcp.NewToolResultText(status.String()), nil, nil
+	return mcp.TextResult(status.String())
 }
 
 type checkPluginLogsInput struct {
@@ -343,7 +343,7 @@ type checkPluginLogsInput struct {
 	Timeout   int    `json:"timeout" jsonschema:"Timeout for log collection in seconds"`
 }
 
-func handleCheckPluginLogs(ctx context.Context, request *mcp.CallToolRequest, in checkPluginLogsInput) (*mcp.CallToolResult, any, error) {
+func handleCheckPluginLogs(ctx context.Context, request *mcp.CallToolRequest, in checkPluginLogsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	namespace := in.Namespace
 	if namespace == "" {
 		namespace = "argo-rollouts"
@@ -361,7 +361,7 @@ func handleCheckPluginLogs(ctx context.Context, request *mcp.CallToolRequest, in
 			Installed:    false,
 			ErrorMessage: err.Error(),
 		}
-		return mcp.NewToolResultText(status.String()), nil, nil
+		return mcp.TextResult(status.String())
 	}
 
 	// Parse download information
@@ -379,14 +379,14 @@ func handleCheckPluginLogs(ctx context.Context, request *mcp.CallToolRequest, in
 			Architecture: versionMatches[2],
 			DownloadTime: downloadTime,
 		}
-		return mcp.NewToolResultText(status.String()), nil, nil
+		return mcp.TextResult(status.String())
 	}
 
 	status := GatewayPluginStatus{
 		Installed:    false,
 		ErrorMessage: "Plugin installation not found in logs",
 	}
-	return mcp.NewToolResultText(status.String()), nil, nil
+	return mcp.TextResult(status.String())
 }
 
 type listRolloutsInput struct {
@@ -394,7 +394,7 @@ type listRolloutsInput struct {
 	Type      string `json:"type" jsonschema:"What to list: rollouts or experiments"`
 }
 
-func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest, in listRolloutsInput) (*mcp.CallToolResult, any, error) {
+func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest, in listRolloutsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	ns := in.Namespace
 	if ns == "" {
 		ns = "argo-rollouts"
@@ -411,14 +411,14 @@ func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest, in li
 
 	output, err := runArgoRolloutCommand(ctx, cmd)
 	if err != nil {
-		return mcp.NewToolResultError("Error listing rollouts: " + err.Error()), nil, nil
+		return mcp.TextError("Error listing rollouts: " + err.Error())
 	}
 
 	if strings.HasPrefix(output, "Error") {
-		return mcp.NewToolResultText(output), nil, nil
+		return mcp.TextResult(output)
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
 func RegisterTools(s *mcp.Server, readOnly bool) {

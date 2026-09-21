@@ -62,9 +62,9 @@ type getResourcesInput struct {
 }
 
 // Enhanced kubectl get
-func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *mcp.CallToolRequest, in getResourcesInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *mcp.CallToolRequest, in getResourcesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" {
-		return mcp.NewToolResultError("resource_type parameter is required"), nil, nil
+		return mcp.TextError("resource_type parameter is required")
 	}
 	if in.Output == "" {
 		in.Output = "wide"
@@ -85,7 +85,7 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *mcp.Cal
 	args = append(args, "-o", in.Output)
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // logsInput is the typed input for k8s_get_pod_logs.
@@ -97,9 +97,9 @@ type logsInput struct {
 }
 
 // Get pod logs
-func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request *mcp.CallToolRequest, in logsInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request *mcp.CallToolRequest, in logsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.PodName == "" {
-		return mcp.NewToolResultError("pod_name parameter is required"), nil, nil
+		return mcp.TextError("pod_name parameter is required")
 	}
 	if in.Namespace == "" {
 		in.Namespace = "default"
@@ -119,7 +119,7 @@ func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request *mcp.Ca
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // scaleInput is the typed input for k8s_scale.
@@ -130,9 +130,9 @@ type scaleInput struct {
 }
 
 // Scale deployment
-func (k *K8sTool) handleScaleDeployment(ctx context.Context, request *mcp.CallToolRequest, in scaleInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleScaleDeployment(ctx context.Context, request *mcp.CallToolRequest, in scaleInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" {
-		return mcp.NewToolResultError("name parameter is required"), nil, nil
+		return mcp.TextError("name parameter is required")
 	}
 	if in.Namespace == "" {
 		in.Namespace = "default"
@@ -144,7 +144,7 @@ func (k *K8sTool) handleScaleDeployment(ctx context.Context, request *mcp.CallTo
 	args := []string{"scale", "deployment", in.Name, "--replicas", fmt.Sprintf("%d", in.Replicas), "-n", in.Namespace}
 
 	res, err := k.runKubectlCommandWithCacheInvalidation(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // patchResourceInput is the typed input for k8s_patch_resource.
@@ -157,7 +157,7 @@ type patchResourceInput struct {
 }
 
 // Patch resource
-func (k *K8sTool) handlePatchResource(ctx context.Context, request *mcp.CallToolRequest, in patchResourceInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handlePatchResource(ctx context.Context, request *mcp.CallToolRequest, in patchResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -166,7 +166,7 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request *mcp.CallTool
 	}
 
 	if in.ResourceType == "" || in.ResourceName == "" || in.Patch == "" {
-		return mcp.NewToolResultError("resource_type, resource_name, and patch parameters are required"), nil, nil
+		return mcp.TextError("resource_type, resource_name, and patch parameters are required")
 	}
 
 	// Validate patch type. "strategic" is only implemented for built-in Kubernetes
@@ -174,25 +174,25 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request *mcp.CallTool
 	switch in.PatchType {
 	case "strategic", "merge", "json":
 	default:
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch_type %q: must be one of strategic, merge, json", in.PatchType)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid patch_type %q: must be one of strategic, merge, json", in.PatchType))
 	}
 
 	if err := security.ValidateK8sResourceName(in.ResourceName); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid resource name: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid resource name: %v", err))
 	}
 
 	if err := security.ValidateNamespace(in.Namespace); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid namespace: %v", err))
 	}
 
 	if err := security.ValidateYAMLContent(in.Patch); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch content: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid patch content: %v", err))
 	}
 
 	args := []string{"patch", in.ResourceType, in.ResourceName, "--type=" + in.PatchType, "-p", in.Patch, "-n", in.Namespace}
 
 	res, err := k.runKubectlCommandWithCacheInvalidation(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // patchStatusInput is the typed input for k8s_patch_status.
@@ -204,25 +204,25 @@ type patchStatusInput struct {
 }
 
 // Patch resource status
-func (k *K8sTool) handlePatchStatus(ctx context.Context, request *mcp.CallToolRequest, in patchStatusInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handlePatchStatus(ctx context.Context, request *mcp.CallToolRequest, in patchStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
 
 	if in.ResourceType == "" || in.ResourceName == "" || in.Patch == "" {
-		return mcp.NewToolResultError("resource_type, resource_name, and patch parameters are required"), nil, nil
+		return mcp.TextError("resource_type, resource_name, and patch parameters are required")
 	}
 
 	if err := security.ValidateK8sResourceName(in.ResourceName); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid resource name: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid resource name: %v", err))
 	}
 
 	if err := security.ValidateNamespace(in.Namespace); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid namespace: %v", err))
 	}
 
 	if err := security.ValidateYAMLContent(in.Patch); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch content: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid patch content: %v", err))
 	}
 
 	args := []string{
@@ -238,7 +238,7 @@ func (k *K8sTool) handlePatchStatus(ctx context.Context, request *mcp.CallToolRe
 	}
 
 	res, err := k.runKubectlCommandWithCacheInvalidation(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // applyManifestInput is the typed input for k8s_apply_manifest.
@@ -247,18 +247,18 @@ type applyManifestInput struct {
 }
 
 // Apply manifest from content
-func (k *K8sTool) handleApplyManifest(ctx context.Context, request *mcp.CallToolRequest, in applyManifestInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleApplyManifest(ctx context.Context, request *mcp.CallToolRequest, in applyManifestInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Manifest == "" {
-		return mcp.NewToolResultError("manifest parameter is required"), nil, nil
+		return mcp.TextError("manifest parameter is required")
 	}
 
 	if err := security.ValidateYAMLContent(in.Manifest); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid manifest content: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid manifest content: %v", err))
 	}
 
 	tmpFile, err := os.CreateTemp("", "k8s-manifest-*.yaml")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to create temp file: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to create temp file: %v", err))
 	}
 
 	defer func() {
@@ -268,20 +268,20 @@ func (k *K8sTool) handleApplyManifest(ctx context.Context, request *mcp.CallTool
 	}()
 
 	if err := os.Chmod(tmpFile.Name(), 0600); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to set file permissions: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to set file permissions: %v", err))
 	}
 
 	if _, err := tmpFile.WriteString(in.Manifest); err != nil {
 		tmpFile.Close()
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to write to temp file: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to write to temp file: %v", err))
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to close temp file: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to close temp file: %v", err))
 	}
 
 	res, err := k.runKubectlCommandWithCacheInvalidation(ctx, mcp.Header(request), "apply", "-f", tmpFile.Name())
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // deleteResourceInput is the typed input for k8s_delete_resource.
@@ -292,19 +292,19 @@ type deleteResourceInput struct {
 }
 
 // Delete resource
-func (k *K8sTool) handleDeleteResource(ctx context.Context, request *mcp.CallToolRequest, in deleteResourceInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleDeleteResource(ctx context.Context, request *mcp.CallToolRequest, in deleteResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
 
 	if in.ResourceType == "" || in.ResourceName == "" {
-		return mcp.NewToolResultError("resource_type and resource_name parameters are required"), nil, nil
+		return mcp.TextError("resource_type and resource_name parameters are required")
 	}
 
 	args := []string{"delete", in.ResourceType, in.ResourceName, "-n", in.Namespace}
 
 	res, err := k.runKubectlCommandWithCacheInvalidation(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // waitInput is the typed input for k8s_wait.
@@ -319,7 +319,7 @@ type waitInput struct {
 }
 
 // Wait for a condition on one or more resources (kubectl wait)
-func (k *K8sTool) handleKubectlWait(ctx context.Context, request *mcp.CallToolRequest, in waitInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleKubectlWait(ctx context.Context, request *mcp.CallToolRequest, in waitInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -328,20 +328,20 @@ func (k *K8sTool) handleKubectlWait(ctx context.Context, request *mcp.CallToolRe
 	}
 
 	if in.ResourceType == "" || in.Condition == "" {
-		return mcp.NewToolResultError("resource_type and condition parameters are required"), nil, nil
+		return mcp.TextError("resource_type and condition parameters are required")
 	}
 	if in.ResourceName == "" && in.Selector == "" && !in.All {
-		return mcp.NewToolResultError("one of resource_name, selector, or all=true must be provided"), nil, nil
+		return mcp.TextError("one of resource_name, selector, or all=true must be provided")
 	}
 
 	if err := security.ValidateNamespace(in.Namespace); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid namespace: %v", err))
 	}
 
 	target := in.ResourceType
 	if in.ResourceName != "" {
 		if err := security.ValidateK8sResourceName(in.ResourceName); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid resource name: %v", err)), nil, nil
+			return mcp.TextError(fmt.Sprintf("Invalid resource name: %v", err))
 		}
 		target = fmt.Sprintf("%s/%s", in.ResourceType, in.ResourceName)
 	}
@@ -355,7 +355,7 @@ func (k *K8sTool) handleKubectlWait(ctx context.Context, request *mcp.CallToolRe
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // serviceConnectivityInput is the typed input for k8s_check_service_connectivity.
@@ -365,12 +365,12 @@ type serviceConnectivityInput struct {
 }
 
 // Check service connectivity
-func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request *mcp.CallToolRequest, in serviceConnectivityInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request *mcp.CallToolRequest, in serviceConnectivityInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
 	if in.ServiceName == "" {
-		return mcp.NewToolResultError("service_name parameter is required"), nil, nil
+		return mcp.TextError("service_name parameter is required")
 	}
 
 	headers := mcp.Header(request)
@@ -384,18 +384,18 @@ func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request *m
 	// Create the curl pod
 	_, err := k.runKubectlCommand(ctx, headers, "run", podName, "--image=curlimages/curl", "-n", in.Namespace, "--restart=Never", "--", "sleep", "3600")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to create curl pod: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to create curl pod: %v", err))
 	}
 
 	// Wait for pod to be ready
 	_, err = k.runKubectlCommandWithTimeout(ctx, headers, 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", in.Namespace)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to wait for curl pod: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to wait for curl pod: %v", err))
 	}
 
 	// Execute kubectl command
 	res, err := k.runKubectlCommand(ctx, headers, "exec", podName, "-n", in.Namespace, "--", "curl", "-s", in.ServiceName)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // eventsInput is the typed input for k8s_get_events.
@@ -404,7 +404,7 @@ type eventsInput struct {
 }
 
 // Get cluster events
-func (k *K8sTool) handleGetEvents(ctx context.Context, request *mcp.CallToolRequest, in eventsInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleGetEvents(ctx context.Context, request *mcp.CallToolRequest, in eventsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"get", "events", "-o", "json"}
 	if in.Namespace != "" {
 		args = append(args, "-n", in.Namespace)
@@ -413,7 +413,7 @@ func (k *K8sTool) handleGetEvents(ctx context.Context, request *mcp.CallToolRequ
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // execCommandInput is the typed input for k8s_execute_command.
@@ -425,39 +425,39 @@ type execCommandInput struct {
 }
 
 // Execute command in pod
-func (k *K8sTool) handleExecCommand(ctx context.Context, request *mcp.CallToolRequest, in execCommandInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleExecCommand(ctx context.Context, request *mcp.CallToolRequest, in execCommandInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
 	if in.PodName == "" || in.Command == "" {
-		return mcp.NewToolResultError("pod_name and command parameters are required"), nil, nil
+		return mcp.TextError("pod_name and command parameters are required")
 	}
 
 	if err := security.ValidateK8sResourceName(in.PodName); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid pod name: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid pod name: %v", err))
 	}
 
 	if err := security.ValidateNamespace(in.Namespace); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid namespace: %v", err))
 	}
 
 	if err := security.ValidateCommandInput(in.Command); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid command: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid command: %v", err))
 	}
 
 	args := []string{"exec", in.PodName, "-n", in.Namespace, "--", in.Command}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // noInput is the typed input for tools that take no arguments.
 type noInput struct{}
 
 // Get available API resources
-func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), "api-resources")
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // describeInput is the typed input for k8s_describe_resource.
@@ -468,9 +468,9 @@ type describeInput struct {
 }
 
 // Kubectl describe tool
-func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request *mcp.CallToolRequest, in describeInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request *mcp.CallToolRequest, in describeInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" {
-		return mcp.NewToolResultError("resource_type and resource_name parameters are required"), nil, nil
+		return mcp.TextError("resource_type and resource_name parameters are required")
 	}
 
 	args := []string{"describe", in.ResourceType, in.ResourceName}
@@ -479,7 +479,7 @@ func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request *mcp.Ca
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // rolloutInput is the typed input for k8s_rollout.
@@ -491,9 +491,9 @@ type rolloutInput struct {
 }
 
 // Rollout operations
-func (k *K8sTool) handleRollout(ctx context.Context, request *mcp.CallToolRequest, in rolloutInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleRollout(ctx context.Context, request *mcp.CallToolRequest, in rolloutInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Action == "" || in.ResourceType == "" || in.ResourceName == "" {
-		return mcp.NewToolResultError("action, resource_type, and resource_name parameters are required"), nil, nil
+		return mcp.TextError("action, resource_type, and resource_name parameters are required")
 	}
 
 	args := []string{"rollout", in.Action, fmt.Sprintf("%s/%s", in.ResourceType, in.ResourceName)}
@@ -502,13 +502,13 @@ func (k *K8sTool) handleRollout(ctx context.Context, request *mcp.CallToolReques
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // Get cluster configuration
-func (k *K8sTool) handleGetClusterConfiguration(ctx context.Context, request *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleGetClusterConfiguration(ctx context.Context, request *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), "config", "view", "-o", "json")
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // removeAnnotationInput is the typed input for k8s_remove_annotation.
@@ -520,9 +520,9 @@ type removeAnnotationInput struct {
 }
 
 // Remove annotation
-func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request *mcp.CallToolRequest, in removeAnnotationInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request *mcp.CallToolRequest, in removeAnnotationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.AnnotationKey == "" {
-		return mcp.NewToolResultError("resource_type, resource_name, and annotation_key parameters are required"), nil, nil
+		return mcp.TextError("resource_type, resource_name, and annotation_key parameters are required")
 	}
 
 	args := []string{"annotate", in.ResourceType, in.ResourceName, in.AnnotationKey + "-"}
@@ -531,7 +531,7 @@ func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request *mcp.CallT
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // removeLabelInput is the typed input for k8s_remove_label.
@@ -543,9 +543,9 @@ type removeLabelInput struct {
 }
 
 // Remove label
-func (k *K8sTool) handleRemoveLabel(ctx context.Context, request *mcp.CallToolRequest, in removeLabelInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleRemoveLabel(ctx context.Context, request *mcp.CallToolRequest, in removeLabelInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.LabelKey == "" {
-		return mcp.NewToolResultError("resource_type, resource_name, and label_key parameters are required"), nil, nil
+		return mcp.TextError("resource_type, resource_name, and label_key parameters are required")
 	}
 
 	args := []string{"label", in.ResourceType, in.ResourceName, in.LabelKey + "-"}
@@ -554,7 +554,7 @@ func (k *K8sTool) handleRemoveLabel(ctx context.Context, request *mcp.CallToolRe
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // annotateInput is the typed input for k8s_annotate_resource.
@@ -566,9 +566,9 @@ type annotateInput struct {
 }
 
 // Annotate resource
-func (k *K8sTool) handleAnnotateResource(ctx context.Context, request *mcp.CallToolRequest, in annotateInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleAnnotateResource(ctx context.Context, request *mcp.CallToolRequest, in annotateInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.Annotations == "" {
-		return mcp.NewToolResultError("resource_type, resource_name, and annotations parameters are required"), nil, nil
+		return mcp.TextError("resource_type, resource_name, and annotations parameters are required")
 	}
 
 	args := []string{"annotate", in.ResourceType, in.ResourceName}
@@ -579,7 +579,7 @@ func (k *K8sTool) handleAnnotateResource(ctx context.Context, request *mcp.CallT
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // labelInput is the typed input for k8s_label_resource.
@@ -591,9 +591,9 @@ type labelInput struct {
 }
 
 // Label resource
-func (k *K8sTool) handleLabelResource(ctx context.Context, request *mcp.CallToolRequest, in labelInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleLabelResource(ctx context.Context, request *mcp.CallToolRequest, in labelInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.Labels == "" {
-		return mcp.NewToolResultError("resource_type, resource_name, and labels parameters are required"), nil, nil
+		return mcp.TextError("resource_type, resource_name, and labels parameters are required")
 	}
 
 	args := []string{"label", in.ResourceType, in.ResourceName}
@@ -604,7 +604,7 @@ func (k *K8sTool) handleLabelResource(ctx context.Context, request *mcp.CallTool
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // createFromURLInput is the typed input for k8s_create_resource_from_url.
@@ -614,9 +614,9 @@ type createFromURLInput struct {
 }
 
 // Create resource from URL
-func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request *mcp.CallToolRequest, in createFromURLInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request *mcp.CallToolRequest, in createFromURLInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.URL == "" {
-		return mcp.NewToolResultError("url parameter is required"), nil, nil
+		return mcp.TextError("url parameter is required")
 	}
 
 	args := []string{"create", "-f", in.URL}
@@ -625,7 +625,7 @@ func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request *mcp.
 	}
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
-	return res, nil, err
+	return res, mcp.TextOf(res), err
 }
 
 // getResourceYAMLInput is the typed input for k8s_get_resource_yaml.
@@ -636,9 +636,9 @@ type getResourceYAMLInput struct {
 }
 
 // Get resource YAML
-func (k *K8sTool) handleGetResourceYAML(ctx context.Context, request *mcp.CallToolRequest, in getResourceYAMLInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleGetResourceYAML(ctx context.Context, request *mcp.CallToolRequest, in getResourceYAMLInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" {
-		return mcp.NewToolResultError("resource_type and resource_name are required"), nil, nil
+		return mcp.TextError("resource_type and resource_name are required")
 	}
 
 	args := []string{"get", in.ResourceType, in.ResourceName, "-o", "yaml"}
@@ -648,9 +648,9 @@ func (k *K8sTool) handleGetResourceYAML(ctx context.Context, request *mcp.CallTo
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Get YAML command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Get YAML command failed: %v", err))
 	}
-	return res, nil, nil
+	return res, mcp.TextOf(res), nil
 }
 
 // createResourceInput is the typed input for k8s_create_resource.
@@ -659,27 +659,27 @@ type createResourceInput struct {
 }
 
 // Create resource from YAML content
-func (k *K8sTool) handleCreateResource(ctx context.Context, request *mcp.CallToolRequest, in createResourceInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleCreateResource(ctx context.Context, request *mcp.CallToolRequest, in createResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.YAMLContent == "" {
-		return mcp.NewToolResultError("yaml_content is required"), nil, nil
+		return mcp.TextError("yaml_content is required")
 	}
 
 	tmpFile, err := os.CreateTemp("", "k8s-resource-*.yaml")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to create temp file: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to create temp file: %v", err))
 	}
 	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.WriteString(in.YAMLContent); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to write to temp file: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to write to temp file: %v", err))
 	}
 	tmpFile.Close()
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), "create", "-f", tmpFile.Name())
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Create command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Create command failed: %v", err))
 	}
-	return res, nil, nil
+	return res, mcp.TextOf(res), nil
 }
 
 // Resource generation embeddings
@@ -733,18 +733,18 @@ type generateResourceInput struct {
 }
 
 // Generate resource using LLM
-func (k *K8sTool) handleGenerateResource(ctx context.Context, request *mcp.CallToolRequest, in generateResourceInput) (*mcp.CallToolResult, any, error) {
+func (k *K8sTool) handleGenerateResource(ctx context.Context, request *mcp.CallToolRequest, in generateResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceDescription == "" {
-		return mcp.NewToolResultError("resource_type and resource_description parameters are required"), nil, nil
+		return mcp.TextError("resource_type and resource_description parameters are required")
 	}
 
 	systemPrompt, ok := resourceMap[in.ResourceType]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("resource type %s not found", in.ResourceType)), nil, nil
+		return mcp.TextError(fmt.Sprintf("resource type %s not found", in.ResourceType))
 	}
 
 	if k.llmModel == nil {
-		return mcp.NewToolResultError("No LLM client present, can't generate resource"), nil, nil
+		return mcp.TextError("No LLM client present, can't generate resource")
 	}
 	llm := k.llmModel
 
@@ -765,16 +765,16 @@ func (k *K8sTool) handleGenerateResource(ctx context.Context, request *mcp.CallT
 
 	resp, err := llm.GenerateContent(ctx, contents, llms.WithModel("gpt-4o-mini"))
 	if err != nil {
-		return mcp.NewToolResultError("failed to generate content: " + err.Error()), nil, nil
+		return mcp.TextError("failed to generate content: " + err.Error())
 	}
 
 	choices := resp.Choices
 	if len(choices) < 1 {
-		return mcp.NewToolResultError("empty response from model"), nil, nil
+		return mcp.TextError("empty response from model")
 	}
 	responseText := choices[0].Content
 
-	return mcp.NewToolResultText(responseText), nil, nil
+	return mcp.TextResult(responseText)
 }
 
 // extractBearerToken extracts the Bearer token from the Authorization header

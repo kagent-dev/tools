@@ -219,22 +219,22 @@ func runCiliumCliWithContext(ctx context.Context, args ...string) (string, error
 		Execute(ctx)
 }
 
-func handleCiliumStatusAndVersion(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, any, error) {
+func handleCiliumStatusAndVersion(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	status, err := runCiliumCliWithContext(ctx, "status")
 	if err != nil {
-		return mcp.NewToolResultError("Error getting Cilium status: " + err.Error()), nil, nil
+		return mcp.TextError("Error getting Cilium status: " + err.Error())
 	}
 
 	version, err := runCiliumCliWithContext(ctx, "version")
 	if err != nil {
-		return mcp.NewToolResultError("Error getting Cilium version: " + err.Error()), nil, nil
+		return mcp.TextError("Error getting Cilium version: " + err.Error())
 	}
 
 	result := status + "\n" + version
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
-func handleUpgradeCilium(ctx context.Context, request *mcp.CallToolRequest, in upgradeCiliumInput) (*mcp.CallToolResult, any, error) {
+func handleUpgradeCilium(ctx context.Context, request *mcp.CallToolRequest, in upgradeCiliumInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 	datapathMode := in.DatapathMode
 
@@ -248,13 +248,13 @@ func handleUpgradeCilium(ctx context.Context, request *mcp.CallToolRequest, in u
 
 	output, err := runCiliumCliWithContext(ctx, args...)
 	if err != nil {
-		return mcp.NewToolResultError("Error upgrading Cilium: " + err.Error()), nil, nil
+		return mcp.TextError("Error upgrading Cilium: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleInstallCilium(ctx context.Context, request *mcp.CallToolRequest, in installCiliumInput) (*mcp.CallToolResult, any, error) {
+func handleInstallCilium(ctx context.Context, request *mcp.CallToolRequest, in installCiliumInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 	clusterID := in.ClusterID
 	datapathMode := in.DatapathMode
@@ -272,27 +272,27 @@ func handleInstallCilium(ctx context.Context, request *mcp.CallToolRequest, in i
 
 	output, err := runCiliumCliWithContext(ctx, args...)
 	if err != nil {
-		return mcp.NewToolResultError("Error installing Cilium: " + err.Error()), nil, nil
+		return mcp.TextError("Error installing Cilium: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleUninstallCilium(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, any, error) {
+func handleUninstallCilium(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "uninstall")
 	if err != nil {
-		return mcp.NewToolResultError("Error uninstalling Cilium: " + err.Error()), nil, nil
+		return mcp.TextError("Error uninstalling Cilium: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleConnectToRemoteCluster(ctx context.Context, request *mcp.CallToolRequest, in connectToRemoteClusterInput) (*mcp.CallToolResult, any, error) {
+func handleConnectToRemoteCluster(ctx context.Context, request *mcp.CallToolRequest, in connectToRemoteClusterInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 	destContext := in.Context
 
 	if clusterName == "" {
-		return mcp.NewToolResultError("cluster_name parameter is required"), nil, nil
+		return mcp.TextError("cluster_name parameter is required")
 	}
 
 	args := []string{"clustermesh", "connect", "--destination-cluster", clusterName}
@@ -302,66 +302,66 @@ func handleConnectToRemoteCluster(ctx context.Context, request *mcp.CallToolRequ
 
 	output, err := runCiliumCliWithContext(ctx, args...)
 	if err != nil {
-		return mcp.NewToolResultError("Error connecting to remote cluster: " + err.Error()), nil, nil
+		return mcp.TextError("Error connecting to remote cluster: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDisconnectRemoteCluster(ctx context.Context, request *mcp.CallToolRequest, in disconnectRemoteClusterInput) (*mcp.CallToolResult, any, error) {
+func handleDisconnectRemoteCluster(ctx context.Context, request *mcp.CallToolRequest, in disconnectRemoteClusterInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 
 	if clusterName == "" {
-		return mcp.NewToolResultError("cluster_name parameter is required"), nil, nil
+		return mcp.TextError("cluster_name parameter is required")
 	}
 
 	args := []string{"clustermesh", "disconnect", "--destination-cluster", clusterName}
 
 	output, err := runCiliumCliWithContext(ctx, args...)
 	if err != nil {
-		return mcp.NewToolResultError("Error disconnecting from remote cluster: " + err.Error()), nil, nil
+		return mcp.TextError("Error disconnecting from remote cluster: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListBGPPeers(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, any, error) {
+func handleListBGPPeers(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "bgp", "peers")
 	if err != nil {
-		return mcp.NewToolResultError("Error listing BGP peers: " + err.Error()), nil, nil
+		return mcp.TextError("Error listing BGP peers: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListBGPRoutes(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, any, error) {
+func handleListBGPRoutes(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "bgp", "routes")
 	if err != nil {
-		return mcp.NewToolResultError("Error listing BGP routes: " + err.Error()), nil, nil
+		return mcp.TextError("Error listing BGP routes: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleShowClusterMeshStatus(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, any, error) {
+func handleShowClusterMeshStatus(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "clustermesh", "status")
 	if err != nil {
-		return mcp.NewToolResultError("Error getting cluster mesh status: " + err.Error()), nil, nil
+		return mcp.TextError("Error getting cluster mesh status: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleShowFeaturesStatus(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, any, error) {
+func handleShowFeaturesStatus(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "features", "status")
 	if err != nil {
-		return mcp.NewToolResultError("Error getting features status: " + err.Error()), nil, nil
+		return mcp.TextError("Error getting features status: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleToggleHubble(ctx context.Context, request *mcp.CallToolRequest, in enableToggleInput) (*mcp.CallToolResult, any, error) {
+func handleToggleHubble(ctx context.Context, request *mcp.CallToolRequest, in enableToggleInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	enable := true
 	if in.Enable != nil {
 		enable = *in.Enable
@@ -375,13 +375,13 @@ func handleToggleHubble(ctx context.Context, request *mcp.CallToolRequest, in en
 
 	output, err := runCiliumCliWithContext(ctx, "hubble", action)
 	if err != nil {
-		return mcp.NewToolResultError("Error toggling Hubble: " + err.Error()), nil, nil
+		return mcp.TextError("Error toggling Hubble: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleToggleClusterMesh(ctx context.Context, request *mcp.CallToolRequest, in enableToggleInput) (*mcp.CallToolResult, any, error) {
+func handleToggleClusterMesh(ctx context.Context, request *mcp.CallToolRequest, in enableToggleInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	enable := true
 	if in.Enable != nil {
 		enable = *in.Enable
@@ -395,10 +395,10 @@ func handleToggleClusterMesh(ctx context.Context, request *mcp.CallToolRequest, 
 
 	output, err := runCiliumCliWithContext(ctx, "clustermesh", action)
 	if err != nil {
-		return mcp.NewToolResultError("Error toggling cluster mesh: " + err.Error()), nil, nil
+		return mcp.TextError("Error toggling cluster mesh: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
 func RegisterTools(s *mcp.Server, readOnly bool) {
@@ -532,7 +532,7 @@ func runCiliumDbgCommandWithContext(ctx context.Context, command, nodeName strin
 		Execute(ctx)
 }
 
-func handleGetEndpointDetails(ctx context.Context, request *mcp.CallToolRequest, in getEndpointDetailsInput) (*mcp.CallToolResult, any, error) {
+func handleGetEndpointDetails(ctx context.Context, request *mcp.CallToolRequest, in getEndpointDetailsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.OutputFormat == "" {
 		in.OutputFormat = "json"
 	}
@@ -547,49 +547,49 @@ func handleGetEndpointDetails(ctx context.Context, request *mcp.CallToolRequest,
 	} else if endpointID != "" {
 		cmd = fmt.Sprintf("endpoint get %s -o %s", endpointID, outputFormat)
 	} else {
-		return mcp.NewToolResultError("either endpoint_id or labels must be provided"), nil, nil
+		return mcp.TextError("either endpoint_id or labels must be provided")
 	}
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoint details: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get endpoint details: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetEndpointLogs(ctx context.Context, request *mcp.CallToolRequest, in getEndpointLogsInput) (*mcp.CallToolResult, any, error) {
+func handleGetEndpointLogs(ctx context.Context, request *mcp.CallToolRequest, in getEndpointLogsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	nodeName := in.NodeName
 
 	if endpointID == "" {
-		return mcp.NewToolResultError("endpoint_id parameter is required"), nil, nil
+		return mcp.TextError("endpoint_id parameter is required")
 	}
 
 	cmd := fmt.Sprintf("endpoint logs %s", endpointID)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoint logs: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get endpoint logs: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetEndpointHealth(ctx context.Context, request *mcp.CallToolRequest, in getEndpointHealthInput) (*mcp.CallToolResult, any, error) {
+func handleGetEndpointHealth(ctx context.Context, request *mcp.CallToolRequest, in getEndpointHealthInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	nodeName := in.NodeName
 
 	if endpointID == "" {
-		return mcp.NewToolResultError("endpoint_id parameter is required"), nil, nil
+		return mcp.TextError("endpoint_id parameter is required")
 	}
 
 	cmd := fmt.Sprintf("endpoint health %s", endpointID)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoint health: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get endpoint health: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleManageEndpointLabels(ctx context.Context, request *mcp.CallToolRequest, in manageEndpointLabelsInput) (*mcp.CallToolResult, any, error) {
+func handleManageEndpointLabels(ctx context.Context, request *mcp.CallToolRequest, in manageEndpointLabelsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Action == "" {
 		in.Action = "add"
 	}
@@ -599,91 +599,91 @@ func handleManageEndpointLabels(ctx context.Context, request *mcp.CallToolReques
 	nodeName := in.NodeName
 
 	if endpointID == "" || labels == "" {
-		return mcp.NewToolResultError("endpoint_id and labels parameters are required"), nil, nil
+		return mcp.TextError("endpoint_id and labels parameters are required")
 	}
 
 	cmd := fmt.Sprintf("endpoint labels %s --%s %s", endpointID, action, labels)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to manage endpoint labels: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to manage endpoint labels: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleManageEndpointConfiguration(ctx context.Context, request *mcp.CallToolRequest, in manageEndpointConfigurationInput) (*mcp.CallToolResult, any, error) {
+func handleManageEndpointConfiguration(ctx context.Context, request *mcp.CallToolRequest, in manageEndpointConfigurationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	config := in.Config
 	nodeName := in.NodeName
 
 	if endpointID == "" {
-		return mcp.NewToolResultError("endpoint_id parameter is required"), nil, nil
+		return mcp.TextError("endpoint_id parameter is required")
 	}
 	if config == "" {
-		return mcp.NewToolResultError("config parameter is required"), nil, nil
+		return mcp.TextError("config parameter is required")
 	}
 
 	command := fmt.Sprintf("endpoint config %s %s", endpointID, config)
 	output, err := runCiliumDbgCommand(ctx, command, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError("Error managing endpoint configuration: " + err.Error()), nil, nil
+		return mcp.TextError("Error managing endpoint configuration: " + err.Error())
 	}
 
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDisconnectEndpoint(ctx context.Context, request *mcp.CallToolRequest, in disconnectEndpointInput) (*mcp.CallToolResult, any, error) {
+func handleDisconnectEndpoint(ctx context.Context, request *mcp.CallToolRequest, in disconnectEndpointInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	nodeName := in.NodeName
 
 	if endpointID == "" {
-		return mcp.NewToolResultError("endpoint_id parameter is required"), nil, nil
+		return mcp.TextError("endpoint_id parameter is required")
 	}
 
 	cmd := fmt.Sprintf("endpoint disconnect %s", endpointID)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to disconnect endpoint: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to disconnect endpoint: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetEndpointsList(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleGetEndpointsList(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "endpoint list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get endpoints list: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get endpoints list: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListIdentities(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListIdentities(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "identity list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list identities: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list identities: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetIdentityDetails(ctx context.Context, request *mcp.CallToolRequest, in getIdentityDetailsInput) (*mcp.CallToolResult, any, error) {
+func handleGetIdentityDetails(ctx context.Context, request *mcp.CallToolRequest, in getIdentityDetailsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	identityID := in.IdentityID
 	nodeName := in.NodeName
 
 	if identityID == "" {
-		return mcp.NewToolResultError("identity_id parameter is required"), nil, nil
+		return mcp.TextError("identity_id parameter is required")
 	}
 
 	cmd := fmt.Sprintf("identity get %s", identityID)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get identity details: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get identity details: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleShowConfigurationOptions(ctx context.Context, request *mcp.CallToolRequest, in showConfigurationOptionsInput) (*mcp.CallToolResult, any, error) {
+func handleShowConfigurationOptions(ctx context.Context, request *mcp.CallToolRequest, in showConfigurationOptionsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	listAll := in.ListAll
 	listReadOnly := in.ListReadOnly
 	listOptions := in.ListOptions
@@ -702,12 +702,12 @@ func handleShowConfigurationOptions(ctx context.Context, request *mcp.CallToolRe
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to show configuration options: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to show configuration options: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleToggleConfigurationOption(ctx context.Context, request *mcp.CallToolRequest, in toggleConfigurationOptionInput) (*mcp.CallToolResult, any, error) {
+func handleToggleConfigurationOption(ctx context.Context, request *mcp.CallToolRequest, in toggleConfigurationOptionInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	option := in.Option
 	value := true
 	if in.Value != nil {
@@ -716,7 +716,7 @@ func handleToggleConfigurationOption(ctx context.Context, request *mcp.CallToolR
 	nodeName := in.NodeName
 
 	if option == "" {
-		return mcp.NewToolResultError("option parameter is required"), nil, nil
+		return mcp.TextError("option parameter is required")
 	}
 
 	valueStr := "enable"
@@ -727,58 +727,58 @@ func handleToggleConfigurationOption(ctx context.Context, request *mcp.CallToolR
 	cmd := fmt.Sprintf("config %s=%s", option, valueStr)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to toggle configuration option: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to toggle configuration option: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleRequestDebuggingInformation(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleRequestDebuggingInformation(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "debuginfo", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to request debugging information: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to request debugging information: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDisplayEncryptionState(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleDisplayEncryptionState(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "encrypt status", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to display encryption state: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to display encryption state: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleFlushIPsecState(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleFlushIPsecState(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "encrypt flush -f", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to flush IPsec state: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to flush IPsec state: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListEnvoyConfig(ctx context.Context, request *mcp.CallToolRequest, in listEnvoyConfigInput) (*mcp.CallToolResult, any, error) {
+func handleListEnvoyConfig(ctx context.Context, request *mcp.CallToolRequest, in listEnvoyConfigInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	resourceName := in.ResourceName
 	nodeName := in.NodeName
 
 	if resourceName == "" {
-		return mcp.NewToolResultError("resource_name parameter is required"), nil, nil
+		return mcp.TextError("resource_name parameter is required")
 	}
 
 	cmd := fmt.Sprintf("envoy admin %s", resourceName)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list Envoy config: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list Envoy config: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleFQDNCache(ctx context.Context, request *mcp.CallToolRequest, in fqdnCacheInput) (*mcp.CallToolResult, any, error) {
+func handleFQDNCache(ctx context.Context, request *mcp.CallToolRequest, in fqdnCacheInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Command == "" {
 		in.Command = "list"
 	}
@@ -794,32 +794,32 @@ func handleFQDNCache(ctx context.Context, request *mcp.CallToolRequest, in fqdnC
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to manage FQDN cache: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to manage FQDN cache: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleShowDNSNames(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleShowDNSNames(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "fqdn names", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to show DNS names: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to show DNS names: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListIPAddresses(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListIPAddresses(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "ip list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list IP addresses: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list IP addresses: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleShowIPCacheInformation(ctx context.Context, request *mcp.CallToolRequest, in showIPCacheInformationInput) (*mcp.CallToolResult, any, error) {
+func handleShowIPCacheInformation(ctx context.Context, request *mcp.CallToolRequest, in showIPCacheInformationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	cidr := in.CIDR
 	labels := in.Labels
 	nodeName := in.NodeName
@@ -830,128 +830,128 @@ func handleShowIPCacheInformation(ctx context.Context, request *mcp.CallToolRequ
 	} else if cidr != "" {
 		cmd = fmt.Sprintf("ip get %s", cidr)
 	} else {
-		return mcp.NewToolResultError("either cidr or labels must be provided"), nil, nil
+		return mcp.TextError("either cidr or labels must be provided")
 	}
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to show IP cache information: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to show IP cache information: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDeleteKeyFromKVStore(ctx context.Context, request *mcp.CallToolRequest, in kvStoreKeyInput) (*mcp.CallToolResult, any, error) {
+func handleDeleteKeyFromKVStore(ctx context.Context, request *mcp.CallToolRequest, in kvStoreKeyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	key := in.Key
 	nodeName := in.NodeName
 
 	if key == "" {
-		return mcp.NewToolResultError("key parameter is required"), nil, nil
+		return mcp.TextError("key parameter is required")
 	}
 
 	cmd := fmt.Sprintf("kvstore delete %s", key)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete key from kvstore: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to delete key from kvstore: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in kvStoreKeyInput) (*mcp.CallToolResult, any, error) {
+func handleGetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in kvStoreKeyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	key := in.Key
 	nodeName := in.NodeName
 
 	if key == "" {
-		return mcp.NewToolResultError("key parameter is required"), nil, nil
+		return mcp.TextError("key parameter is required")
 	}
 
 	cmd := fmt.Sprintf("kvstore get %s", key)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get key from kvstore: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get key from kvstore: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleSetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in setKVStoreKeyInput) (*mcp.CallToolResult, any, error) {
+func handleSetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in setKVStoreKeyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	key := in.Key
 	value := in.Value
 	nodeName := in.NodeName
 
 	if key == "" || value == "" {
-		return mcp.NewToolResultError("key and value parameters are required"), nil, nil
+		return mcp.TextError("key and value parameters are required")
 	}
 
 	cmd := fmt.Sprintf("kvstore set %s=%s", key, value)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to set key in kvstore: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to set key in kvstore: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleShowLoadInformation(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleShowLoadInformation(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "loadinfo", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to show load information: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to show load information: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListLocalRedirectPolicies(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListLocalRedirectPolicies(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "lrp list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list local redirect policies: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list local redirect policies: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListBPFMapEvents(ctx context.Context, request *mcp.CallToolRequest, in bpfMapInput) (*mcp.CallToolResult, any, error) {
+func handleListBPFMapEvents(ctx context.Context, request *mcp.CallToolRequest, in bpfMapInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	mapName := in.MapName
 	nodeName := in.NodeName
 
 	if mapName == "" {
-		return mcp.NewToolResultError("map_name parameter is required"), nil, nil
+		return mcp.TextError("map_name parameter is required")
 	}
 
 	cmd := fmt.Sprintf("map events %s", mapName)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list BPF map events: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list BPF map events: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetBPFMap(ctx context.Context, request *mcp.CallToolRequest, in bpfMapInput) (*mcp.CallToolResult, any, error) {
+func handleGetBPFMap(ctx context.Context, request *mcp.CallToolRequest, in bpfMapInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	mapName := in.MapName
 	nodeName := in.NodeName
 
 	if mapName == "" {
-		return mcp.NewToolResultError("map_name parameter is required"), nil, nil
+		return mcp.TextError("map_name parameter is required")
 	}
 
 	cmd := fmt.Sprintf("map get %s", mapName)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get BPF map: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get BPF map: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListBPFMaps(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListBPFMaps(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "map list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list BPF maps: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list BPF maps: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListMetrics(ctx context.Context, request *mcp.CallToolRequest, in listMetricsInput) (*mcp.CallToolResult, any, error) {
+func handleListMetrics(ctx context.Context, request *mcp.CallToolRequest, in listMetricsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	matchPattern := in.MatchPattern
 	nodeName := in.NodeName
 
@@ -964,32 +964,32 @@ func handleListMetrics(ctx context.Context, request *mcp.CallToolRequest, in lis
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list metrics: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list metrics: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListClusterNodes(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListClusterNodes(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "node list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list cluster nodes: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list cluster nodes: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListNodeIds(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListNodeIds(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "nodeid list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list node IDs: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list node IDs: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDisplayPolicyNodeInformation(ctx context.Context, request *mcp.CallToolRequest, in displayPolicyNodeInformationInput) (*mcp.CallToolResult, any, error) {
+func handleDisplayPolicyNodeInformation(ctx context.Context, request *mcp.CallToolRequest, in displayPolicyNodeInformationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	labels := in.Labels
 	nodeName := in.NodeName
 
@@ -1002,12 +1002,12 @@ func handleDisplayPolicyNodeInformation(ctx context.Context, request *mcp.CallTo
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to display policy node information: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to display policy node information: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDeletePolicyRules(ctx context.Context, request *mcp.CallToolRequest, in deletePolicyRulesInput) (*mcp.CallToolResult, any, error) {
+func handleDeletePolicyRules(ctx context.Context, request *mcp.CallToolRequest, in deletePolicyRulesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	labels := in.Labels
 	all := in.All
 	nodeName := in.NodeName
@@ -1018,43 +1018,43 @@ func handleDeletePolicyRules(ctx context.Context, request *mcp.CallToolRequest, 
 	} else if labels != "" {
 		cmd = fmt.Sprintf("policy delete %s", labels)
 	} else {
-		return mcp.NewToolResultError("either labels or all=true must be provided"), nil, nil
+		return mcp.TextError("either labels or all=true must be provided")
 	}
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete policy rules: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to delete policy rules: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDisplaySelectors(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleDisplaySelectors(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "policy selectors", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to display selectors: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to display selectors: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "prefilter list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list XDP CIDR filters: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list XDP CIDR filters: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleUpdateXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in xdpCIDRFiltersInput) (*mcp.CallToolResult, any, error) {
+func handleUpdateXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in xdpCIDRFiltersInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	cidrPrefixes := in.CIDRPrefixes
 	revision := in.Revision
 	nodeName := in.NodeName
 
 	if cidrPrefixes == "" {
-		return mcp.NewToolResultError("cidr_prefixes parameter is required"), nil, nil
+		return mcp.TextError("cidr_prefixes parameter is required")
 	}
 
 	var cmd string
@@ -1066,18 +1066,18 @@ func handleUpdateXDPCIDRFilters(ctx context.Context, request *mcp.CallToolReques
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to update XDP CIDR filters: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to update XDP CIDR filters: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDeleteXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in xdpCIDRFiltersInput) (*mcp.CallToolResult, any, error) {
+func handleDeleteXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in xdpCIDRFiltersInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	cidrPrefixes := in.CIDRPrefixes
 	revision := in.Revision
 	nodeName := in.NodeName
 
 	if cidrPrefixes == "" {
-		return mcp.NewToolResultError("cidr_prefixes parameter is required"), nil, nil
+		return mcp.TextError("cidr_prefixes parameter is required")
 	}
 
 	var cmd string
@@ -1089,12 +1089,12 @@ func handleDeleteXDPCIDRFilters(ctx context.Context, request *mcp.CallToolReques
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete XDP CIDR filters: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to delete XDP CIDR filters: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleValidateCiliumNetworkPolicies(ctx context.Context, request *mcp.CallToolRequest, in validateCiliumNetworkPoliciesInput) (*mcp.CallToolResult, any, error) {
+func handleValidateCiliumNetworkPolicies(ctx context.Context, request *mcp.CallToolRequest, in validateCiliumNetworkPoliciesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	enableK8s := in.EnableK8s
 	enableK8sAPIDiscovery := in.EnableK8sAPIDiscovery
 	nodeName := in.NodeName
@@ -1109,54 +1109,54 @@ func handleValidateCiliumNetworkPolicies(ctx context.Context, request *mcp.CallT
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to validate Cilium network policies: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to validate Cilium network policies: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListPCAPRecorders(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, any, error) {
+func handleListPCAPRecorders(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "recorder list", nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list PCAP recorders: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list PCAP recorders: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetPCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in pcapRecorderIDInput) (*mcp.CallToolResult, any, error) {
+func handleGetPCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in pcapRecorderIDInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	recorderID := in.RecorderID
 	nodeName := in.NodeName
 
 	if recorderID == "" {
-		return mcp.NewToolResultError("recorder_id parameter is required"), nil, nil
+		return mcp.TextError("recorder_id parameter is required")
 	}
 
 	cmd := fmt.Sprintf("recorder get %s", recorderID)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get PCAP recorder: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get PCAP recorder: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDeletePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in pcapRecorderIDInput) (*mcp.CallToolResult, any, error) {
+func handleDeletePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in pcapRecorderIDInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	recorderID := in.RecorderID
 	nodeName := in.NodeName
 
 	if recorderID == "" {
-		return mcp.NewToolResultError("recorder_id parameter is required"), nil, nil
+		return mcp.TextError("recorder_id parameter is required")
 	}
 
 	cmd := fmt.Sprintf("recorder delete %s", recorderID)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete PCAP recorder: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to delete PCAP recorder: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleUpdatePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in updatePCAPRecorderInput) (*mcp.CallToolResult, any, error) {
+func handleUpdatePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in updatePCAPRecorderInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Caplen == "" {
 		in.Caplen = "0"
 	}
@@ -1170,18 +1170,18 @@ func handleUpdatePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest,
 	nodeName := in.NodeName
 
 	if recorderID == "" || filters == "" {
-		return mcp.NewToolResultError("recorder_id and filters parameters are required"), nil, nil
+		return mcp.TextError("recorder_id and filters parameters are required")
 	}
 
 	cmd := fmt.Sprintf("recorder update %s --filters %s --caplen %s --id %s", recorderID, filters, caplen, id)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to update PCAP recorder: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to update PCAP recorder: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleListServices(ctx context.Context, request *mcp.CallToolRequest, in listServicesInput) (*mcp.CallToolResult, any, error) {
+func handleListServices(ctx context.Context, request *mcp.CallToolRequest, in listServicesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	showClusterMeshAffinity := in.ShowClusterMeshAffinity
 	nodeName := in.NodeName
 
@@ -1194,28 +1194,28 @@ func handleListServices(ctx context.Context, request *mcp.CallToolRequest, in li
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to list services: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to list services: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetServiceInformation(ctx context.Context, request *mcp.CallToolRequest, in getServiceInformationInput) (*mcp.CallToolResult, any, error) {
+func handleGetServiceInformation(ctx context.Context, request *mcp.CallToolRequest, in getServiceInformationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	serviceID := in.ServiceID
 	nodeName := in.NodeName
 
 	if serviceID == "" {
-		return mcp.NewToolResultError("service_id parameter is required"), nil, nil
+		return mcp.TextError("service_id parameter is required")
 	}
 
 	cmd := fmt.Sprintf("service get %s", serviceID)
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get service information: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get service information: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleDeleteService(ctx context.Context, request *mcp.CallToolRequest, in deleteServiceInput) (*mcp.CallToolResult, any, error) {
+func handleDeleteService(ctx context.Context, request *mcp.CallToolRequest, in deleteServiceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	serviceID := in.ServiceID
 	all := in.All
 	nodeName := in.NodeName
@@ -1226,17 +1226,17 @@ func handleDeleteService(ctx context.Context, request *mcp.CallToolRequest, in d
 	} else if serviceID != "" {
 		cmd = fmt.Sprintf("service delete %s", serviceID)
 	} else {
-		return mcp.NewToolResultError("either service_id or all=true must be provided"), nil, nil
+		return mcp.TextError("either service_id or all=true must be provided")
 	}
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete service: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to delete service: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleUpdateService(ctx context.Context, request *mcp.CallToolRequest, in updateServiceInput) (*mcp.CallToolResult, any, error) {
+func handleUpdateService(ctx context.Context, request *mcp.CallToolRequest, in updateServiceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.K8sExtTrafficPolicy == "" {
 		in.K8sExtTrafficPolicy = "Cluster"
 	}
@@ -1266,7 +1266,7 @@ func handleUpdateService(ctx context.Context, request *mcp.CallToolRequest, in u
 	nodeName := in.NodeName
 
 	if backends == "" || frontend == "" || id == "" {
-		return mcp.NewToolResultError("backends, frontend, and id parameters are required"), nil, nil
+		return mcp.TextError("backends, frontend, and id parameters are required")
 	}
 
 	cmd := fmt.Sprintf("service update %s --backends %s --frontend %s --protocol %s --states %s",
@@ -1302,12 +1302,12 @@ func handleUpdateService(ctx context.Context, request *mcp.CallToolRequest, in u
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to update service: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to update service: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }
 
-func handleGetDaemonStatus(ctx context.Context, request *mcp.CallToolRequest, in getDaemonStatusInput) (*mcp.CallToolResult, any, error) {
+func handleGetDaemonStatus(ctx context.Context, request *mcp.CallToolRequest, in getDaemonStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	showAllAddresses := in.ShowAllAddresses
 	showAllClusters := in.ShowAllClusters
 	showAllControllers := in.ShowAllControllers
@@ -1342,7 +1342,7 @@ func handleGetDaemonStatus(ctx context.Context, request *mcp.CallToolRequest, in
 
 	output, err := runCiliumDbgCommand(ctx, cmd, nodeName)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to get daemon status: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Failed to get daemon status: %v", err))
 	}
-	return mcp.NewToolResultText(output), nil, nil
+	return mcp.TextResult(output)
 }

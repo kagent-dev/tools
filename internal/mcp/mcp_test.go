@@ -49,8 +49,8 @@ func TestAddToolRecordsProvider(t *testing.T) {
 	type in struct {
 		Name string `json:"name"`
 	}
-	AddTool(s, "myprovider", &Tool{Name: "my_tool"}, func(_ context.Context, _ *CallToolRequest, _ in) (*CallToolResult, any, error) {
-		return NewToolResultText("ok"), nil, nil
+	AddTool(s, "myprovider", &Tool{Name: "my_tool"}, func(_ context.Context, _ *CallToolRequest, _ in) (*CallToolResult, TextOutput, error) {
+		return TextResult("ok")
 	})
 
 	if got := providerOf("my_tool"); got != "myprovider" {
@@ -82,8 +82,8 @@ func TestAddToolRelaxesInputSchema(t *testing.T) {
 		Output        string `json:"output"`
 	}
 	tool := &Tool{Name: "relax_tool"}
-	AddTool(s, "p", tool, func(_ context.Context, _ *CallToolRequest, _ in) (*CallToolResult, any, error) {
-		return NewToolResultText("ok"), nil, nil
+	AddTool(s, "p", tool, func(_ context.Context, _ *CallToolRequest, _ in) (*CallToolResult, TextOutput, error) {
+		return TextResult("ok")
 	})
 
 	schema, ok := tool.InputSchema.(*jsonschema.Schema)
@@ -101,17 +101,35 @@ func TestAddToolRelaxesInputSchema(t *testing.T) {
 	}
 
 	// The relaxed schema must accept a payload that omits optional fields, which
-	// is exactly what the e2e client sends and what previously failed.
-	resolved, err := schema.Resolve(nil)
-	if err != nil {
-		t.Fatalf("resolve: %v", err)
+	// is exactly what the e2e client sends and what previously failed. Exercise
+	// the real client->server path with a typed, deliberately partial argument
+	// value rather than validating a fixture by hand.
+	serverT, clientT := sdk.NewInMemoryTransports()
+	ctx := context.Background()
+	if _, err := s.Connect(ctx, serverT, nil); err != nil {
+		t.Fatalf("server connect: %v", err)
 	}
-	// jsonschema.Resolved.Validate requires a JSON value for an object schema
-	// and explicitly rejects structs (google/jsonschema-go#23), so this payload
-	// must stay a map. It is a test fixture, not a tool parameter container.
-	partial := map[string]any{"resource_type": "namespace", "output": "json"}
-	if err := resolved.Validate(partial); err != nil {
-		t.Errorf("partial payload should validate, got: %v", err)
+	client := sdk.NewClient(&sdk.Implementation{Name: "relax-client", Version: "v"}, nil)
+	session, err := client.Connect(ctx, clientT, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	// A partial argument value: only resource_type is set, every other field is
+	// omitted. Pre-migration this call was rejected for missing required fields.
+	type partialArgs struct {
+		ResourceType string `json:"resource_type"`
+	}
+	result, err := session.CallTool(ctx, &sdk.CallToolParams{
+		Name:      "relax_tool",
+		Arguments: partialArgs{ResourceType: "namespace"},
+	})
+	if err != nil {
+		t.Fatalf("partial payload should be accepted, got: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("partial payload returned a tool error: %v", result)
 	}
 }
 

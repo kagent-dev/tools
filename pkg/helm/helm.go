@@ -32,7 +32,7 @@ type helmListReleasesInput struct {
 }
 
 // Helm list releases
-func handleHelmListReleases(ctx context.Context, request *mcp.CallToolRequest, in helmListReleasesInput) (*mcp.CallToolResult, any, error) {
+func handleHelmListReleases(ctx context.Context, request *mcp.CallToolRequest, in helmListReleasesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"list"}
 
 	if in.Namespace != "" {
@@ -83,13 +83,13 @@ func handleHelmListReleases(ctx context.Context, request *mcp.CallToolRequest, i
 			if in.Namespace != "" {
 				toolErr = toolErr.WithContext("namespace", in.Namespace)
 			}
-			return toolErrorResult(toolErr), nil, nil
+			return toolErrorResult(toolErr), mcp.TextOutput{}, nil
 		}
 		// Fallback for non-structured errors
-		return mcp.NewToolResultError(fmt.Sprintf("Helm list command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Helm list command failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 func runHelmCommand(ctx context.Context, args []string) (string, error) {
@@ -128,27 +128,27 @@ type helmGetReleaseInput struct {
 }
 
 // Helm get release
-func handleHelmGetRelease(ctx context.Context, request *mcp.CallToolRequest, in helmGetReleaseInput) (*mcp.CallToolResult, any, error) {
+func handleHelmGetRelease(ctx context.Context, request *mcp.CallToolRequest, in helmGetReleaseInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Resource == "" {
 		in.Resource = "all"
 	}
 
 	if in.Name == "" {
-		return mcp.NewToolResultError("name parameter is required"), nil, nil
+		return mcp.TextError("name parameter is required")
 	}
 
 	if in.Namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil, nil
+		return mcp.TextError("namespace parameter is required")
 	}
 
 	args := []string{"get", in.Resource, in.Name, "-n", in.Namespace}
 
 	result, err := runHelmCommand(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm get command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Helm get command failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type helmUpgradeReleaseInput struct {
@@ -164,27 +164,27 @@ type helmUpgradeReleaseInput struct {
 }
 
 // Helm upgrade release
-func handleHelmUpgradeRelease(ctx context.Context, request *mcp.CallToolRequest, in helmUpgradeReleaseInput) (*mcp.CallToolResult, any, error) {
+func handleHelmUpgradeRelease(ctx context.Context, request *mcp.CallToolRequest, in helmUpgradeReleaseInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" || in.Chart == "" {
-		return mcp.NewToolResultError("name and chart parameters are required"), nil, nil
+		return mcp.TextError("name and chart parameters are required")
 	}
 
 	// Validate release name
 	if err := security.ValidateHelmReleaseName(in.Name); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid release name: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid release name: %v", err))
 	}
 
 	// Validate namespace if provided
 	if in.Namespace != "" {
 		if err := security.ValidateNamespace(in.Namespace); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil, nil
+			return mcp.TextError(fmt.Sprintf("Invalid namespace: %v", err))
 		}
 	}
 
 	// Validate values file path if provided
 	if in.Values != "" {
 		if err := security.ValidateFilePath(in.Values); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Invalid values file path: %v", err)), nil, nil
+			return mcp.TextError(fmt.Sprintf("Invalid values file path: %v", err))
 		}
 	}
 
@@ -224,10 +224,10 @@ func handleHelmUpgradeRelease(ctx context.Context, request *mcp.CallToolRequest,
 
 	result, err := runHelmCommand(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm upgrade command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Helm upgrade command failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type helmUninstallInput struct {
@@ -238,9 +238,9 @@ type helmUninstallInput struct {
 }
 
 // Helm uninstall release
-func handleHelmUninstall(ctx context.Context, request *mcp.CallToolRequest, in helmUninstallInput) (*mcp.CallToolResult, any, error) {
+func handleHelmUninstall(ctx context.Context, request *mcp.CallToolRequest, in helmUninstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" || in.Namespace == "" {
-		return mcp.NewToolResultError("name and namespace parameters are required"), nil, nil
+		return mcp.TextError("name and namespace parameters are required")
 	}
 
 	args := []string{"uninstall", in.Name, "-n", in.Namespace}
@@ -255,10 +255,10 @@ func handleHelmUninstall(ctx context.Context, request *mcp.CallToolRequest, in h
 
 	result, err := runHelmCommand(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm uninstall command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Helm uninstall command failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type helmRepoAddInput struct {
@@ -267,43 +267,43 @@ type helmRepoAddInput struct {
 }
 
 // Helm repo add
-func handleHelmRepoAdd(ctx context.Context, request *mcp.CallToolRequest, in helmRepoAddInput) (*mcp.CallToolResult, any, error) {
+func handleHelmRepoAdd(ctx context.Context, request *mcp.CallToolRequest, in helmRepoAddInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" || in.URL == "" {
-		return mcp.NewToolResultError("name and url parameters are required"), nil, nil
+		return mcp.TextError("name and url parameters are required")
 	}
 
 	// Validate repository name
 	if err := security.ValidateHelmReleaseName(in.Name); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid repository name: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid repository name: %v", err))
 	}
 
 	// Validate repository URL
 	if err := security.ValidateURL(in.URL); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid repository URL: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Invalid repository URL: %v", err))
 	}
 
 	args := []string{"repo", "add", in.Name, in.URL}
 
 	result, err := runHelmCommand(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm repo add command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Helm repo add command failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type helmRepoUpdateInput struct{}
 
 // Helm repo update
-func handleHelmRepoUpdate(ctx context.Context, request *mcp.CallToolRequest, in helmRepoUpdateInput) (*mcp.CallToolResult, any, error) {
+func handleHelmRepoUpdate(ctx context.Context, request *mcp.CallToolRequest, in helmRepoUpdateInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"repo", "update"}
 
 	result, err := runHelmCommand(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Helm repo update command failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("Helm repo update command failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 // Register Helm tools

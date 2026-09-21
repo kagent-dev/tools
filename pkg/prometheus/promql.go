@@ -16,15 +16,15 @@ type promqlInput struct {
 	QueryDescription string `json:"query_description" jsonschema:"A string describing the query to generate"`
 }
 
-func handlePromql(ctx context.Context, request *mcp.CallToolRequest, in promqlInput) (*mcp.CallToolResult, any, error) {
+func handlePromql(ctx context.Context, request *mcp.CallToolRequest, in promqlInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	queryDescription := in.QueryDescription
 	if queryDescription == "" {
-		return mcp.NewToolResultError("query_description is required"), nil, nil
+		return mcp.TextError("query_description is required")
 	}
 
 	llm, err := openai.New()
 	if err != nil {
-		return mcp.NewToolResultError("failed to create LLM client: " + err.Error()), nil, nil
+		return mcp.TextError("failed to create LLM client: " + err.Error())
 	}
 
 	contents := []llms.MessageContent{
@@ -45,13 +45,13 @@ func handlePromql(ctx context.Context, request *mcp.CallToolRequest, in promqlIn
 
 	resp, err := llm.GenerateContent(ctx, contents, llms.WithModel("gpt-4o-mini"))
 	if err != nil {
-		return mcp.NewToolResultError("failed to generate content: " + err.Error()), nil, nil
+		return mcp.TextError("failed to generate content: " + err.Error())
 	}
 
 	choices := resp.Choices
 	if len(choices) < 1 {
-		return mcp.NewToolResultError("empty response from model"), nil, nil
+		return mcp.TextError("empty response from model")
 	}
 	c1 := choices[0]
-	return mcp.NewToolResultText(c1.Content), nil, nil
+	return mcp.TextResult(c1.Content)
 }

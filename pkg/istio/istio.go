@@ -16,7 +16,7 @@ type istioProxyStatusInput struct {
 }
 
 // Istio proxy status
-func handleIstioProxyStatus(ctx context.Context, request *mcp.CallToolRequest, in istioProxyStatusInput) (*mcp.CallToolResult, any, error) {
+func handleIstioProxyStatus(ctx context.Context, request *mcp.CallToolRequest, in istioProxyStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"proxy-status"}
 
 	if in.Namespace != "" {
@@ -29,10 +29,10 @@ func handleIstioProxyStatus(ctx context.Context, request *mcp.CallToolRequest, i
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl proxy-status failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl proxy-status failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 func runIstioCtl(ctx context.Context, args []string) (string, error) {
@@ -50,13 +50,13 @@ type istioProxyConfigInput struct {
 }
 
 // Istio proxy config
-func handleIstioProxyConfig(ctx context.Context, request *mcp.CallToolRequest, in istioProxyConfigInput) (*mcp.CallToolResult, any, error) {
+func handleIstioProxyConfig(ctx context.Context, request *mcp.CallToolRequest, in istioProxyConfigInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ConfigType == "" {
 		in.ConfigType = "all"
 	}
 
 	if in.PodName == "" {
-		return mcp.NewToolResultError("pod_name parameter is required"), nil, nil
+		return mcp.TextError("pod_name parameter is required")
 	}
 
 	args := []string{"proxy-config", in.ConfigType}
@@ -69,10 +69,10 @@ func handleIstioProxyConfig(ctx context.Context, request *mcp.CallToolRequest, i
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl proxy-config failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl proxy-config failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type istioInstallInput struct {
@@ -80,7 +80,7 @@ type istioInstallInput struct {
 }
 
 // Istio install
-func handleIstioInstall(ctx context.Context, request *mcp.CallToolRequest, in istioInstallInput) (*mcp.CallToolResult, any, error) {
+func handleIstioInstall(ctx context.Context, request *mcp.CallToolRequest, in istioInstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Profile == "" {
 		in.Profile = "default"
 	}
@@ -89,10 +89,10 @@ func handleIstioInstall(ctx context.Context, request *mcp.CallToolRequest, in is
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl install failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl install failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type istioGenerateManifestInput struct {
@@ -100,7 +100,7 @@ type istioGenerateManifestInput struct {
 }
 
 // Istio generate manifest
-func handleIstioGenerateManifest(ctx context.Context, request *mcp.CallToolRequest, in istioGenerateManifestInput) (*mcp.CallToolResult, any, error) {
+func handleIstioGenerateManifest(ctx context.Context, request *mcp.CallToolRequest, in istioGenerateManifestInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Profile == "" {
 		in.Profile = "default"
 	}
@@ -109,10 +109,10 @@ func handleIstioGenerateManifest(ctx context.Context, request *mcp.CallToolReque
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl manifest generate failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl manifest generate failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type istioAnalyzeClusterConfigurationInput struct {
@@ -121,7 +121,7 @@ type istioAnalyzeClusterConfigurationInput struct {
 }
 
 // Istio analyze
-func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request *mcp.CallToolRequest, in istioAnalyzeClusterConfigurationInput) (*mcp.CallToolResult, any, error) {
+func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request *mcp.CallToolRequest, in istioAnalyzeClusterConfigurationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"analyze"}
 
 	if in.AllNamespaces {
@@ -132,10 +132,10 @@ func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request *mcp.Ca
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl analyze failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl analyze failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type istioVersionInput struct {
@@ -143,7 +143,7 @@ type istioVersionInput struct {
 }
 
 // Istio version
-func handleIstioVersion(ctx context.Context, request *mcp.CallToolRequest, in istioVersionInput) (*mcp.CallToolResult, any, error) {
+func handleIstioVersion(ctx context.Context, request *mcp.CallToolRequest, in istioVersionInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"version"}
 
 	if in.Short {
@@ -152,24 +152,24 @@ func handleIstioVersion(ctx context.Context, request *mcp.CallToolRequest, in is
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl version failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl version failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type istioRemoteClustersInput struct{}
 
 // Istio remote clusters
-func handleIstioRemoteClusters(ctx context.Context, request *mcp.CallToolRequest, in istioRemoteClustersInput) (*mcp.CallToolResult, any, error) {
+func handleIstioRemoteClusters(ctx context.Context, request *mcp.CallToolRequest, in istioRemoteClustersInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"remote-clusters"}
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl remote-clusters failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl remote-clusters failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type waypointListInput struct {
@@ -178,7 +178,7 @@ type waypointListInput struct {
 }
 
 // Waypoint list
-func handleWaypointList(ctx context.Context, request *mcp.CallToolRequest, in waypointListInput) (*mcp.CallToolResult, any, error) {
+func handleWaypointList(ctx context.Context, request *mcp.CallToolRequest, in waypointListInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"waypoint", "list"}
 
 	if in.AllNamespaces {
@@ -189,10 +189,10 @@ func handleWaypointList(ctx context.Context, request *mcp.CallToolRequest, in wa
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint list failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl waypoint list failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type waypointGenerateInput struct {
@@ -202,7 +202,7 @@ type waypointGenerateInput struct {
 }
 
 // Waypoint generate
-func handleWaypointGenerate(ctx context.Context, request *mcp.CallToolRequest, in waypointGenerateInput) (*mcp.CallToolResult, any, error) {
+func handleWaypointGenerate(ctx context.Context, request *mcp.CallToolRequest, in waypointGenerateInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" {
 		in.Name = "waypoint"
 	}
@@ -211,7 +211,7 @@ func handleWaypointGenerate(ctx context.Context, request *mcp.CallToolRequest, i
 	}
 
 	if in.Namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil, nil
+		return mcp.TextError("namespace parameter is required")
 	}
 
 	args := []string{"waypoint", "generate"}
@@ -228,10 +228,10 @@ func handleWaypointGenerate(ctx context.Context, request *mcp.CallToolRequest, i
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint generate failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl waypoint generate failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type waypointApplyInput struct {
@@ -240,9 +240,9 @@ type waypointApplyInput struct {
 }
 
 // Waypoint apply
-func handleWaypointApply(ctx context.Context, request *mcp.CallToolRequest, in waypointApplyInput) (*mcp.CallToolResult, any, error) {
+func handleWaypointApply(ctx context.Context, request *mcp.CallToolRequest, in waypointApplyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil, nil
+		return mcp.TextError("namespace parameter is required")
 	}
 
 	args := []string{"waypoint", "apply", "-n", in.Namespace}
@@ -253,10 +253,10 @@ func handleWaypointApply(ctx context.Context, request *mcp.CallToolRequest, in w
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint apply failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl waypoint apply failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type waypointDeleteInput struct {
@@ -266,9 +266,9 @@ type waypointDeleteInput struct {
 }
 
 // Waypoint delete
-func handleWaypointDelete(ctx context.Context, request *mcp.CallToolRequest, in waypointDeleteInput) (*mcp.CallToolResult, any, error) {
+func handleWaypointDelete(ctx context.Context, request *mcp.CallToolRequest, in waypointDeleteInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil, nil
+		return mcp.TextError("namespace parameter is required")
 	}
 
 	args := []string{"waypoint", "delete"}
@@ -286,10 +286,10 @@ func handleWaypointDelete(ctx context.Context, request *mcp.CallToolRequest, in 
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint delete failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl waypoint delete failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type waypointStatusInput struct {
@@ -298,9 +298,9 @@ type waypointStatusInput struct {
 }
 
 // Waypoint status
-func handleWaypointStatus(ctx context.Context, request *mcp.CallToolRequest, in waypointStatusInput) (*mcp.CallToolResult, any, error) {
+func handleWaypointStatus(ctx context.Context, request *mcp.CallToolRequest, in waypointStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil, nil
+		return mcp.TextError("namespace parameter is required")
 	}
 
 	args := []string{"waypoint", "status"}
@@ -313,10 +313,10 @@ func handleWaypointStatus(ctx context.Context, request *mcp.CallToolRequest, in 
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl waypoint status failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl waypoint status failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 type ztunnelConfigInput struct {
@@ -325,7 +325,7 @@ type ztunnelConfigInput struct {
 }
 
 // Ztunnel config
-func handleZtunnelConfig(ctx context.Context, request *mcp.CallToolRequest, in ztunnelConfigInput) (*mcp.CallToolResult, any, error) {
+func handleZtunnelConfig(ctx context.Context, request *mcp.CallToolRequest, in ztunnelConfigInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ConfigType == "" {
 		in.ConfigType = "all"
 	}
@@ -338,10 +338,10 @@ func handleZtunnelConfig(ctx context.Context, request *mcp.CallToolRequest, in z
 
 	result, err := runIstioCtl(ctx, args)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("istioctl ztunnel config failed: %v", err)), nil, nil
+		return mcp.TextError(fmt.Sprintf("istioctl ztunnel config failed: %v", err))
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 // Register Istio tools

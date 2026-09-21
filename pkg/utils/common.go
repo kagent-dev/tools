@@ -82,17 +82,17 @@ func shellTool(ctx context.Context, params shellParams) (string, error) {
 	return commands.NewCommandBuilder(cmd).WithArgs(args...).Execute(ctx)
 }
 
-func handleShellTool(ctx context.Context, request *mcp.CallToolRequest, in shellParams) (*mcp.CallToolResult, any, error) {
+func handleShellTool(ctx context.Context, request *mcp.CallToolRequest, in shellParams) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Command == "" {
-		return mcp.NewToolResultError("command parameter is required"), nil, nil
+		return mcp.TextError("command parameter is required")
 	}
 
 	result, err := shellTool(ctx, in)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil, nil
+		return mcp.TextError(err.Error())
 	}
 
-	return mcp.NewToolResultText(result), nil, nil
+	return mcp.TextResult(result)
 }
 
 func handleMCPInspectTool(_ context.Context, request *mcp.CallToolRequest, in inspectInput) (*mcp.CallToolResult, *inspectOutput, error) {
@@ -103,7 +103,7 @@ func handleMCPInspectTool(_ context.Context, request *mcp.CallToolRequest, in in
 
 	payload, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to render inspect output: %v", err)), nil, nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to render inspect output: %v", err)), output, nil
 	}
 
 	return mcp.NewToolResultText(string(payload)), output, nil
@@ -138,11 +138,11 @@ func inspectHeaders(headers http.Header) []inspectHeader {
 type datetimeInput struct{}
 
 // handleGetCurrentDateTimeTool provides datetime functionality for both MCP and testing
-func handleGetCurrentDateTimeTool(ctx context.Context, request *mcp.CallToolRequest, in datetimeInput) (*mcp.CallToolResult, any, error) {
+func handleGetCurrentDateTimeTool(ctx context.Context, request *mcp.CallToolRequest, in datetimeInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
 	// Returns the current date and time in ISO 8601 format (RFC3339)
 	// This matches the Python implementation: datetime.datetime.now().isoformat()
 	now := time.Now()
-	return mcp.NewToolResultText(now.Format(time.RFC3339)), nil, nil
+	return mcp.TextResult(now.Format(time.RFC3339))
 }
 
 func RegisterTools(s *mcp.Server, readOnly bool) {
