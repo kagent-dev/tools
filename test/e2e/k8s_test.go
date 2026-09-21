@@ -182,6 +182,20 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 		})
 	})
 
+	// The sweep must run before AfterAll deletes the namespace, so it lives in
+	// this ordered container rather than a separate one.
+	Describe("KAgent Tools Coverage Sweep", Label("coverage"), func() {
+		It("invokes every read-only tool with a typed result", func() {
+			By("sweeping every advertised read-only tool")
+			SweepReadOnlyTools(client)
+		})
+
+		It("classifies write-guarded tools without invoking them", func() {
+			By("verifying the write-tool safety rail")
+			SweepGuardedTools(client)
+		})
+	})
+
 	Describe("KAgent Tools Argo Operations", func() {
 		It("should be able to list Argo rollouts in the cluster", func() {
 			log.Info("Testing Argo operations via MCP", "namespace", namespace)
@@ -229,26 +243,23 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 			Eventually(clusterHasCilium, 3*time.Minute, 5*time.Second).
 				Should(BeTrue(), "cilium DaemonSet was not created by cilium_install_cilium")
 
-			// Uninstall even if an assertion below fails, so the CNI is not left
-			// half-installed on the cluster. Failures here must be loud: silently
-			// skipping verification would leak a CNI into the cluster and then
-			// make every later run skip this spec ("already installed").
+			// Safety net: if an assertion below fails before the uninstall step
+			// runs, remove the DaemonSet through the cluster API so a leaked CNI
+			// cannot poison later runs (a leftover Cilium would make this spec
+			// skip itself as "already installed"). The MCP tool cannot be used
+			// here: the ordered container's AfterAll deletes the kagent-tools
+			// namespace before DeferCleanup runs, leaving no server to call.
 			DeferCleanup(func() {
-				By("uninstalling Cilium via the cilium_uninstall_cilium tool")
-				// Connect fresh: installing Cilium replaces the CNI, which
-				// resets pod networking on this node and drops the original
-				// MCP session.
-				uninstallClient, err := GetMCPClient()
-				Expect(err).ToNot(HaveOccurred(), "failed to reconnect for Cilium uninstall: %v", err)
-
-				uninstallResult, err := uninstallClient.callToolWithTimeout("cilium_uninstall_cilium", struct{}{}, 3*time.Minute)
-				Expect(err).ToNot(HaveOccurred(), "cilium_uninstall_cilium call failed: %v", err)
-				Expect(uninstallResult).ToNot(BeNil())
-				Expect(uninstallResult.IsError).To(BeFalse(),
-					"cilium_uninstall_cilium returned a tool error: %s", toolResultText(uninstallResult))
-
-				Eventually(clusterHasCilium, 3*time.Minute, 5*time.Second).
-					Should(BeFalse(), "cilium DaemonSet still present after cilium_uninstall_cilium")
+				if !clusterHasCilium() {
+					return
+				}
+				By("removing leftover Cilium via the cluster API")
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				_, _ = commands.NewCommandBuilder("kubectl").
+					WithArgs("delete", "daemonset", "cilium", "-n", "kube-system", "--ignore-not-found").
+					WithCache(false).
+					Execute(ctx)
 			})
 
 			// Installing Cilium replaces the cluster CNI and briefly resets pod
@@ -267,6 +278,19 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 			statusOutput, err := decodeTextOutput(statusResult)
 			Expect(err).ToNot(HaveOccurred(), "cilium_status_and_version did not return typed output: %v", err)
 			Expect(statusOutput.Output).ToNot(BeEmpty(), "cilium status output should not be empty")
+
+			// Uninstall through the MCP tool while the server is still reachable.
+			// This must run inside the It, not DeferCleanup: the ordered container's
+			// AfterAll deletes the namespace first, leaving no server to call.
+			By("uninstalling Cilium via the cilium_uninstall_cilium tool")
+			uninstallResult, err := client.callToolWithTimeout("cilium_uninstall_cilium", struct{}{}, 3*time.Minute)
+			Expect(err).ToNot(HaveOccurred(), "cilium_uninstall_cilium call failed: %v", err)
+			Expect(uninstallResult).ToNot(BeNil())
+			Expect(uninstallResult.IsError).To(BeFalse(),
+				"cilium_uninstall_cilium returned a tool error: %s", toolResultText(uninstallResult))
+
+			Eventually(clusterHasCilium, 3*time.Minute, 5*time.Second).
+				Should(BeFalse(), "cilium DaemonSet still present after cilium_uninstall_cilium")
 
 			log.Info("Successfully exercised the Cilium install/status/uninstall lifecycle via MCP")
 		})

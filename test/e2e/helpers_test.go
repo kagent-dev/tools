@@ -604,25 +604,30 @@ func CreateNamespace(namespace string) {
 	By("Creating namespace " + namespace)
 	log.Info("Creating namespace", "namespace", namespace)
 
-	// A namespace left over from a previous run may still be terminating
-	// (DeleteNamespace issues the delete without waiting). Creating resources in
-	// a terminating namespace fails with "unable to create new content ...
-	// because it is being terminated", so wait for the old one to disappear
-	// before deciding whether creation is needed.
+	// A namespace left over from a previous run may still be Terminating
+	// (DeleteNamespace issues the delete without waiting), and creating
+	// resources in a Terminating namespace fails with "unable to create new
+	// content ... because it is being terminated". Wait for the namespace to be
+	// usable: either gone, or present and Active.
 	//
 	// Note: --ignore-not-found makes kubectl exit 0 even when the namespace is
-	// absent, so the wait must key on empty output rather than on an error.
+	// absent, so the wait keys on the reported phase rather than on an error.
 	Eventually(func() bool {
 		checkCtx, checkCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer checkCancel()
 
 		output, err := commands.NewCommandBuilder("kubectl").
-			WithArgs("get", "namespace", namespace, "--ignore-not-found", "-o", "jsonpath={.metadata.name}").
+			WithArgs("get", "namespace", namespace, "--ignore-not-found", "-o", "jsonpath={.status.phase}").
 			WithCache(false).
 			Execute(checkCtx)
-		return err == nil && strings.TrimSpace(output) == ""
+		if err != nil {
+			return false
+		}
+		phase := strings.TrimSpace(output)
+		// Empty means the namespace is gone; Active means it is already usable.
+		return phase == "" || phase == "Active"
 	}, 2*time.Minute, 2*time.Second).Should(BeTrue(),
-		"namespace %s did not finish terminating before test setup", namespace)
+		"namespace %s never became usable (still terminating)", namespace)
 
 	// Create the namespace using kubectl
 	output, err := commands.NewCommandBuilder("kubectl").
@@ -660,22 +665,10 @@ func DeleteNamespace(namespace string) {
 	Expect(err).ToNot(HaveOccurred(), "Failed to delete namespace: %v", err)
 	log.Info("Namespace deletion completed", "namespace", namespace, "output", output)
 
-	// Wait until the namespace is actually gone. Without this the next test run
-	// can attempt to create resources in a still-terminating namespace and fail
-	// with "unable to create new content ... because it is being terminated".
-	// As above, --ignore-not-found returns exit 0 for a missing namespace, so
-	// the wait keys on empty output.
-	Eventually(func() bool {
-		checkCtx, checkCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer checkCancel()
-
-		output, err := commands.NewCommandBuilder("kubectl").
-			WithArgs("get", "namespace", namespace, "--ignore-not-found", "-o", "jsonpath={.metadata.name}").
-			WithCache(false).
-			Execute(checkCtx)
-		return err == nil && strings.TrimSpace(output) == ""
-	}, 2*time.Minute, 2*time.Second).Should(BeTrue(),
-		"namespace %s was not removed", namespace)
+	// Deletion is asynchronous (--wait=false) and may linger on CRD finalizers,
+	// so it is not awaited here: CreateNamespace waits for the namespace to be
+	// usable before the next run starts, which is the only place it matters.
+	// Blocking here would turn a slow finalizer into an AfterAll failure.
 }
 
 // waitForHTTPServer waits for the HTTP server to become available
