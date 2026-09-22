@@ -4,7 +4,6 @@ binds:
   - routes:
     - backends:
       - mcp:
-          name: default
           targets:
           - name: kagent-tools
             stdio:

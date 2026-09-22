@@ -1,16 +1,52 @@
 # Default values for kagent
 replicaCount: 1
 
+# When true: pods use the default service account and no ClusterRole/ClusterRoleBinding are created.
+# When false: a dedicated ServiceAccount and RBAC are created.
+useDefaultServiceAccount: false
+
 global:
   tag: ""
+  # -- Registry that overrides the per-image registry when set. This is the
+  # air-gap mirror knob: one value redirects the image. Repository and tag stay
+  # per-image. For control without the override, leave this unset and set
+  # tools.image.registry.
+  imageRegistry: ""
+  # -- Pull secrets merged (union) into the pod's own imagePullSecrets list.
+  imagePullSecrets: []
+  # -- Fallback imagePullPolicy when tools.image.pullPolicy is unset.
+  imagePullPolicy: ""
+  # -- Namespace scope fallback. rbac.namespaces overrides it when the key is
+  # present. A non-empty resolved list replaces the ClusterRole with a Role per
+  # namespace.
+  watchNamespaces: []
 
 tools:
+  metrics:
+    # port defaults to the main --port value (same server). Set explicitly for a dedicated metrics port.
+    port: ""
+    servicemonitor:
+      enabled: false
+      interval: 30s
+      scrapeTimeout: 10s
+      labels:
+        release: prometheus
   loglevel: "debug"
+  # List of tool providers to enable. Empty list means all tools are enabled.
+  # Available: k8s, helm, istio, cilium, argo, prometheus, kubescape, utils
+  enabledTools: []
+  #  - k8s
+  #  - helm
+  #  - prometheus
+  # Additional command-line arguments
+  args: []
+  #  - "--some-future-flag"
   image:
     registry: ghcr.io
     repository: kagent-dev/kagent/tools
     tag: ""
-    pullPolicy: IfNotPresent
+    # -- Pull policy. Empty falls back to global.imagePullPolicy, then IfNotPresent.
+    pullPolicy: ""
   resources:
     requests:
       cpu: 100m
@@ -18,6 +54,10 @@ tools:
     limits:
       cpu: 1000m
       memory: 512Mi
+  k8s:
+    # When true: a Bearer token in the Authorization header on each request is passed to kubectl; fails if missing
+    # When false: kubectl uses in-cluster ServiceAccount.
+    tokenPassthrough: false
   prometheus:
     url: "prometheus.kagent.svc.cluster.local:9090"
     username: ""
@@ -50,6 +90,55 @@ securityContext: {}
   # readOnlyRootFilesystem: true
   # runAsNonRoot: true
   # runAsUser: 1000
+  
+# Node taints which will be tolerated for Pod.
+tolerations: []
+
+# Node labels to match for Pod.
+nodeSelector: {}
+
+# Affinity settings for Pod.
+affinity: {}
+#  nodeAffinity:
+#    requiredDuringSchedulingIgnoredDuringExecution:
+#      nodeSelectorTerms:
+#        - matchExpressions:
+#            - key: kubernetes.io/e2e-az-name
+#              operator: In
+#              values:
+#                - e2e-az1
+
+# Topology spread constraints for Pod.
+topologySpreadConstraints: []
+#  - maxSkew: 1
+#    topologyKey: topology.kubernetes.io/zone
+#    whenUnsatisfiable: DoNotSchedule
+
+rbac:
+  # When false, no ClusterRole or ClusterRoleBinding are created.
+  # The ServiceAccount is still created allowing you to attach your own roles externally.
+  create: true
+  # -- Namespaces in which to create Role and RoleBinding resources.
+  # If empty (default), the chart creates cluster-scoped ClusterRole and ClusterRoleBinding resources.
+  # If set, the chart creates a Role + RoleBinding per listed namespace (install namespace must be included).
+  # An explicit empty list forces cluster-scoped RBAC. The key ships commented
+  # out: a declared default [] would read as an explicit cluster-scoped choice,
+  # and the global.watchNamespaces fallback would be unreachable.
+  # namespaces: []
+  # When true, deploys a read-only ClusterRole (get, list, watch) instead of cluster-admin.
+  # Pairs well with the --read-only CLI flag which disables write operations at the application layer.
+  # Only applies when rbac.create is true.
+  # Defaults to False as to not introduce breaking changes. Worth revisiting later on.
+  readOnly: false
+  # When readOnly is true, grants read access to Secrets. Default: no access to Secrets.
+  # Ignored when readOnly is false (admin already has full access).
+  allowSecrets: false
+  # Extra rules appended to the read-only ClusterRole.  Useful for granting read access to CRDs (Istio, Cilium, Argo, etc.).
+  # Ignored when readOnly is false (admin already has full access).
+  additionalRules: []
+  #  - apiGroups: ["networking.istio.io"]
+  #    resources: ["virtualservices", "destinationrules", "gateways"]
+  #    verbs: ["get", "list", "watch"]
 
 otel:
   tracing:

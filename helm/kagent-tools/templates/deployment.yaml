@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kagent.fullname" . }}
-  namespace: {{ include "kagent.namespace" . }}
+  name: {{ include "kagent-tools.fullname" . }}
+  namespace: {{ include "kagent-tools.namespace" . }}
   labels:
-    {{- include "kagent.labels" . | nindent 4 }}
+    {{- include "kagent-tools.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "kagent.selectorLabels" . | nindent 6 }}
+      {{- include "kagent-tools.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -17,15 +17,37 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "kagent.selectorLabels" . | nindent 8 }}
+        {{- include "kagent-tools.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
+      {{- with include "kagent-tools.imagePullSecrets" . }}{{- . | nindent 6 }}{{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity: 
+      {{- with .Values.affinity }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+      {{- range . }}
+        - {{ toYaml . | nindent 10 | trim  }}
+          {{- if not (hasKey . "labelSelector") }}
+          labelSelector:
+            matchLabels:
+              {{- include "kagent-tools.selectorLabels" $ | nindent 14 }}
+          {{- end }}
+      {{- end }}
+      {{- end }}
+
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      serviceAccountName: {{ include "kagent.fullname" . }}
+      serviceAccountName: {{ include "kagent-tools.serviceAccountName" . }}
       containers:
         - name: tools
           command:
@@ -33,10 +55,18 @@ spec:
           args:
           - "--port"
           - "{{ .Values.service.ports.tools.targetPort }}"
+          - "--metrics-port"
+          - "{{ .Values.tools.metrics.port | default .Values.service.ports.tools.targetPort }}"
+          {{- if .Values.tools.enabledTools }}
+          - "--tools={{ join "," .Values.tools.enabledTools }}"
+          {{- end }}
+          {{- with .Values.tools.args }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.tools.image.registry }}/{{ .Values.tools.image.repository }}:{{ coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version }}"
-          imagePullPolicy: {{ .Values.tools.image.pullPolicy }}
+          image: {{ include "kagent-tools.image" . | quote }}
+          imagePullPolicy: {{ include "kagent-tools.imagePullPolicy" (dict "root" . "local" .Values.tools.image.pullPolicy) }}
           resources:
             {{- toYaml .Values.tools.resources | nindent 12 }}
           env:
@@ -48,9 +78,9 @@ spec:
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "kagent.fullname" . }}-openai
+                  name: {{ include "kagent-tools.fullname" . }}-openai
                   key: OPENAI_API_KEY
-                  optional: true # if the secret is not found, the tool will not be available
+                  optional: true
             - name: OTEL_TRACING_ENABLED
               value: {{ .Values.otel.tracing.enabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -59,6 +89,18 @@ spec:
               value: {{ .Values.otel.tracing.exporter.otlp.timeout | quote }}
             - name: OTEL_EXPORTER_OTLP_TRACES_INSECURE
               value: {{ .Values.otel.tracing.exporter.otlp.insecure | quote }}
+            - name: TOKEN_PASSTHROUGH
+              value: {{ (index .Values.tools "k8s" | default dict).tokenPassthrough | default false | quote }}
+            - name: PROMETHEUS_URL
+              value: {{ .Values.tools.prometheus.url | quote }}
+            - name: PROMETHEUS_USERNAME
+              value: {{ .Values.tools.prometheus.username | quote }}
+            - name: PROMETHEUS_PASSWORD
+              value: {{ .Values.tools.prometheus.password | quote }}
+            - name: GRAFANA_URL
+              value: {{ .Values.tools.grafana.url | quote }}
+            - name: GRAFANA_API_KEY
+              value: {{ .Values.tools.grafana.apiKey | quote }}
           {{- with .Values.tools.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -66,9 +108,18 @@ spec:
             - name: http-tools
               containerPort: {{ .Values.service.ports.tools.targetPort }}
               protocol: TCP
+            - name: http-metrics
+              containerPort: {{ .Values.tools.metrics.port | default .Values.service.ports.tools.targetPort }}
+              protocol: TCP
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health
               port: http-tools
             initialDelaySeconds: 15
             periodSeconds: 15
-
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

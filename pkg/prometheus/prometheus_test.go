@@ -8,8 +8,124 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestRegisterTools(t *testing.T) {
+	t.Run("read-write", func(t *testing.T) {
+		s := server.NewMCPServer("test", "v0.0.1")
+		RegisterTools(s, false)
+	})
+	t.Run("read-only", func(t *testing.T) {
+		s := server.NewMCPServer("test", "v0.0.1")
+		RegisterTools(s, true)
+	})
+}
+
+func TestPrometheusInputValidation(t *testing.T) {
+	ctx := context.Background()
+
+	invalidURL := map[string]interface{}{"prometheus_url": "not a url", "query": "up"}
+	invalidQuery := map[string]interface{}{"prometheus_url": "http://localhost:9090", "query": "up; drop"}
+
+	t.Run("query invalid url", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = invalidURL
+		res, err := handlePrometheusQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	t.Run("range invalid url", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = invalidURL
+		res, err := handlePrometheusRangeQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	t.Run("labels invalid url", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"prometheus_url": "not a url"}
+		res, err := handlePrometheusLabelsQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	t.Run("targets invalid url", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"prometheus_url": "not a url"}
+		res, err := handlePrometheusTargetsQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	t.Run("query invalid promql", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = invalidQuery
+		res, err := handlePrometheusQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	t.Run("range invalid promql", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = invalidQuery
+		res, err := handlePrometheusRangeQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+}
+
+func TestPrometheusLabelsTargetsErrorPaths(t *testing.T) {
+	args := map[string]interface{}{"prometheus_url": "http://localhost:9090"}
+
+	t.Run("labels client error", func(t *testing.T) {
+		ctx := contextWithMockClient(newTestClient(nil, assert.AnError))
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = args
+		res, err := handlePrometheusLabelsQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	t.Run("labels malformed json", func(t *testing.T) {
+		ctx := contextWithMockClient(newTestClient(createMockResponse(200, "not json"), nil))
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = args
+		res, err := handlePrometheusLabelsQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, res.IsError)
+		assert.Contains(t, getResultText(res), "not json")
+	})
+
+	t.Run("targets client error", func(t *testing.T) {
+		ctx := contextWithMockClient(newTestClient(nil, assert.AnError))
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = args
+		res, err := handlePrometheusTargetsQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.True(t, res.IsError)
+	})
+
+	t.Run("targets malformed json", func(t *testing.T) {
+		ctx := contextWithMockClient(newTestClient(createMockResponse(200, "not json"), nil))
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = args
+		res, err := handlePrometheusTargetsQueryTool(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, res.IsError)
+		assert.Contains(t, getResultText(res), "not json")
+	})
+}
+
+func TestGetHTTPClientDefault(t *testing.T) {
+	assert.Equal(t, http.DefaultClient, getHTTPClient(context.Background()))
+	custom := &http.Client{}
+	ctx := context.WithValue(context.Background(), clientKey{}, custom)
+	assert.Equal(t, custom, getHTTPClient(ctx))
+}
 
 // mockRoundTripper is used to mock HTTP responses for testing
 type mockRoundTripper struct {

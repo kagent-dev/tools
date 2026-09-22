@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math/rand"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -24,21 +25,22 @@ import (
 
 // K8sTool struct to hold the LLM model
 type K8sTool struct {
-	kubeconfig string
-	llmModel   llms.Model
+	kubeconfig       string
+	llmModel         llms.Model
+	tokenPassthrough bool // when true, require Bearer token and pass it to kubectl; when false, do not use token
 }
 
 func NewK8sTool(llmModel llms.Model) *K8sTool {
-	return &K8sTool{llmModel: llmModel}
+	return &K8sTool{llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
 }
 
 func NewK8sToolWithConfig(kubeconfig string, llmModel llms.Model) *K8sTool {
-	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel}
+	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
 }
 
 // runKubectlCommandWithCacheInvalidation runs a kubectl command and invalidates cache if it's a modification operation
-func (k *K8sTool) runKubectlCommandWithCacheInvalidation(ctx context.Context, args ...string) (*mcp.CallToolResult, error) {
-	result, err := k.runKubectlCommand(ctx, args...)
+func (k *K8sTool) runKubectlCommandWithCacheInvalidation(ctx context.Context, headers http.Header, args ...string) (*mcp.CallToolResult, error) {
+	result, err := k.runKubectlCommand(ctx, headers, args...)
 
 	// If command succeeded and it's a modification command, invalidate cache
 	if err == nil && len(args) > 0 {
@@ -82,7 +84,7 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request mcp.Call
 		args = append(args, "-o", "json")
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Get pod logs
@@ -106,7 +108,7 @@ func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request mcp.Cal
 		args = append(args, "--tail", fmt.Sprintf("%d", tailLines))
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Scale deployment
@@ -121,11 +123,51 @@ func (k *K8sTool) handleScaleDeployment(ctx context.Context, request mcp.CallToo
 
 	args := []string{"scale", "deployment", deploymentName, "--replicas", fmt.Sprintf("%d", replicas), "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
 
 // Patch resource
 func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	resourceType := mcp.ParseString(request, "resource_type", "")
+	resourceName := mcp.ParseString(request, "resource_name", "")
+	patch := mcp.ParseString(request, "patch", "")
+	namespace := mcp.ParseString(request, "namespace", "default")
+	patchType := mcp.ParseString(request, "patch_type", "strategic")
+
+	if resourceType == "" || resourceName == "" || patch == "" {
+		return mcp.NewToolResultError("resource_type, resource_name, and patch parameters are required"), nil
+	}
+
+	// Validate patch type. "strategic" is only implemented for built-in Kubernetes
+	// types; CustomResources (CRDs) reject it and require "merge" or "json".
+	switch patchType {
+	case "strategic", "merge", "json":
+	default:
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch_type %q: must be one of strategic, merge, json", patchType)), nil
+	}
+
+	// Validate resource name for security
+	if err := security.ValidateK8sResourceName(resourceName); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid resource name: %v", err)), nil
+	}
+
+	// Validate namespace for security
+	if err := security.ValidateNamespace(namespace); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid namespace: %v", err)), nil
+	}
+
+	// Validate patch content as JSON/YAML
+	if err := security.ValidateYAMLContent(patch); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch content: %v", err)), nil
+	}
+
+	args := []string{"patch", resourceType, resourceName, "--type=" + patchType, "-p", patch, "-n", namespace}
+
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
+}
+
+// Patch resource status
+func (k *K8sTool) handlePatchStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	resourceType := mcp.ParseString(request, "resource_type", "")
 	resourceName := mcp.ParseString(request, "resource_name", "")
 	patch := mcp.ParseString(request, "patch", "")
@@ -150,9 +192,19 @@ func (k *K8sTool) handlePatchResource(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid patch content: %v", err)), nil
 	}
 
-	args := []string{"patch", resourceType, resourceName, "-p", patch, "-n", namespace}
+	args := []string{
+		"patch",
+		resourceType,
+		resourceName,
+		"--subresource=status",
+		"--type=merge",
+		"-p",
+		patch,
+		"-n",
+		namespace,
+	}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
 
 // Apply manifest from content
@@ -197,7 +249,7 @@ func (k *K8sTool) handleApplyManifest(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to close temp file: %v", err)), nil
 	}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, "apply", "-f", tmpFile.Name())
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, "apply", "-f", tmpFile.Name())
 }
 
 // Delete resource
@@ -212,7 +264,7 @@ func (k *K8sTool) handleDeleteResource(ctx context.Context, request mcp.CallTool
 
 	args := []string{"delete", resourceType, resourceName, "-n", namespace}
 
-	return k.runKubectlCommandWithCacheInvalidation(ctx, args...)
+	return k.runKubectlCommandWithCacheInvalidation(ctx, request.Header, args...)
 }
 
 // Check service connectivity
@@ -227,23 +279,23 @@ func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request mc
 	// Create a temporary curl pod for connectivity check
 	podName := fmt.Sprintf("curl-test-%d", rand.Intn(10000))
 	defer func() {
-		_, _ = k.runKubectlCommand(ctx, "delete", "pod", podName, "-n", namespace, "--ignore-not-found")
+		_, _ = k.runKubectlCommand(ctx, request.Header, "delete", "pod", podName, "-n", namespace, "--ignore-not-found")
 	}()
 
 	// Create the curl pod
-	_, err := k.runKubectlCommand(ctx, "run", podName, "--image=curlimages/curl", "-n", namespace, "--restart=Never", "--", "sleep", "3600")
+	_, err := k.runKubectlCommand(ctx, request.Header, "run", podName, "--image=curlimages/curl", "-n", namespace, "--restart=Never", "--", "sleep", "3600")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create curl pod: %v", err)), nil
 	}
 
 	// Wait for pod to be ready
-	_, err = k.runKubectlCommandWithTimeout(ctx, 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace)
+	_, err = k.runKubectlCommandWithTimeout(ctx, request.Header, 60*time.Second, "wait", "--for=condition=ready", "pod/"+podName, "-n", namespace)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to wait for curl pod: %v", err)), nil
 	}
 
 	// Execute kubectl command
-	return k.runKubectlCommand(ctx, "exec", podName, "-n", namespace, "--", "curl", "-s", serviceName)
+	return k.runKubectlCommand(ctx, request.Header, "exec", podName, "-n", namespace, "--", "curl", "-s", serviceName)
 }
 
 // Get cluster events
@@ -257,7 +309,7 @@ func (k *K8sTool) handleGetEvents(ctx context.Context, request mcp.CallToolReque
 		args = append(args, "--all-namespaces")
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Execute command in pod
@@ -287,12 +339,12 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request mcp.CallToolReq
 
 	args := []string{"exec", podName, "-n", namespace, "--", command}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Get available API resources
 func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, "api-resources")
+	return k.runKubectlCommand(ctx, request.Header, "api-resources")
 }
 
 // Kubectl describe tool
@@ -310,7 +362,7 @@ func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request mcp.Cal
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Rollout operations
@@ -329,12 +381,12 @@ func (k *K8sTool) handleRollout(ctx context.Context, request mcp.CallToolRequest
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Get cluster configuration
 func (k *K8sTool) handleGetClusterConfiguration(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.runKubectlCommand(ctx, "config", "view", "-o", "json")
+	return k.runKubectlCommand(ctx, request.Header, "config", "view", "-o", "json")
 }
 
 // Remove annotation
@@ -353,7 +405,7 @@ func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request mcp.CallTo
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Remove label
@@ -372,7 +424,7 @@ func (k *K8sTool) handleRemoveLabel(ctx context.Context, request mcp.CallToolReq
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Annotate resource
@@ -393,7 +445,7 @@ func (k *K8sTool) handleAnnotateResource(ctx context.Context, request mcp.CallTo
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Label resource
@@ -414,7 +466,7 @@ func (k *K8sTool) handleLabelResource(ctx context.Context, request mcp.CallToolR
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Create resource from URL
@@ -431,7 +483,7 @@ func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request mcp.C
 		args = append(args, "-n", namespace)
 	}
 
-	return k.runKubectlCommand(ctx, args...)
+	return k.runKubectlCommand(ctx, request.Header, args...)
 }
 
 // Resource generation embeddings
@@ -528,39 +580,72 @@ func (k *K8sTool) handleGenerateResource(ctx context.Context, request mcp.CallTo
 	return mcp.NewToolResultText(responseText), nil
 }
 
-// runKubectlCommand is a helper function to execute kubectl commands
-func (k *K8sTool) runKubectlCommand(ctx context.Context, args ...string) (*mcp.CallToolResult, error) {
-	output, err := commands.NewCommandBuilder("kubectl").
-		WithArgs(args...).
-		WithKubeconfig(k.kubeconfig).
-		Execute(ctx)
+// extractBearerToken extracts the Bearer token from the Authorization header
+func extractBearerToken(headers http.Header) string {
+	if auth := headers.Get("Authorization"); auth != "" {
+		if strings.HasPrefix(auth, "Bearer ") {
+			return strings.TrimPrefix(auth, "Bearer ")
+		}
+	}
+	return ""
+}
 
+// tokenForKubectl returns the token to pass to kubectl and an error if passthrough is true but token is missing.
+func (k *K8sTool) tokenForKubectl(headers http.Header) (string, error) {
+	token := extractBearerToken(headers)
+	if k.tokenPassthrough && token == "" {
+		return "", fmt.Errorf("Bearer token required when TOKEN_PASSTHROUGH is true")
+	}
+	if k.tokenPassthrough {
+		return token, nil
+	}
+	return "", nil // do not use token when passthrough is false
+}
+
+// runKubectlCommand is a helper function to execute kubectl commands
+func (k *K8sTool) runKubectlCommand(ctx context.Context, headers http.Header, args ...string) (*mcp.CallToolResult, error) {
+	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
+	builder := commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(k.kubeconfig)
+	if token != "" {
+		builder = builder.WithToken(token)
+	}
+	output, err := builder.Execute(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	return mcp.NewToolResultText(output), nil
 }
 
 // runKubectlCommandWithTimeout is a helper function to execute kubectl commands with a timeout
-func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, timeout time.Duration, args ...string) (*mcp.CallToolResult, error) {
-	output, err := commands.NewCommandBuilder("kubectl").
-		WithArgs(args...).
-		WithKubeconfig(k.kubeconfig).
-		WithTimeout(timeout).
-		Execute(ctx)
-
+func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, headers http.Header, timeout time.Duration, args ...string) (*mcp.CallToolResult, error) {
+	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-
+	builder := commands.NewCommandBuilder("kubectl").
+		WithArgs(args...).
+		WithKubeconfig(k.kubeconfig).
+		WithTimeout(timeout)
+	if token != "" {
+		builder = builder.WithToken(token)
+	}
+	output, err := builder.Execute(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	return mcp.NewToolResultText(output), nil
 }
 
 // RegisterK8sTools registers all k8s tools with the MCP server
-func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string) {
+func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readOnly bool) {
 	k8sTool := NewK8sToolWithConfig(kubeconfig, llm)
 
+	// Read-only tools - always registered
 	s.AddTool(mcp.NewTool("k8s_get_resources",
 		mcp.WithDescription("Get Kubernetes resources using kubectl"),
 		mcp.WithString("resource_type", mcp.Description("Type of resource (pod, service, deployment, etc.)"), mcp.Required()),
@@ -578,51 +663,10 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string) {
 		mcp.WithNumber("tail_lines", mcp.Description("Number of lines to show from the end (default: 50)")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_get_pod_logs", k8sTool.handleKubectlLogsEnhanced)))
 
-	s.AddTool(mcp.NewTool("k8s_scale",
-		mcp.WithDescription("Scale a Kubernetes deployment"),
-		mcp.WithString("name", mcp.Description("Name of the deployment"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("Namespace of the deployment (default: default)")),
-		mcp.WithNumber("replicas", mcp.Description("Number of replicas"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_scale", k8sTool.handleScaleDeployment)))
-
-	s.AddTool(mcp.NewTool("k8s_patch_resource",
-		mcp.WithDescription("Patch a Kubernetes resource using strategic merge patch"),
-		mcp.WithString("resource_type", mcp.Description("Type of resource (deployment, service, etc.)"), mcp.Required()),
-		mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
-		mcp.WithString("patch", mcp.Description("JSON patch to apply"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_patch_resource", k8sTool.handlePatchResource)))
-
-	s.AddTool(mcp.NewTool("k8s_apply_manifest",
-		mcp.WithDescription("Apply a YAML manifest to the Kubernetes cluster"),
-		mcp.WithString("manifest", mcp.Description("YAML manifest content"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_apply_manifest", k8sTool.handleApplyManifest)))
-
-	s.AddTool(mcp.NewTool("k8s_delete_resource",
-		mcp.WithDescription("Delete a Kubernetes resource"),
-		mcp.WithString("resource_type", mcp.Description("Type of resource (pod, service, deployment, etc.)"), mcp.Required()),
-		mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_delete_resource", k8sTool.handleDeleteResource)))
-
-	s.AddTool(mcp.NewTool("k8s_check_service_connectivity",
-		mcp.WithDescription("Check connectivity to a service using a temporary curl pod"),
-		mcp.WithString("service_name", mcp.Description("Service name to test (e.g., my-service.my-namespace.svc.cluster.local:80)"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("Namespace to run the check from (default: default)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_check_service_connectivity", k8sTool.handleCheckServiceConnectivity)))
-
 	s.AddTool(mcp.NewTool("k8s_get_events",
 		mcp.WithDescription("Get events from a Kubernetes namespace"),
 		mcp.WithString("namespace", mcp.Description("Namespace to get events from (default: default)")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_get_events", k8sTool.handleGetEvents)))
-
-	s.AddTool(mcp.NewTool("k8s_execute_command",
-		mcp.WithDescription("Execute a command in a Kubernetes pod"),
-		mcp.WithString("pod_name", mcp.Description("Name of the pod to execute in"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("Namespace of the pod (default: default)")),
-		mcp.WithString("container", mcp.Description("Container name (for multi-container pods)")),
-		mcp.WithString("command", mcp.Description("Command to execute"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_execute_command", k8sTool.handleExecCommand)))
 
 	s.AddTool(mcp.NewTool("k8s_get_available_api_resources",
 		mcp.WithDescription("Get available Kubernetes API resources"),
@@ -631,82 +675,6 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string) {
 	s.AddTool(mcp.NewTool("k8s_get_cluster_configuration",
 		mcp.WithDescription("Get cluster configuration details"),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_get_cluster_configuration", k8sTool.handleGetClusterConfiguration)))
-
-	s.AddTool(mcp.NewTool("k8s_rollout",
-		mcp.WithDescription("Perform rollout operations on Kubernetes resources (history, pause, restart, resume, status, undo)"),
-		mcp.WithString("action", mcp.Description("The rollout action to perform"), mcp.Required()),
-		mcp.WithString("resource_type", mcp.Description("The type of resource to rollout (e.g., deployment)"), mcp.Required()),
-		mcp.WithString("resource_name", mcp.Description("The name of the resource to rollout"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_rollout", k8sTool.handleRollout)))
-
-	s.AddTool(mcp.NewTool("k8s_label_resource",
-		mcp.WithDescription("Add or update labels on a Kubernetes resource"),
-		mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
-		mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
-		mcp.WithString("labels", mcp.Description("Space-separated key=value pairs for labels"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_label_resource", k8sTool.handleLabelResource)))
-
-	s.AddTool(mcp.NewTool("k8s_annotate_resource",
-		mcp.WithDescription("Add or update annotations on a Kubernetes resource"),
-		mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
-		mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
-		mcp.WithString("annotations", mcp.Description("Space-separated key=value pairs for annotations"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_annotate_resource", k8sTool.handleAnnotateResource)))
-
-	s.AddTool(mcp.NewTool("k8s_remove_annotation",
-		mcp.WithDescription("Remove an annotation from a Kubernetes resource"),
-		mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
-		mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
-		mcp.WithString("annotation_key", mcp.Description("The key of the annotation to remove"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_remove_annotation", k8sTool.handleRemoveAnnotation)))
-
-	s.AddTool(mcp.NewTool("k8s_remove_label",
-		mcp.WithDescription("Remove a label from a Kubernetes resource"),
-		mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
-		mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
-		mcp.WithString("label_key", mcp.Description("The key of the label to remove"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_remove_label", k8sTool.handleRemoveLabel)))
-
-	s.AddTool(mcp.NewTool("k8s_create_resource",
-		mcp.WithDescription("Create a Kubernetes resource from YAML content"),
-		mcp.WithString("yaml_content", mcp.Description("YAML content of the resource"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_create_resource", func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		yamlContent := mcp.ParseString(request, "yaml_content", "")
-
-		if yamlContent == "" {
-			return mcp.NewToolResultError("yaml_content is required"), nil
-		}
-
-		// Create temporary file
-		tmpFile, err := os.CreateTemp("", "k8s-resource-*.yaml")
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to create temp file: %v", err)), nil
-		}
-		defer os.Remove(tmpFile.Name())
-
-		if _, err := tmpFile.WriteString(yamlContent); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to write to temp file: %v", err)), nil
-		}
-		tmpFile.Close()
-
-		result, err := k8sTool.runKubectlCommand(ctx, "create", "-f", tmpFile.Name())
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Create command failed: %v", err)), nil
-		}
-
-		return result, nil
-	})))
-
-	s.AddTool(mcp.NewTool("k8s_create_resource_from_url",
-		mcp.WithDescription("Create a Kubernetes resource from a URL pointing to a YAML manifest"),
-		mcp.WithString("url", mcp.Description("The URL of the manifest"), mcp.Required()),
-		mcp.WithString("namespace", mcp.Description("The namespace to create the resource in")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_create_resource_from_url", k8sTool.handleCreateResourceFromURL)))
 
 	s.AddTool(mcp.NewTool("k8s_get_resource_yaml",
 		mcp.WithDescription("Get the YAML representation of a Kubernetes resource"),
@@ -727,7 +695,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string) {
 			args = append(args, "-n", namespace)
 		}
 
-		result, err := k8sTool.runKubectlCommand(ctx, args...)
+		result, err := k8sTool.runKubectlCommand(ctx, request.Header, args...)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Get YAML command failed: %v", err)), nil
 		}
@@ -747,4 +715,133 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string) {
 		mcp.WithString("resource_description", mcp.Description("Detailed description of the resource to generate"), mcp.Required()),
 		mcp.WithString("resource_type", mcp.Description(fmt.Sprintf("Type of resource to generate (%s)", strings.Join(slices.Collect(resourceTypes), ", "))), mcp.Required()),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_generate_resource", k8sTool.handleGenerateResource)))
+
+	// Write tools - only registered when write operations are enabled
+	if !readOnly {
+		s.AddTool(mcp.NewTool("k8s_scale",
+			mcp.WithDescription("Scale a Kubernetes deployment"),
+			mcp.WithString("name", mcp.Description("Name of the deployment"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("Namespace of the deployment (default: default)")),
+			mcp.WithNumber("replicas", mcp.Description("Number of replicas"), mcp.Required()),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_scale", k8sTool.handleScaleDeployment)))
+
+		s.AddTool(mcp.NewTool("k8s_patch_resource",
+			mcp.WithDescription("Patch a Kubernetes resource. Defaults to a strategic merge patch, which is only supported for built-in types; set patch_type to \"merge\" (or \"json\") to patch a CustomResource/CRD."),
+			mcp.WithString("resource_type", mcp.Description("Type of resource (deployment, service, etc.)"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
+			mcp.WithString("patch", mcp.Description("JSON patch to apply"), mcp.Required()),
+			mcp.WithString("patch_type", mcp.Description("Patch strategy: \"strategic\" (default; built-in Kubernetes types only), \"merge\" (RFC 7386 JSON merge patch; required for CustomResources/CRDs), or \"json\" (RFC 6902 JSON patch).")),
+			mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_patch_resource", k8sTool.handlePatchResource)))
+
+		s.AddTool(mcp.NewTool("k8s_patch_status",
+			mcp.WithDescription("Patch the status of a Kubernetes resource"),
+			mcp.WithString("resource_type", mcp.Description("Type of resource (deployment, service, etc.)"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
+			mcp.WithString("patch", mcp.Description("JSON/YAML status patch"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_patch_status", k8sTool.handlePatchStatus)))
+
+		s.AddTool(mcp.NewTool("k8s_apply_manifest",
+			mcp.WithDescription("Apply a YAML manifest to the Kubernetes cluster"),
+			mcp.WithString("manifest", mcp.Description("YAML manifest content"), mcp.Required()),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_apply_manifest", k8sTool.handleApplyManifest)))
+
+		s.AddTool(mcp.NewTool("k8s_delete_resource",
+			mcp.WithDescription("Delete a Kubernetes resource"),
+			mcp.WithString("resource_type", mcp.Description("Type of resource (pod, service, deployment, etc.)"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("Name of the resource"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("Namespace of the resource (default: default)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_delete_resource", k8sTool.handleDeleteResource)))
+
+		s.AddTool(mcp.NewTool("k8s_check_service_connectivity",
+			mcp.WithDescription("Check connectivity to a service using a temporary curl pod"),
+			mcp.WithString("service_name", mcp.Description("Service name to test (e.g., my-service.my-namespace.svc.cluster.local:80)"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("Namespace to run the check from (default: default)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_check_service_connectivity", k8sTool.handleCheckServiceConnectivity)))
+
+		s.AddTool(mcp.NewTool("k8s_execute_command",
+			mcp.WithDescription("Execute a command in a Kubernetes pod"),
+			mcp.WithString("pod_name", mcp.Description("Name of the pod to execute in"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("Namespace of the pod (default: default)")),
+			mcp.WithString("container", mcp.Description("Container name (for multi-container pods)")),
+			mcp.WithString("command", mcp.Description("Command to execute"), mcp.Required()),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_execute_command", k8sTool.handleExecCommand)))
+
+		s.AddTool(mcp.NewTool("k8s_rollout",
+			mcp.WithDescription("Perform rollout operations on Kubernetes resources (history, pause, restart, resume, status, undo)"),
+			mcp.WithString("action", mcp.Description("The rollout action to perform"), mcp.Required()),
+			mcp.WithString("resource_type", mcp.Description("The type of resource to rollout (e.g., deployment)"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("The name of the resource to rollout"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_rollout", k8sTool.handleRollout)))
+
+		s.AddTool(mcp.NewTool("k8s_label_resource",
+			mcp.WithDescription("Add or update labels on a Kubernetes resource"),
+			mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
+			mcp.WithString("labels", mcp.Description("Space-separated key=value pairs for labels"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_label_resource", k8sTool.handleLabelResource)))
+
+		s.AddTool(mcp.NewTool("k8s_annotate_resource",
+			mcp.WithDescription("Add or update annotations on a Kubernetes resource"),
+			mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
+			mcp.WithString("annotations", mcp.Description("Space-separated key=value pairs for annotations"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_annotate_resource", k8sTool.handleAnnotateResource)))
+
+		s.AddTool(mcp.NewTool("k8s_remove_annotation",
+			mcp.WithDescription("Remove an annotation from a Kubernetes resource"),
+			mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
+			mcp.WithString("annotation_key", mcp.Description("The key of the annotation to remove"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_remove_annotation", k8sTool.handleRemoveAnnotation)))
+
+		s.AddTool(mcp.NewTool("k8s_remove_label",
+			mcp.WithDescription("Remove a label from a Kubernetes resource"),
+			mcp.WithString("resource_type", mcp.Description("The type of resource"), mcp.Required()),
+			mcp.WithString("resource_name", mcp.Description("The name of the resource"), mcp.Required()),
+			mcp.WithString("label_key", mcp.Description("The key of the label to remove"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("The namespace of the resource")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_remove_label", k8sTool.handleRemoveLabel)))
+
+		s.AddTool(mcp.NewTool("k8s_create_resource",
+			mcp.WithDescription("Create a Kubernetes resource from YAML content"),
+			mcp.WithString("yaml_content", mcp.Description("YAML content of the resource"), mcp.Required()),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_create_resource", func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			yamlContent := mcp.ParseString(request, "yaml_content", "")
+
+			if yamlContent == "" {
+				return mcp.NewToolResultError("yaml_content is required"), nil
+			}
+
+			// Create temporary file
+			tmpFile, err := os.CreateTemp("", "k8s-resource-*.yaml")
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to create temp file: %v", err)), nil
+			}
+			defer os.Remove(tmpFile.Name())
+
+			if _, err := tmpFile.WriteString(yamlContent); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to write to temp file: %v", err)), nil
+			}
+			tmpFile.Close()
+
+			result, err := k8sTool.runKubectlCommand(ctx, request.Header, "create", "-f", tmpFile.Name())
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Create command failed: %v", err)), nil
+			}
+
+			return result, nil
+		})))
+
+		s.AddTool(mcp.NewTool("k8s_create_resource_from_url",
+			mcp.WithDescription("Create a Kubernetes resource from a URL pointing to a YAML manifest"),
+			mcp.WithString("url", mcp.Description("The URL of the manifest"), mcp.Required()),
+			mcp.WithString("namespace", mcp.Description("The namespace to create the resource in")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_create_resource_from_url", k8sTool.handleCreateResourceFromURL)))
+	}
 }

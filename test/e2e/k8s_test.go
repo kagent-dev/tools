@@ -3,6 +3,8 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
 	. "github.com/onsi/ginkgo/v2"
@@ -37,8 +39,10 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 		// Install kagent tools
 		InstallKAgentTools(namespace, releaseName)
 
-		client, err = GetMCPClient()
-		Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
+		Eventually(func() error {
+			client, err = GetMCPClient()
+			return err
+		}, DefaultTimeout, 2*time.Second).Should(Succeed(), "Failed to get MCP client")
 	})
 
 	AfterAll(func() {
@@ -56,7 +60,7 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 
 			log.Info("Checking if kagent-tools pods are running", "namespace", namespace)
 			output, err := commands.NewCommandBuilder("kubectl").
-				WithArgs("get", "pods", "-n", namespace, "-l", "app.kubernetes.io/name=kagent-tools", "-o", "json").
+				WithArgs("get", "pods", "-n", namespace, "-l", "app.kubernetes.io/instance="+releaseName, "-o", "json").
 				Execute(ctx)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -70,7 +74,7 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 
 			log.Info("Checking if kagent-tools service is accessible", "namespace", namespace)
 			output, err := commands.NewCommandBuilder("kubectl").
-				WithArgs("get", "svc", "-n", namespace, "-l", "app.kubernetes.io/name=kagent-tools", "-o", "json").
+				WithArgs("get", "svc", "-n", namespace, "-l", "app.kubernetes.io/instance="+releaseName, "-o", "json").
 				Execute(ctx)
 
 			Expect(err).ToNot(HaveOccurred())

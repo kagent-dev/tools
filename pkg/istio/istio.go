@@ -298,7 +298,8 @@ func handleZtunnelConfig(ctx context.Context, request mcp.CallToolRequest) (*mcp
 }
 
 // Register Istio tools
-func RegisterTools(s *server.MCPServer) {
+func RegisterTools(s *server.MCPServer, readOnly bool) {
+	// Read-only tools - always registered
 
 	// Istio proxy status
 	s.AddTool(mcp.NewTool("istio_proxy_status",
@@ -315,13 +316,7 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithString("config_type", mcp.Description("Type of configuration (all, bootstrap, cluster, ecds, listener, log, route, secret)")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_proxy_config", handleIstioProxyConfig)))
 
-	// Istio install
-	s.AddTool(mcp.NewTool("istio_install_istio",
-		mcp.WithDescription("Install Istio with a specified configuration profile"),
-		mcp.WithString("profile", mcp.Description("Istio configuration profile (ambient, default, demo, minimal, empty)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_install_istio", handleIstioInstall)))
-
-	// Istio generate manifest
+	// Istio generate manifest (read-only - just generates YAML, doesn't apply)
 	s.AddTool(mcp.NewTool("istio_generate_manifest",
 		mcp.WithDescription("Generate Istio manifest for a given profile"),
 		mcp.WithString("profile", mcp.Description("Istio configuration profile (ambient, default, demo, minimal, empty)")),
@@ -347,20 +342,10 @@ func RegisterTools(s *server.MCPServer) {
 		mcp.WithDescription("List all waypoints in the mesh"),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_list_waypoints", handleWaypointList)))
 
-	// Waypoint generate
+	// Waypoint generate (read-only - just generates YAML, doesn't apply)
 	s.AddTool(mcp.NewTool("istio_generate_waypoint",
 		mcp.WithDescription("Generate a waypoint resource YAML"),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_generate_waypoint", handleWaypointGenerate)))
-
-	// Waypoint apply
-	s.AddTool(mcp.NewTool("istio_apply_waypoint",
-		mcp.WithDescription("Apply a waypoint resource to the cluster"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_apply_waypoint", handleWaypointApply)))
-
-	// Waypoint delete
-	s.AddTool(mcp.NewTool("istio_delete_waypoint",
-		mcp.WithDescription("Delete a waypoint resource from the cluster"),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_delete_waypoint", handleWaypointDelete)))
 
 	// Waypoint status
 	s.AddTool(mcp.NewTool("istio_waypoint_status",
@@ -371,4 +356,23 @@ func RegisterTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("istio_ztunnel_config",
 		mcp.WithDescription("Get the ztunnel configuration for a namespace"),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_ztunnel_config", handleZtunnelConfig)))
+
+	// Write tools - only registered when write operations are enabled
+	if !readOnly {
+		// Istio install
+		s.AddTool(mcp.NewTool("istio_install_istio",
+			mcp.WithDescription("Install Istio with a specified configuration profile"),
+			mcp.WithString("profile", mcp.Description("Istio configuration profile (ambient, default, demo, minimal, empty)")),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_install_istio", handleIstioInstall)))
+
+		// Waypoint apply
+		s.AddTool(mcp.NewTool("istio_apply_waypoint",
+			mcp.WithDescription("Apply a waypoint resource to the cluster"),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_apply_waypoint", handleWaypointApply)))
+
+		// Waypoint delete
+		s.AddTool(mcp.NewTool("istio_delete_waypoint",
+			mcp.WithDescription("Delete a waypoint resource from the cluster"),
+		), telemetry.AdaptToolHandler(telemetry.WithTracing("istio_delete_waypoint", handleWaypointDelete)))
+	}
 }

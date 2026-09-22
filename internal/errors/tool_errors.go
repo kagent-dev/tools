@@ -298,6 +298,77 @@ func NewCiliumError(operation string, cause error) *ToolError {
 	return err
 }
 
+// NewKubescapeError creates a Kubescape-specific error
+func NewKubescapeError(operation string, cause error) *ToolError {
+	err := NewToolError("Kubescape", operation, cause)
+
+	causeStr := cause.Error()
+	if strings.Contains(causeStr, "not found") {
+		// Determine which capability might be missing based on the operation
+		suggestions := []string{
+			"Check if the Kubescape operator is installed in the cluster",
+			"Verify the resource name and namespace",
+		}
+		if strings.Contains(operation, "vulnerabilit") || strings.Contains(operation, "sbom") {
+			suggestions = append(suggestions,
+				"Ensure vulnerability scanning is enabled in the Kubescape Helm chart",
+				"Enable with: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.vulnerabilityScan=enable",
+				"Use 'kubectl get vulnerabilitymanifests -A' to list available manifests",
+			)
+		} else if strings.Contains(operation, "configuration") {
+			suggestions = append(suggestions,
+				"Ensure configuration scanning is enabled in the Kubescape Helm chart",
+				"Enable with: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.continuousScan=enable",
+				"Use 'kubectl get workloadconfigurationscans -A' to list available scans",
+			)
+		} else if strings.Contains(operation, "application_profile") || strings.Contains(operation, "network_neighborhood") {
+			suggestions = append(suggestions,
+				"Ensure runtime observability is enabled in the Kubescape Helm chart",
+				"Enable with: helm upgrade kubescape kubescape/kubescape-operator -n kubescape --set capabilities.runtimeObservability=enable",
+				"Runtime data collection requires time - allow workloads to run before profiles are available",
+			)
+			if strings.Contains(operation, "application_profile") {
+				suggestions = append(suggestions, "Use 'kubectl get applicationprofiles -A' to list available profiles")
+			} else {
+				suggestions = append(suggestions, "Use 'kubectl get networkneighborhoods -A' to list available network data")
+			}
+		} else {
+			suggestions = append(suggestions,
+				"Ensure the required scanning capabilities are enabled in the Kubescape Helm chart",
+				"For vulnerability scanning: --set capabilities.vulnerabilityScan=enable",
+				"For configuration scanning: --set capabilities.continuousScan=enable",
+				"For runtime observability: --set capabilities.runtimeObservability=enable",
+			)
+		}
+		err = err.WithSuggestions(suggestions...).WithRetryable(false).WithErrorCode("KUBESCAPE_RESOURCE_NOT_FOUND")
+	} else if strings.Contains(causeStr, "connection refused") || strings.Contains(causeStr, "timeout") {
+		err = err.WithSuggestions(
+			"Check if the Kubernetes cluster is accessible",
+			"Verify your kubeconfig is correct",
+			"Ensure network connectivity to the cluster",
+		).WithRetryable(true).WithErrorCode("KUBESCAPE_CONNECTION_ERROR")
+	} else if strings.Contains(causeStr, "forbidden") {
+		err = err.WithSuggestions(
+			"Check your RBAC permissions for Kubescape CRDs",
+			"Verify your service account has read access to Kubescape storage CRDs",
+			"Required CRDs: VulnerabilityManifests, WorkloadConfigurationScans, ApplicationProfiles, NetworkNeighborhoods, SBOMSyfts",
+			"Contact your cluster administrator",
+		).WithRetryable(false).WithErrorCode("KUBESCAPE_PERMISSION_ERROR")
+	} else {
+		err = err.WithSuggestions(
+			"Check Kubescape operator status: kubectl get pods -n kubescape",
+			"Verify kubeconfig is valid",
+			"Check if CRDs are installed: kubectl get crd vulnerabilitymanifests.spdx.softwarecomposition.kubescape.io",
+			"Ensure scanning capabilities are enabled in the Helm chart:",
+			"  - Vulnerability scanning: --set capabilities.vulnerabilityScan=enable",
+			"  - Configuration scanning: --set capabilities.continuousScan=enable",
+			"  - Runtime observability: --set capabilities.runtimeObservability=enable",
+		).WithRetryable(true).WithErrorCode("KUBESCAPE_GENERIC_ERROR")
+	}
+
+	return err
+}
+
 // NewValidationError creates a validation error
 func NewValidationError(field, message string) *ToolError {
 	err := NewToolError("Validation", fmt.Sprintf("validate %s", field), fmt.Errorf("%s", message))

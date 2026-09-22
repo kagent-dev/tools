@@ -7,7 +7,7 @@ HELM_REPO ?= oci://ghcr.io/kagent-dev
 HELM_ACTION=upgrade --install
 
 KIND_CLUSTER_NAME ?= kagent
-KIND_IMAGE_VERSION ?= 1.33.1
+KIND_IMAGE_VERSION ?= 1.34.0
 KIND_CREATE_CMD ?= "kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml"
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
@@ -37,11 +37,11 @@ vet: ## Run go vet against code.
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run --build-tags=test
+	$(GOLANGCI_LINT) run --build-tags=test --timeout=10m
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --build-tags=test --fix
+	$(GOLANGCI_LINT) run --build-tags=test --fix --timeout=10m
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
@@ -136,11 +136,11 @@ DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
 
 # tools image build args
-TOOLS_ISTIO_VERSION ?= 1.26.2
-TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.8.3
-TOOLS_KUBECTL_VERSION ?= 1.33.3
-TOOLS_HELM_VERSION ?= 3.18.4
-TOOLS_CILIUM_VERSION ?= 0.18.5
+TOOLS_ISTIO_VERSION ?= 1.30.1
+TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.10.0
+TOOLS_KUBECTL_VERSION ?= 1.36.2
+TOOLS_HELM_VERSION ?= 4.2.2
+TOOLS_CILIUM_VERSION ?= 0.19.4
 
 # build args
 TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
@@ -193,6 +193,12 @@ helm-install: helm-version
 helm-publish: helm-version
 	helm push $(HELM_DIST_FOLDER)/kagent-tools-$(VERSION).tgz $(HELM_REPO)/tools/helm
 
+.PHONY: helm-test
+helm-test: helm-version
+	mkdir -p tmp
+	helm plugin ls | grep unittest || helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest.git
+	helm unittest helm/kagent-tools
+
 .PHONY: create-kind-cluster
 create-kind-cluster:
 	docker pull kindest/node:v$(KIND_IMAGE_VERSION) || true
@@ -232,6 +238,40 @@ report/image-cve: docker-build govulncheck
 
 ## Tool Binaries
 ## Location to install dependencies t
+
+# check-release-version checks if a tool version matches the latest GitHub release
+# $1 - variable name (e.g., TOOLS_ISTIO_VERSION)
+# $2 - current version value
+# $3 - GitHub repo (e.g., istio/istio)
+define check-release-version
+@LATEST=$$(gh release list --repo $(3) --json tagName,isLatest | jq -r '.[] | select(.isLatest==true) | .tagName'); \
+if [ "$(2)" = "$${LATEST#v}" ]; then \
+	echo "✅ $(1)=$(2) == $$LATEST"; \
+else \
+	echo "❌ $(1)=$(2) != $$LATEST"; \
+fi
+endef
+
+define check-go-version
+@CURRENT_GO=$$(awk '/^go / { print $$2 }' go.mod); \
+LATEST_GO=$$(curl -ks 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1 | sed 's/^go//' || echo "unknown"); \
+if [ "$$CURRENT_GO" = "$$LATEST_GO" ]; then \
+	echo "✅ GO_VERSION=$$CURRENT_GO == $$LATEST_GO"; \
+else \
+	echo "❌ GO_VERSION=$$CURRENT_GO != $$LATEST_GO"; \
+fi
+endef
+
+.PHONY: check-releases
+check-releases:
+	@echo "Checking tool versions against latest releases..."
+	@echo ""
+	$(call check-go-version)
+	$(call check-release-version,TOOLS_ARGO_ROLLOUTS_VERSION,$(TOOLS_ARGO_ROLLOUTS_VERSION),argoproj/argo-rollouts)
+	$(call check-release-version,TOOLS_CILIUM_VERSION,$(TOOLS_CILIUM_VERSION),cilium/cilium-cli)
+	$(call check-release-version,TOOLS_ISTIO_VERSION,$(TOOLS_ISTIO_VERSION),istio/istio)
+	$(call check-release-version,TOOLS_HELM_VERSION,$(TOOLS_HELM_VERSION),helm/helm)
+	$(call check-release-version,TOOLS_KUBECTL_VERSION,$(TOOLS_KUBECTL_VERSION),kubernetes/kubernetes)
 
 .PHONY: $(LOCALBIN)
 $(LOCALBIN):

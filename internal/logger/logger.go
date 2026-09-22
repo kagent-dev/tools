@@ -59,19 +59,37 @@ func WithContext(ctx context.Context) *slog.Logger {
 	return logger
 }
 
+// RedactArgsForLog returns a copy of args with sensitive values redacted for logging.
+// Any value immediately following "--token" is replaced with "<REDACTED>" so tokens are not logged.
+func RedactArgsForLog(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	out := make([]string, len(args))
+	copy(out, args)
+	for i := 0; i < len(out)-1; i++ {
+		if out[i] == "--token" {
+			out[i+1] = "<REDACTED>"
+			i++ // skip the redacted value
+		}
+	}
+	return out
+}
+
 func LogExecCommand(ctx context.Context, logger *slog.Logger, command string, args []string, caller string) {
 	logger.Info("executing command",
 		"command", command,
-		"args", args,
+		"args", RedactArgsForLog(args),
 		"caller", caller,
 	)
 }
 
 func LogExecCommandResult(ctx context.Context, logger *slog.Logger, command string, args []string, output string, err error, duration float64, caller string) {
+	redacted := RedactArgsForLog(args)
 	if err != nil {
 		logger.Error("command execution failed",
 			"command", command,
-			"args", args,
+			"args", redacted,
 			"error", err.Error(),
 			"duration_seconds", duration,
 			"caller", caller,
@@ -79,7 +97,7 @@ func LogExecCommandResult(ctx context.Context, logger *slog.Logger, command stri
 	} else {
 		logger.Info("command execution successful",
 			"command", command,
-			"args", args,
+			"args", redacted,
 			"output", output,
 			"duration_seconds", duration,
 			"caller", caller,
