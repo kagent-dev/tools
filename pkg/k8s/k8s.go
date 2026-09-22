@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"math/rand"
@@ -84,7 +85,96 @@ func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request mcp.Call
 		args = append(args, "-o", "json")
 	}
 
-	return k.runKubectlCommand(ctx, request.Header, args...)
+	result, err := k.runKubectlCommand(ctx, request.Header, args...)
+	if err != nil || result == nil || result.IsError {
+		return result, err
+	}
+
+	return truncateGetResult(result, output, mcp.ParseInt(request, "limit", defaultGetResourcesLimit)), nil
+}
+
+// defaultGetResourcesLimit bounds how many resources k8s_get_resources returns.
+// A listing is fed straight into a model's context, so an unbounded one on a large
+// cluster can exhaust the context window and end the session rather than returning
+// a large answer. Callers that need everything can pass limit=0.
+const defaultGetResourcesLimit = 200
+
+// truncationNotice tells the caller the listing was shortened. It matters as much
+// as the cap itself: a silently shortened listing reads as complete, so a model
+// would draw conclusions from partial data.
+const truncationNotice = "... truncated: showing %d of %d resources. Narrow with namespace or resource_name, or pass limit=0 for all."
+
+// truncateGetResult caps how many resources a kubectl get result carries. The
+// output format decides how, because slicing lines out of a structured document
+// would yield an invalid one: json is cut at its items array, and yaml is left
+// alone since it has no equally safe cut point.
+func truncateGetResult(result *mcp.CallToolResult, output string, limit int) *mcp.CallToolResult {
+	if limit <= 0 || result == nil || len(result.Content) == 0 {
+		return result
+	}
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	if !ok || textContent.Text == "" {
+		return result
+	}
+
+	switch {
+	case output == "json":
+		return truncateJSONItems(result, textContent.Text, limit)
+	case output == "" || output == "wide" || output == "name" ||
+		strings.HasPrefix(output, "custom-columns"):
+		return truncateRows(result, textContent.Text, limit)
+	default:
+		// yaml, jsonpath and go-template have no row structure to cut on.
+		return result
+	}
+}
+
+// truncateRows caps a line-oriented listing, preserving any header line.
+func truncateRows(result *mcp.CallToolResult, text string, limit int) *mcp.CallToolResult {
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+
+	// A table carries a header line that is not itself a resource.
+	header := 0
+	if strings.HasPrefix(lines[0], "NAME") {
+		header = 1
+	}
+
+	total := len(lines) - header
+	if total <= limit {
+		return result
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("%s\n"+truncationNotice,
+		strings.Join(lines[:header+limit], "\n"), limit, total))
+}
+
+// truncateJSONItems caps a kubectl List document at its items array. Anything
+// that is not such a document (a single object, or unparseable output) is
+// returned untouched rather than guessed at.
+func truncateJSONItems(result *mcp.CallToolResult, text string, limit int) *mcp.CallToolResult {
+	var list struct {
+		APIVersion string            `json:"apiVersion"`
+		Kind       string            `json:"kind"`
+		Metadata   map[string]any    `json:"metadata"`
+		Items      []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(text), &list); err != nil || list.Items == nil {
+		return result
+	}
+
+	total := len(list.Items)
+	if total <= limit {
+		return result
+	}
+
+	list.Items = list.Items[:limit]
+	truncated, err := json.MarshalIndent(list, "", "    ")
+	if err != nil {
+		return result
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("%s\n"+truncationNotice,
+		truncated, limit, total))
 }
 
 // Get pod logs
@@ -653,6 +743,7 @@ func RegisterTools(s *server.MCPServer, llm llms.Model, kubeconfig string, readO
 		mcp.WithString("namespace", mcp.Description("Namespace to query (optional)")),
 		mcp.WithString("all_namespaces", mcp.Description("Query all namespaces (true/false)")),
 		mcp.WithString("output", mcp.Description("Output format (json, yaml, wide)"), mcp.DefaultString("wide")),
+		mcp.WithNumber("limit", mcp.Description("Maximum number of resources to return; 0 returns all"), mcp.DefaultNumber(defaultGetResourcesLimit)),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("k8s_get_resources", k8sTool.handleKubectlGetEnhanced)))
 
 	s.AddTool(mcp.NewTool("k8s_get_pod_logs",

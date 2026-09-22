@@ -2,7 +2,10 @@ package k8s
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
@@ -560,6 +563,167 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
+	})
+
+	t.Run("truncates a listing longer than the limit", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		lines := []string{"NAME   READY   STATUS    RESTARTS   AGE"}
+		for i := 0; i < 5; i++ {
+			lines = append(lines, fmt.Sprintf("pod-%d   1/1     Running   0          1d", i))
+		}
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, strings.Join(lines, "\n"), nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods", "limit": 2}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Contains(t, resultText, "NAME")
+		assert.Contains(t, resultText, "pod-0")
+		assert.Contains(t, resultText, "pod-1")
+		// A truncated listing must not read as complete, or the model draws
+		// conclusions from partial data.
+		assert.NotContains(t, resultText, "pod-2")
+		assert.Contains(t, resultText, "showing 2 of 5 resources")
+	})
+
+	t.Run("leaves a listing shorter than the limit untouched", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := "NAME   READY   STATUS    RESTARTS   AGE\npod-0   1/1     Running   0          1d"
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods", "limit": 10}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Equal(t, expectedOutput, resultText)
+		assert.NotContains(t, resultText, "truncated")
+	})
+
+	t.Run("limit=0 returns every row", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		lines := []string{"NAME   READY   STATUS    RESTARTS   AGE"}
+		for i := 0; i < 3; i++ {
+			lines = append(lines, fmt.Sprintf("pod-%d   1/1     Running   0          1d", i))
+		}
+		expectedOutput := strings.Join(lines, "\n")
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods", "limit": 0}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Equal(t, expectedOutput, resultText)
+		assert.NotContains(t, resultText, "truncated")
+	})
+
+	t.Run("applies the default limit when none is given", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		lines := []string{"NAME   READY   STATUS    RESTARTS   AGE"}
+		for i := 0; i < defaultGetResourcesLimit+5; i++ {
+			lines = append(lines, fmt.Sprintf("pod-%d   1/1     Running   0          1d", i))
+		}
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "wide"}, strings.Join(lines, "\n"), nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods"}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Contains(t, resultText, fmt.Sprintf("showing %d of %d resources", defaultGetResourcesLimit, defaultGetResourcesLimit+5))
+	})
+
+	t.Run("caps json output at the items array, keeping it parseable", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		items := make([]string, 0, 5)
+		for i := 0; i < 5; i++ {
+			items = append(items, fmt.Sprintf(`{"metadata":{"name":"pod-%d"}}`, i))
+		}
+		listJSON := fmt.Sprintf(`{"apiVersion":"v1","kind":"List","items":[%s]}`, strings.Join(items, ","))
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-o", "json"}, listJSON, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods", "output": "json", "limit": 2}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+
+		resultText := getResultText(result)
+		assert.Contains(t, resultText, "showing 2 of 5 resources")
+
+		// Cutting a structured document by line would leave it unparseable.
+		jsonPart := resultText[:strings.LastIndex(resultText, "\n... truncated")]
+		var decoded struct {
+			Kind  string `json:"kind"`
+			Items []struct {
+				Metadata struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
+			} `json:"items"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(jsonPart), &decoded))
+		assert.Equal(t, "List", decoded.Kind)
+		require.Len(t, decoded.Items, 2)
+		assert.Equal(t, "pod-0", decoded.Items[0].Metadata.Name)
+		assert.Equal(t, "pod-1", decoded.Items[1].Metadata.Name)
+	})
+
+	t.Run("leaves yaml untouched since it has no safe cut point", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		lines := make([]string, 0, defaultGetResourcesLimit+10)
+		for i := 0; i < defaultGetResourcesLimit+10; i++ {
+			lines = append(lines, fmt.Sprintf("  key%d: value%d", i, i))
+		}
+		expectedOutput := "apiVersion: v1\n" + strings.Join(lines, "\n")
+		mock.AddCommandString("kubectl", []string{"get", "pod", "my-pod", "-o", "yaml"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"resource_type": "pod", "resource_name": "my-pod", "output": "yaml",
+		}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+		assert.Equal(t, expectedOutput, getResultText(result))
+	})
+
+	t.Run("leaves a single json object untouched", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedOutput := `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"my-pod"}}`
+		mock.AddCommandString("kubectl", []string{"get", "pod", "my-pod", "-o", "json"}, expectedOutput, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"resource_type": "pod", "resource_name": "my-pod", "output": "json", "limit": 1,
+		}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+		assert.Equal(t, expectedOutput, getResultText(result))
 	})
 }
 
