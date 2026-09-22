@@ -847,12 +847,11 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 		return mcp.NewToolResultError(fmt.Sprintf("CVE %s not found in manifest %s", cveID, manifestName)), nil, nil
 	}
 
-	content, err := json.MarshalIndent(matches, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil, nil
-	}
-
-	return mcp.NewToolResultText(string(content)), matches, nil
+	// Return the matches as the typed Out and leave Content unset. For an array
+	// (non-object) output the SDK serialises the value into a TextContent block
+	// itself; setting Content here as well would emit the same list twice for
+	// clients that read Content.
+	return nil, matches, nil
 }
 
 // handleListConfigurationScans lists configuration security scan results

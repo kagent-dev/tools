@@ -559,19 +559,18 @@ func TestHandleGetVulnerabilityDetails_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, _, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
+	// The handler returns the matches as its typed Out and leaves the tool result
+	// for the SDK to synthesise. For an array Out the SDK serialises the value
+	// into a TextContent block itself, so setting Content in the handler as well
+	// would emit the list twice.
+	result, matches, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
 		ManifestName: "test-manifest",
 		CveID:        "CVE-2021-1234",
 	})
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.False(t, result.IsError)
+	assert.Nil(t, result, "handler should leave result to the SDK for an array Out")
 
-	var matches []v1beta1.Match
-	err = json.Unmarshal([]byte(getResultText(result)), &matches)
-	require.NoError(t, err)
-
-	assert.Len(t, matches, 1)
+	require.Len(t, matches, 1)
 	assert.Equal(t, "CVE-2021-1234", matches[0].Vulnerability.ID)
 }
 

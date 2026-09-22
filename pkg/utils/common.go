@@ -109,6 +109,52 @@ func handleMCPInspectTool(_ context.Context, request *mcp.CallToolRequest, in in
 	return mcp.NewToolResultText(string(payload)), output, nil
 }
 
+// sensitiveHeaderNames are header names whose values are never returned by
+// mcp_inspect. The tool's purpose is to debug which headers reach the server,
+// not to disclose their contents: the HTTP transport passes the raw inbound
+// header set (including Authorization/Cookie) to handlers, so echoing values
+// back would hand any tool caller the caller's own bearer token and session
+// secrets.
+//
+// An exact-match list cannot keep up with the header names clients invent
+// (GitLab's Private-Token, AWS's X-Amz-Security-Token, assorted X-*-Token /
+// X-*-Secret variants), so the policy is deny-by-substring: a header is
+// redacted when its canonical name contains any of these fragments. Preferring
+// over-redaction here is deliberate - a redacted debugging value costs nothing,
+// a leaked credential does not.
+var sensitiveHeaderFragments = []string{
+	"authorization",
+	"authenticat", // Authenticate, Authentication
+	"cookie",
+	"credential",
+	"password",
+	"passwd",
+	"secret",
+	"session",
+	"token",
+	"api-key",
+	"apikey",
+	"auth",
+	"bearer",
+	"jwt",
+	"signature",
+}
+
+// isSensitiveHeader reports whether a header's value must be withheld.
+func isSensitiveHeader(canonicalName string) bool {
+	lower := strings.ToLower(canonicalName)
+	for _, fragment := range sensitiveHeaderFragments {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+// redactedPlaceholder replaces a withheld header value while still revealing
+// that the header was present.
+const redactedPlaceholder = "[REDACTED]"
+
 func inspectHeaders(headers http.Header) []inspectHeader {
 	if len(headers) == 0 {
 		return []inspectHeader{}
@@ -129,6 +175,13 @@ func inspectHeaders(headers http.Header) []inspectHeader {
 	result := make([]inspectHeader, 0, len(names))
 	for _, name := range names {
 		values := append([]string(nil), canonicalHeaders[name]...)
+		if isSensitiveHeader(http.CanonicalHeaderKey(name)) {
+			// Keep one entry per received value so the count is still visible.
+			values = make([]string, len(canonicalHeaders[name]))
+			for i := range values {
+				values[i] = redactedPlaceholder
+			}
+		}
 		result = append(result, inspectHeader{Name: name, Values: values})
 	}
 	return result

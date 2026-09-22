@@ -10,6 +10,10 @@ import (
 	"github.com/kagent-dev/tools/internal/metrics"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // invokeMiddleware runs ToolMiddleware around next for a tools/call to toolName
@@ -197,5 +201,74 @@ func TestToolMiddleware_GoErrorIncrementsFailureCounter(t *testing.T) {
 	failures := promtest.ToFloat64(metrics.KagentToolsMCPInvocationsFailureTotal.WithLabelValues("broken_tool", "test"))
 	if failures != 1 {
 		t.Errorf("invocations_failure_total: expected 1, got %v", failures)
+	}
+}
+
+// TestToolMiddleware_MarksSpanForToolLevelError is the regression test for the
+// tracing gap: a handler signalling a tool-level failure (IsError=true, nil Go
+// error) incremented the Prometheus failure counter but left the OTel span
+// status unset, so traces disagreed with metrics and the span was neither Ok
+// nor Error.
+func TestToolMiddleware_MarksSpanForToolLevelError(t *testing.T) {
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prev)
+		_ = tp.Shutdown(context.Background())
+	})
+
+	result, err := invokeMiddleware("tool_level_failure", "test",
+		func(_ context.Context, _ string, _ sdk.Request) (sdk.Result, error) {
+			return NewToolResultError("resource not found"), nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected nil Go error, got: %v", err)
+	}
+	if ctr, ok := result.(*sdk.CallToolResult); !ok || !ctr.IsError {
+		t.Fatal("expected result.IsError=true")
+	}
+
+	spans := exp.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("expected exactly 1 span, got %d", len(spans))
+	}
+	span := spans[0]
+	if span.Status.Code != codes.Error {
+		t.Errorf("span status: expected Error, got %v (status description %q)",
+			span.Status.Code, span.Status.Description)
+	}
+	if span.Status.Description == "" {
+		t.Error("span status description should carry the tool error message")
+	}
+}
+
+// TestToolMiddleware_MarksSpanOkOnSuccess guards the success path.
+func TestToolMiddleware_MarksSpanOkOnSuccess(t *testing.T) {
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prev)
+		_ = tp.Shutdown(context.Background())
+	})
+
+	if _, err := invokeMiddleware("ok_tool", "test",
+		func(_ context.Context, _ string, _ sdk.Request) (sdk.Result, error) {
+			return NewToolResultText("fine"), nil
+		},
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	spans := exp.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("expected exactly 1 span, got %d", len(spans))
+	}
+	if got := spans[0].Status.Code; got != codes.Ok {
+		t.Errorf("span status: expected Ok, got %v", got)
 	}
 }

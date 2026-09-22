@@ -92,8 +92,14 @@ func TextError(message string) (*sdk.CallToolResult, TextOutput, error) {
 // handlers that build a *CallToolResult in a helper can still return a typed
 // output value. A nil result yields an empty TextOutput.
 func TextOf(res *sdk.CallToolResult) TextOutput {
+	return TextOutput{Output: toolResultText(res)}
+}
+
+// toolResultText returns the concatenated text content of a result, used to
+// report a tool-level failure on a span. A nil result yields "".
+func toolResultText(res *sdk.CallToolResult) string {
 	if res == nil {
-		return TextOutput{}
+		return ""
 	}
 	var b strings.Builder
 	for _, content := range res.Content {
@@ -101,7 +107,7 @@ func TextOf(res *sdk.CallToolResult) TextOutput {
 			b.WriteString(textContent.Text)
 		}
 	}
-	return TextOutput{Output: b.String()}
+	return b.String()
 }
 
 // providerByTool maps a registered tool name to its provider for metric labels.
@@ -182,14 +188,26 @@ func ToolMiddleware() sdk.Middleware {
 			span.SetAttributes(attribute.Float64("mcp.tool.duration_seconds", time.Since(start).Seconds()))
 
 			failed := err != nil
+			var toolErrMessage string
 			if ctres, ok := res.(*sdk.CallToolResult); ok && ctres != nil && ctres.IsError {
 				failed = true
+				toolErrMessage = toolResultText(ctres)
 			}
 			if failed {
 				metrics.KagentToolsMCPInvocationsFailureTotal.WithLabelValues(toolName, provider).Inc()
-				if err != nil {
+				span.SetAttributes(attribute.Bool("mcp.tool.is_error", true))
+				// Tool-level failures (IsError=true) arrive with a nil Go error.
+				// They must still mark the span, otherwise the failure counter
+				// and the traces disagree and the span stays neither Ok nor
+				// Error.
+				switch {
+				case err != nil:
 					span.RecordError(err)
 					span.SetStatus(codes.Error, err.Error())
+				case toolErrMessage != "":
+					span.SetStatus(codes.Error, toolErrMessage)
+				default:
+					span.SetStatus(codes.Error, "tool returned IsError")
 				}
 			} else {
 				span.SetStatus(codes.Ok, "ok")
