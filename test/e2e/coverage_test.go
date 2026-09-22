@@ -38,8 +38,7 @@ Asserted for every invoked tool:
 
 Write-guarded tools are deliberately NOT invoked: they mutate the cluster, and
 calling one by accident is exactly the class of bug this sweep must catch. Their
-registration is covered by TestEveryToolHasValidOutputSchema and
-TestNoToolNameRegressions.
+registration is covered by TestEveryToolHasValidOutputSchema.
 
 Tools whose backing dependency is absent (Cilium on a kindnet cluster, a
 Prometheus server, the Kubescape operator) legitimately answer with a tool
