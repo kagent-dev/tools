@@ -198,6 +198,7 @@ The server runs using sse transport for MCP communication.
 | `--stdio` | `false` | Use stdio for communication instead of HTTP |
 | `--tools` | `[]` (all) | Comma-separated list of tool providers to register |
 | `--read-only` | `false` | Disable tools that perform write operations |
+| `--session-idle-ttl` | `30m` | Close streamable HTTP sessions idle for this long (`0` disables the reaper) |
 | `--kubeconfig` | `""` | Path to kubeconfig file (defaults to in-cluster config) |
 | `--version`, `-v` | `false` | Show version information and exit |
 

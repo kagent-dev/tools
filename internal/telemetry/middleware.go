@@ -20,7 +20,15 @@ const (
 	SpanIDKey      contextKey = "span_id"
 )
 
-// HTTPMiddleware wraps an HTTP handler to extract headers and propagate context
+// HTTPMiddleware wraps an HTTP handler to propagate OpenTelemetry trace context
+// from incoming HTTP headers and to stash a few request headers plus the trace
+// and span IDs in the request context.
+//
+// Note that the migrated tool handlers no longer read these context values: the
+// official SDK delivers headers on the request itself (see mcp.Header, which
+// reads req.Extra.Header), so ExtractHTTPHeaders and ExtractTraceInfo currently
+// have no non-test callers. They are kept because the values remain useful for
+// debugging and for callers that still pass the request context through.
 func HTTPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

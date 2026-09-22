@@ -37,14 +37,21 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// sessionIdleTTLDefault bounds per-session transport state for clients that go
+// away without sending DELETE (crash, restart, load-balancer timeout). It is a
+// safety net, not a session lifetime: every request from a client resets its
+// timer, so only sessions that have seen no traffic for this long are closed.
+const sessionIdleTTLDefault = 30 * time.Minute
+
 var (
-	port        int
-	metricsPort int
-	stdio       bool
-	tools       []string
-	kubeconfig  *string
-	showVersion bool
-	readOnly    bool
+	port           int
+	metricsPort    int
+	stdio          bool
+	tools          []string
+	kubeconfig     *string
+	showVersion    bool
+	readOnly       bool
+	sessionIdleTTL time.Duration
 
 	// These variables should be set during build time using -ldflags
 	Name      = "kagent-tools-server"
@@ -66,6 +73,7 @@ func init() {
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
 	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "Run in read-only mode (disable tools that perform write operations)")
+	rootCmd.Flags().DurationVar(&sessionIdleTTL, "session-idle-ttl", sessionIdleTTLDefault, "Close streamable HTTP sessions idle for this long (0 disables the reaper)")
 	kubeconfig = rootCmd.Flags().String("kubeconfig", "", "kubeconfig file path (optional, defaults to in-cluster config)")
 
 	// if found .env file, load it
@@ -168,10 +176,7 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcpSrv)
 		}()
 	} else {
-		sseServer := sdkmcp.NewStreamableHTTPHandler(
-			func(*http.Request) *sdkmcp.Server { return mcpSrv },
-			nil,
-		)
+		sseServer := newStreamableHTTPHandler(mcpSrv, sessionIdleTTL)
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()
@@ -290,6 +295,37 @@ func run(cmd *cobra.Command, args []string) {
 func writeResponse(w http.ResponseWriter, data []byte) error {
 	_, err := w.Write(data)
 	return err
+}
+
+// newStreamableHTTPHandler builds the stateful streamable HTTP transport.
+//
+// A session is registered on the first (initialize) POST and released when the
+// client sends DELETE, so a client that goes away without one would leave its
+// session registered forever. SessionTimeout bounds that: the SDK closes any
+// session that has seen no HTTP request for idleTTL. It is a safety net and not
+// a session lifetime, because every request from a client resets its timer.
+//
+// idleTTL <= 0 disables the reaper and restores leak-on-abandon, so it is only
+// appropriate for short-lived or single-client deployments.
+//
+// There is deliberately no equivalent of the old mcp-go
+// server.WithHeartbeatInterval, which sent SSE comment pings on the listening
+// (GET) stream to stop intermediaries from closing an idle connection. The
+// official SDK has no periodic SSE comment heartbeat; its transport flushes an
+// ": ok" comment once so a reverse proxy forwards the response headers promptly
+// (see the comment on StreamableServerTransport in the SDK).
+//
+// ServerOptions.KeepAlive looks like the replacement but is not one: it sends
+// JSON-RPC "ping" requests and closes the session once the failure threshold is
+// reached. A POST-only client, which is the normal request/response mode here,
+// never opens the GET stream the pings arrive on, so enabling KeepAlive would
+// evict live sessions (observed as HTTP 404 on a subsequent request) rather than
+// keep them alive. SessionTimeout is the supported lever for session lifecycle.
+func newStreamableHTTPHandler(mcpSrv *sdkmcp.Server, idleTTL time.Duration) *sdkmcp.StreamableHTTPHandler {
+	return sdkmcp.NewStreamableHTTPHandler(
+		func(*http.Request) *sdkmcp.Server { return mcpSrv },
+		&sdkmcp.StreamableHTTPOptions{SessionTimeout: idleTTL},
+	)
 }
 
 func runStdioServer(ctx context.Context, mcpSrv *sdkmcp.Server) {
