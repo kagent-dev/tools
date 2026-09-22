@@ -92,6 +92,12 @@ spec:
               value: {{ .Values.otel.tracing.exporter.otlp.insecure | quote }}
             - name: TOKEN_PASSTHROUGH
               value: {{ (index .Values.tools "k8s" | default dict).tokenPassthrough | default false | quote }}
+          {{- with (index .Values.tools "prometheus" | default dict).url }}
+            # Default Prometheus server URL for the prometheus_* tools, used when a call omits
+            # the optional prometheus_url parameter. Unset -> the tool default (http://localhost:9090).
+            - name: PROMETHEUS_URL
+              value: {{ . | quote }}
+          {{- end }}
           {{- with .Values.tools.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}

@@ -127,6 +127,49 @@ func TestGetHTTPClientDefault(t *testing.T) {
 	assert.Equal(t, custom, getHTTPClient(ctx))
 }
 
+func TestDefaultPrometheusURL(t *testing.T) {
+	t.Run("falls back to localhost when PROMETHEUS_URL is unset", func(t *testing.T) {
+		t.Setenv("PROMETHEUS_URL", "")
+		assert.Equal(t, fallbackPrometheusURL, defaultPrometheusURL())
+		assert.Contains(t, prometheusURLDescription(), fallbackPrometheusURL)
+	})
+
+	t.Run("honors PROMETHEUS_URL", func(t *testing.T) {
+		t.Setenv("PROMETHEUS_URL", "  http://thanos-query.monitoring.svc.cluster.local:10902  ")
+		assert.Equal(t, "http://thanos-query.monitoring.svc.cluster.local:10902", defaultPrometheusURL())
+		assert.Contains(t, prometheusURLDescription(), "http://thanos-query.monitoring.svc.cluster.local:10902")
+	})
+}
+
+// recordingRoundTripper records the URL of the last request it served.
+type recordingRoundTripper struct {
+	lastURL string
+}
+
+func (r *recordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.lastURL = req.URL.String()
+	return createMockResponse(200, `{"status":"success","data":{"resultType":"vector","result":[]}}`), nil
+}
+
+// A call that omits the optional prometheus_url parameter must reach the server configured
+// via PROMETHEUS_URL, not localhost.
+func TestPrometheusURLDefaultsToEnv(t *testing.T) {
+	t.Setenv("PROMETHEUS_URL", "http://thanos-query.monitoring.svc.cluster.local:10902")
+
+	rt := &recordingRoundTripper{}
+	ctx := contextWithMockClient(&http.Client{Transport: rt})
+
+	request := mcp.CallToolRequest{}
+	request.Params.Arguments = map[string]interface{}{"query": "up"}
+
+	result, err := handlePrometheusQueryTool(ctx, request)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Contains(t, rt.lastURL, "http://thanos-query.monitoring.svc.cluster.local:10902/api/v1/query")
+}
+
 // mockRoundTripper is used to mock HTTP responses for testing
 type mockRoundTripper struct {
 	response *http.Response
