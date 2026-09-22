@@ -131,3 +131,32 @@ tests:
           path: metadata.namespace
           value: other-ns
         documentIndex: 1
+
+  - it: should render namespaced RBAC from global.watchNamespaces alone
+    set:
+      global.watchNamespaces:
+        - NAMESPACE
+        - other
+    template: clusterrole.yaml
+    asserts:
+      - containsDocument:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          namespace: other
+          any: true
+
+  - it: should let rbac.namespaces win over global.watchNamespaces
+    set:
+      rbac.namespaces:
+        - NAMESPACE
+      global.watchNamespaces:
+        - NAMESPACE
+        - other
+    template: clusterrole.yaml
+    asserts:
+      - not: true
+        containsDocument:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          namespace: other
+          any: true

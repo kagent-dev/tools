@@ -7,6 +7,19 @@ useDefaultServiceAccount: false
 
 global:
   tag: ""
+  # -- Registry that overrides the per-image registry when set. This is the
+  # air-gap mirror knob: one value redirects the image. Repository and tag stay
+  # per-image. For control without the override, leave this unset and set
+  # tools.image.registry.
+  imageRegistry: ""
+  # -- Pull secrets merged (union) into the pod's own imagePullSecrets list.
+  imagePullSecrets: []
+  # -- Fallback imagePullPolicy when tools.image.pullPolicy is unset.
+  imagePullPolicy: ""
+  # -- Namespace scope fallback. rbac.namespaces overrides it when the key is
+  # present. A non-empty resolved list replaces the ClusterRole with a Role per
+  # namespace.
+  watchNamespaces: []
 
 tools:
   metrics:
@@ -32,7 +45,8 @@ tools:
     registry: ghcr.io
     repository: kagent-dev/kagent/tools
     tag: ""
-    pullPolicy: IfNotPresent
+    # -- Pull policy. Empty falls back to global.imagePullPolicy, then IfNotPresent.
+    pullPolicy: ""
   resources:
     requests:
       cpu: 100m
@@ -107,7 +121,10 @@ rbac:
   # -- Namespaces in which to create Role and RoleBinding resources.
   # If empty (default), the chart creates cluster-scoped ClusterRole and ClusterRoleBinding resources.
   # If set, the chart creates a Role + RoleBinding per listed namespace (install namespace must be included).
-  namespaces: []
+  # An explicit empty list forces cluster-scoped RBAC. The key ships commented
+  # out: a declared default [] would read as an explicit cluster-scoped choice,
+  # and the global.watchNamespaces fallback would be unreachable.
+  # namespaces: []
   # When true, deploys a read-only ClusterRole (get, list, watch) instead of cluster-admin.
   # Pairs well with the --read-only CLI flag which disables write operations at the application layer.
   # Only applies when rbac.create is true.

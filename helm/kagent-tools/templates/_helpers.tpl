@@ -88,6 +88,26 @@ Precedence: controller.watchNamespaces (explicit override) > rbac.namespaces > e
 {{/*
 Guards on the rbac block
 */}}
+{{/*
+The resolved RBAC scope, as a JSON list so callers can range over it.
+Precedence: rbac.namespaces > global.watchNamespaces > empty (cluster-scoped).
+The global is a fallback, not an override: a values file that sets rbac.namespaces
+renders exactly what it rendered before the global existed, and an explicit empty
+list forces cluster-scoped RBAC (hasKey, not coalesce, so a present-but-empty key
+wins). On the global path the install namespace is auto-appended: the global is a
+shared signal a parent may aim at other charts, and failing this chart's render
+over it would brick an install the value was never about.
+*/}}
+{{- define "kagent-tools.rbacNamespaces" -}}
+{{- $scope := list -}}
+{{- if and .Values.rbac (hasKey .Values.rbac "namespaces") -}}
+{{- $scope = .Values.rbac.namespaces | default list -}}
+{{- else if ((.Values.global).watchNamespaces) -}}
+{{- $scope = concat (.Values.global).watchNamespaces (list (include "kagent-tools.namespace" .)) -}}
+{{- end -}}
+{{- $scope | uniq | sortAlpha | toJson -}}
+{{- end -}}
+
 {{- define "kagent-tools.rbac.validate" -}}
 {{- if and .Values.rbac (hasKey .Values.rbac "clusterScoped") -}}
 {{- fail "rbac.clusterScoped has been removed. Leave rbac.namespaces empty for cluster-scoped RBAC, or set rbac.namespaces=[<ns>, ...] for namespaced RBAC." -}}
@@ -98,4 +118,34 @@ Guards on the rbac block
 {{- fail (printf "rbac.namespaces is set but does not include the install namespace %q" $installNs) -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Pull secrets for the pod: the chart's own list merged (union) with
+global.imagePullSecrets. Renders nothing when both are empty.
+*/}}
+{{- define "kagent-tools.imagePullSecrets" -}}
+{{- $merged := concat (.Values.imagePullSecrets | default list) (((.Values.global).imagePullSecrets) | default list) | uniq -}}
+{{- if $merged -}}
+imagePullSecrets:
+{{- toYaml $merged | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+imagePullPolicy for a container: the component's own value, then
+global.imagePullPolicy, then IfNotPresent. One definition so the fallback chain
+cannot drift between pods.
+*/}}
+{{- define "kagent-tools.imagePullPolicy" -}}
+{{- .local | default (((.root.Values.global)).imagePullPolicy) | default "IfNotPresent" -}}
+{{- end -}}
+
+{{/*
+The tools container image. Builds the image root from tools.image and resolves
+it through kagent-tools.images.image, so the deployment carries one short call.
+*/}}
+{{- define "kagent-tools.image" -}}
+{{- $root := dict "registry" .Values.tools.image.registry "repository" .Values.tools.image.repository "tag" (coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version) -}}
+{{- include "kagent-tools.images.image" (dict "imageRoot" $root "global" .Values.global) -}}
 {{- end -}}
