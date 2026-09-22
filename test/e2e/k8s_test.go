@@ -3,6 +3,8 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
 	. "github.com/onsi/ginkgo/v2"
@@ -37,8 +39,10 @@ var _ = Describe("KAgent Tools Kubernetes E2E Tests", Ordered, func() {
 		// Install kagent tools
 		InstallKAgentTools(namespace, releaseName)
 
-		client, err = GetMCPClient()
-		Expect(err).ToNot(HaveOccurred(), "Failed to get MCP client: %v", err)
+		Eventually(func() error {
+			client, err = GetMCPClient()
+			return err
+		}, DefaultTimeout, 2*time.Second).Should(Succeed(), "Failed to get MCP client")
 	})
 
 	AfterAll(func() {
