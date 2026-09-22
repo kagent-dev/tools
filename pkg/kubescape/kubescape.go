@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,7 +37,57 @@ const (
 	// Pod labels
 	operatorPodLabel = "app.kubernetes.io/name=kubescape-operator"
 	storagePodLabel  = "app.kubernetes.io/name=storage"
+
+	// defaultVulnerabilityLimit bounds kubescape_list_vulnerabilities. A single
+	// image measured 466 CVEs / 200 KB unbounded, which no agent can consume;
+	// the severity summary carries the aggregate answer instead.
+	defaultVulnerabilityLimit = 20
+
+	// defaultWorkloadLimit bounds kubescape_list_vulnerable_workloads. Each
+	// workload summary renders small, but a large cluster has many of them.
+	defaultWorkloadLimit = 20
+
+	// fixStateFixed is the Grype fix state meaning an upgrade is available.
+	fixStateFixed = "fixed"
+
+	severityUnknown = "Unknown"
 )
+
+// severityOrder lists Grype severities worst first. It is both the ranking used
+// to sort results and the set of buckets the severity summary reports, so a
+// severity can never be silently dropped into the wrong bucket.
+var severityOrder = []string{"Critical", "High", "Medium", "Low", "Negligible", severityUnknown}
+
+// normaliseSeverity maps a Grype severity onto a known bucket, case-insensitively.
+// Anything unrecognised becomes Unknown -- but Negligible is a real severity and
+// must not land there: 102 Negligible CVEs were previously counted as Unknown.
+func normaliseSeverity(s string) string {
+	for _, known := range severityOrder {
+		if strings.EqualFold(s, known) {
+			return known
+		}
+	}
+	return severityUnknown
+}
+
+func isKnownSeverity(s string) bool {
+	for _, known := range severityOrder {
+		if strings.EqualFold(s, known) {
+			return true
+		}
+	}
+	return false
+}
+
+// severityRank returns the sort position of a severity, worst first.
+func severityRank(s string) int {
+	for i, known := range severityOrder {
+		if s == known {
+			return i
+		}
+	}
+	return len(severityOrder)
+}
 
 // KubescapeTool holds the clients for Kubescape and Kubernetes APIs
 type KubescapeTool struct {
@@ -462,6 +513,251 @@ func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallT
 	return mcp.NewToolResultText(string(content)), nil
 }
 
+// storageFullSpec is the sentinel the Kubescape storage API server requires in
+// ListOptions.ResourceVersion to return object specs on LIST.
+//
+// By default the server strips spec from EVERY list response, so severity
+// counters come back as zero and vulnerabilitiesRef comes back empty. That is
+// not an error and is indistinguishable from a healthy cluster with no
+// vulnerabilities -- listing the summary resources without this sentinel
+// reports a vulnerable cluster as clean. Measured on storage v0.0.298:
+// nginx:1.14.0 has 76 critical CVEs and a default LIST reports 0.
+//
+// Defined as ResourceVersionFullSpec in
+// github.com/kubescape/storage/pkg/apis/softwarecomposition/register.go.
+const storageFullSpec = "fullSpec"
+
+// fullSpecList returns the ListOptions required to read specs from the storage
+// API. Use it for every list of an aggregate resource.
+func fullSpecList() metav1.ListOptions {
+	return metav1.ListOptions{ResourceVersion: storageFullSpec}
+}
+
+// severityCounts renders a SeveritySummary for output.
+//
+// `relevant` is `json:"relevant,omitempty"` upstream, so a zero is
+// indistinguishable from "relevancy was never computed" -- node-agent needs a
+// learning period before it reports anything. Emitting a zero there would tell
+// an agent that no vulnerability is runtime-reachable when the truth may be that
+// nobody has looked yet, so the key is omitted unless it holds a real value and
+// the tool description spells out that its absence is ambiguous.
+//
+// There is deliberately no derived "relevancy: available|unavailable" field.
+// The obvious signal for one does not work: workloads carrying
+// kubescape.io/status=ready were measured with `relevant` absent, so the
+// annotation says nothing about whether relevancy was computed. Reporting a
+// confident availability verdict from it would be a guess dressed as a fact.
+func severityCounts(s v1beta1.SeveritySummary) map[string]map[string]int64 {
+	out := map[string]map[string]int64{}
+	for name, c := range map[string]v1beta1.VulnerabilityCounters{
+		"Critical":      s.Critical,
+		"High":          s.High,
+		"Medium":        s.Medium,
+		"Low":           s.Low,
+		"Negligible":    s.Negligible,
+		severityUnknown: s.Unknown,
+	} {
+		entry := map[string]int64{"all": c.All}
+		if c.Relevant > 0 {
+			entry["relevant"] = c.Relevant
+		}
+		out[name] = entry
+	}
+	return out
+}
+
+// addCounters accumulates src into dst, preserving the omit-when-absent rule.
+func addCounters(dst map[string]map[string]int64, src v1beta1.SeveritySummary) {
+	for name, entry := range severityCounts(src) {
+		if dst[name] == nil {
+			dst[name] = map[string]int64{"all": 0}
+		}
+		dst[name]["all"] += entry["all"]
+		if rel, ok := entry["relevant"]; ok {
+			dst[name]["relevant"] += rel
+		}
+	}
+}
+
+func totalAll(counts map[string]map[string]int64) int64 {
+	var t int64
+	for _, c := range counts {
+		t += c["all"]
+	}
+	return t
+}
+
+// handleVulnerabilityOverview reports cluster or namespace vulnerability posture
+// from the server-side aggregated summaries.
+func (k *KubescapeTool) handleVulnerabilityOverview(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("vulnerability_overview", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+
+	// VulnerabilitySummary is cluster-scoped and each object's NAME is a
+	// namespace, so listing returns one aggregate per namespace.
+	summaries, err := k.spdxClient.VulnerabilitySummaries(metav1.NamespaceAll).List(ctx, fullSpecList())
+	if err != nil {
+		toolErr := errors.NewKubescapeError("vulnerability_overview", err).
+			WithContext("namespace", namespace)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	clusterTotals := map[string]map[string]int64{}
+	namespaces := []map[string]interface{}{}
+	for _, summary := range summaries.Items {
+		if namespace != "" && summary.Name != namespace {
+			continue
+		}
+		addCounters(clusterTotals, summary.Spec.Severities)
+		namespaces = append(namespaces, map[string]interface{}{
+			"namespace":      summary.Name,
+			"workload_count": len(summary.Spec.WorkloadVulnerabilitiesObj),
+			"severities":     severityCounts(summary.Spec.Severities),
+		})
+	}
+
+	// Worst namespace first, so the agent's next call is obvious.
+	sort.SliceStable(namespaces, func(i, j int) bool {
+		si := namespaces[i]["severities"].(map[string]map[string]int64)
+		sj := namespaces[j]["severities"].(map[string]map[string]int64)
+		if si["Critical"]["all"] != sj["Critical"]["all"] {
+			return si["Critical"]["all"] > sj["Critical"]["all"]
+		}
+		return totalAll(si) > totalAll(sj)
+	})
+
+	scope := "cluster"
+	if namespace != "" {
+		scope = "namespace"
+	}
+
+	result := map[string]interface{}{
+		"scope":          scope,
+		"cluster_totals": clusterTotals,
+		"namespaces":     namespaces,
+		"next_step":      "call kubescape_list_vulnerable_workloads with a namespace to rank its workloads",
+	}
+
+	// A cluster with summaries but no counts anywhere is far more likely to mean
+	// the spec was stripped than that every image is clean. Never present that
+	// as good news.
+	if len(namespaces) > 0 && totalAll(clusterTotals) == 0 {
+		result["warning"] = "Every namespace reported zero vulnerabilities, which could not be confirmed as a genuinely clean cluster: " +
+			"the Kubescape storage API returns zeroed counts when it strips object specs from list responses. " +
+			"Verify with kubescape_list_vulnerabilities on a specific manifest before concluding there are no vulnerabilities."
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+	return mcp.NewToolResultText(string(content)), nil
+}
+
+// handleListVulnerableWorkloads ranks workloads by vulnerability severity and
+// hands back the manifest name needed to drill into each one.
+func (k *KubescapeTool) handleListVulnerableWorkloads(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if k.initError != nil {
+		toolErr := errors.NewKubescapeError("list_vulnerable_workloads", k.initError)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	namespace := mcp.ParseString(request, "namespace", "")
+	// Where the VulnerabilityManifest objects live, which is not what the
+	// summaries' vulnerabilitiesRef reports -- see the comment at its use below.
+	manifestNamespace := mcp.ParseString(request, "kubescape_namespace", defaultKubescapeNamespace)
+	limit := int(mcp.ParseFloat64(request, "limit", defaultWorkloadLimit))
+	if limit < 0 {
+		limit = 0
+	}
+
+	queryNamespace := metav1.NamespaceAll
+	if namespace != "" {
+		queryNamespace = namespace
+	}
+
+	summaries, err := k.spdxClient.VulnerabilityManifestSummaries(queryNamespace).List(ctx, fullSpecList())
+	if err != nil {
+		toolErr := errors.NewKubescapeError("list_vulnerable_workloads", err).
+			WithContext("namespace", namespace)
+		return toolErr.ToMCPResult(), nil
+	}
+
+	workloads := []map[string]interface{}{}
+	for _, summary := range summaries.Items {
+		counts := severityCounts(summary.Spec.Severities)
+
+		entry := map[string]interface{}{
+			"namespace":        summary.Namespace,
+			"workload_summary": summary.Name,
+			"severities":       counts,
+			"scan_status":      summary.Annotations["kubescape.io/status"],
+		}
+		if kind, name := summary.Labels["kubescape.io/workload-kind"], summary.Labels["kubescape.io/workload-name"]; kind != "" && name != "" {
+			entry["workload"] = kind + "/" + name
+		}
+		if container := summary.Labels["kubescape.io/workload-container-name"]; container != "" {
+			entry["container"] = container
+		}
+		if image := summary.Annotations["kubescape.io/image-tag"]; image != "" {
+			entry["image"] = image
+		}
+		// vulnerabilitiesRef points straight at the manifests holding the CVEs:
+		// `all` is the image-level manifest, `relevant` the workload-filtered
+		// one. These names are exactly what kubescape_list_vulnerabilities takes.
+		//
+		// Only the NAME from the ref is usable. The server fills the ref's
+		// namespace with the workload's namespace, but the manifests live in the
+		// Kubescape namespace -- verified on a live cluster, where a GET of
+		// docker.io-library-nginx-1.14.0-e34030 in the referenced namespace
+		// returns NotFound while the same GET in `kubescape` succeeds. Passing
+		// the ref's namespace on would hand the agent a pointer that 404s.
+		if ref := summary.Spec.Vulnerabilities.ImageVulnerabilitiesObj; ref.Name != "" {
+			entry["manifest_name"] = ref.Name
+			entry["manifest_namespace"] = manifestNamespace
+		}
+		if ref := summary.Spec.Vulnerabilities.WorkloadVulnerabilitiesObj; ref.Name != "" {
+			entry["workload_manifest_name"] = ref.Name
+		}
+		workloads = append(workloads, entry)
+	}
+
+	sort.SliceStable(workloads, func(i, j int) bool {
+		si := workloads[i]["severities"].(map[string]map[string]int64)
+		sj := workloads[j]["severities"].(map[string]map[string]int64)
+		if si["Critical"]["all"] != sj["Critical"]["all"] {
+			return si["Critical"]["all"] > sj["Critical"]["all"]
+		}
+		return totalAll(si) > totalAll(sj)
+	})
+
+	total := len(workloads)
+	truncated := false
+	if limit > 0 && total > limit {
+		workloads = workloads[:limit]
+		truncated = true
+	}
+
+	result := map[string]interface{}{
+		"namespace":       namespace,
+		"total_workloads": total,
+		"returned":        len(workloads),
+		"truncated":       truncated,
+		"workloads":       workloads,
+		"next_step":       "call kubescape_list_vulnerabilities with a workload's manifest_name to see its CVEs",
+	}
+
+	content, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
+	return mcp.NewToolResultText(string(content)), nil
+}
+
 // handleListVulnerabilityManifests lists vulnerability manifests at image and workload levels
 func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if k.initError != nil {
@@ -546,6 +842,21 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 		return mcp.NewToolResultError("manifest_name parameter is required"), nil
 	}
 
+	severityFilter := mcp.ParseString(request, "severity", "")
+	if severityFilter != "" {
+		if !isKnownSeverity(severityFilter) {
+			toolErr := errors.NewKubescapeError("list_vulnerabilities",
+				fmt.Errorf("invalid severity %q: must be one of %v", severityFilter, severityOrder))
+			return toolErr.ToMCPResult(), nil
+		}
+		severityFilter = normaliseSeverity(severityFilter)
+	}
+	fixableOnly := mcp.ParseBoolean(request, "fixable_only", false)
+	limit := int(mcp.ParseFloat64(request, "limit", defaultVulnerabilityLimit))
+	if limit < 0 {
+		limit = 0
+	}
+
 	manifest, err := k.spdxClient.VulnerabilityManifests(namespace).Get(ctx, manifestName, metav1.GetOptions{})
 	if err != nil {
 		toolErr := errors.NewKubescapeError("get_vulnerability_manifest", err).
@@ -554,46 +865,84 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 		return toolErr.ToMCPResult(), nil
 	}
 
-	// Extract vulnerabilities with summary info
-	vulnerabilities := []map[string]interface{}{}
-	severityCounts := map[string]int{
-		"Critical": 0,
-		"High":     0,
-		"Medium":   0,
-		"Low":      0,
-		"Unknown":  0,
+	// Count every match by severity first. The summary describes the WHOLE
+	// manifest even when the returned array is filtered or truncated, so a
+	// bounded response still carries the aggregate answer.
+	severityCounts := map[string]int{}
+	for _, name := range severityOrder {
+		severityCounts[name] = 0
 	}
 
+	// Grype reports one Match per affected package, so the same CVE recurs.
+	// Collapse them by ID -- without the package fields the rows would be
+	// indistinguishable and duplicates would consume the limit budget -- while
+	// keeping the number of affected artifacts visible.
+	matched := []map[string]interface{}{}
+	byID := map[string]map[string]interface{}{}
 	for _, match := range manifest.Spec.Payload.Matches {
 		vuln := match.Vulnerability
-		severity := string(vuln.Severity)
-		if _, exists := severityCounts[severity]; exists {
-			severityCounts[severity]++
-		} else {
-			severityCounts["Unknown"]++
+		severity := normaliseSeverity(string(vuln.Severity))
+		severityCounts[severity]++
+
+		if severityFilter != "" && severity != severityFilter {
+			continue
+		}
+		if fixableOnly && vuln.Fix.State != fixStateFixed {
+			continue
 		}
 
-		vulnInfo := map[string]interface{}{
-			"id":          vuln.ID,
-			"severity":    severity,
-			"description": truncateString(vuln.Description, 200),
-			"data_source": vuln.DataSource,
+		if existing, seen := byID[vuln.ID]; seen {
+			existing["affected_artifacts"] = existing["affected_artifacts"].(int) + 1
+			// A CVE unfixed in any package is not actionable as "fixed".
+			if vuln.Fix.State != fixStateFixed {
+				existing["fix_state"] = vuln.Fix.State
+			}
+			continue
 		}
 
-		if vuln.Fix.State != "" {
-			vulnInfo["fix_state"] = vuln.Fix.State
-			vulnInfo["fix_versions"] = vuln.Fix.Versions
+		// Only the fields an agent needs to decide what to look at next.
+		// description (56% of the old payload) is truncated mid-word and is
+		// available in full from kubescape_get_vulnerability_details, which is
+		// also where data_source and fix_versions live.
+		entry := map[string]interface{}{
+			"id":                 vuln.ID,
+			"severity":           severity,
+			"fix_state":          vuln.Fix.State,
+			"affected_artifacts": 1,
 		}
+		byID[vuln.ID] = entry
+		matched = append(matched, entry)
+	}
 
-		vulnerabilities = append(vulnerabilities, vulnInfo)
+	// Worst first, so a truncated array is the half that matters. Ties break on
+	// id to keep responses stable between calls.
+	sort.SliceStable(matched, func(i, j int) bool {
+		ri, rj := severityRank(matched[i]["severity"].(string)), severityRank(matched[j]["severity"].(string))
+		if ri != rj {
+			return ri < rj
+		}
+		return matched[i]["id"].(string) < matched[j]["id"].(string)
+	})
+
+	totalMatching := len(matched)
+	truncated := false
+	if limit > 0 && totalMatching > limit {
+		matched = matched[:limit]
+		truncated = true
 	}
 
 	result := map[string]interface{}{
 		"manifest_name":    manifestName,
 		"namespace":        namespace,
-		"total_count":      len(vulnerabilities),
 		"severity_summary": severityCounts,
-		"vulnerabilities":  vulnerabilities,
+		"total_count":      totalMatching,
+		"returned_count":   len(matched),
+		"truncated":        truncated,
+		"filters": map[string]interface{}{
+			"severity":     severityFilter,
+			"fixable_only": fixableOnly,
+		},
+		"vulnerabilities": matched,
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
@@ -1056,6 +1405,26 @@ func RegisterTools(s *server.MCPServer, kubeconfig string, readOnly bool) {
 		mcp.WithString("namespace", mcp.Description("Namespace to check (default: kubescape)")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_check_health", tool.handleCheckHealth)))
 
+	// Cluster / namespace vulnerability posture -- the cheapest entry point
+	s.AddTool(mcp.NewTool("kubescape_vulnerability_overview",
+		mcp.WithDescription("START HERE for any question about cluster-wide or namespace-wide vulnerabilities. "+
+			"Returns severity totals per namespace from Kubescape's server-side aggregates in a single cheap call, worst namespace first. "+
+			"Counts are 'all' plus 'relevant' (the vulnerable code was observed loaded at runtime). "+
+			"'relevant' is reported only when greater than zero; when it is absent that means EITHER no runtime-relevant CVEs OR that relevancy "+
+			"has not been computed for those workloads yet, and the two cannot be distinguished here -- so do not report an absent 'relevant' as a measured zero. "+
+			"Then narrow with kubescape_list_vulnerable_workloads."),
+		mcp.WithString("namespace", mcp.Description("Restrict to one namespace (optional; omit for the whole cluster)")),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_vulnerability_overview", tool.handleVulnerabilityOverview)))
+
+	// Rank workloads and hand back the manifest to drill into
+	s.AddTool(mcp.NewTool("kubescape_list_vulnerable_workloads",
+		mcp.WithDescription("Rank workloads by vulnerability severity, worst first, and return the 'manifest_name' needed to inspect each one's CVEs. "+
+			"Use after kubescape_vulnerability_overview to find which workloads matter, then pass a returned manifest_name to kubescape_list_vulnerabilities."),
+		mcp.WithString("namespace", mcp.Description("Restrict to one namespace (optional, defaults to all namespaces)")),
+		mcp.WithNumber("limit", mcp.Description("Maximum workloads to return (default: 20). Use 0 for no limit.")),
+		mcp.WithString("kubescape_namespace", mcp.Description("Namespace the Kubescape operator is installed in, where vulnerability manifests are stored (default: kubescape)")),
+	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_vulnerable_workloads", tool.handleListVulnerableWorkloads)))
+
 	// List vulnerability manifests
 	s.AddTool(mcp.NewTool("kubescape_list_vulnerability_manifests",
 		mcp.WithDescription("List vulnerability manifests from Kubescape operator. Returns vulnerability scan results at image or workload level."),
@@ -1065,9 +1434,14 @@ func RegisterTools(s *server.MCPServer, kubeconfig string, readOnly bool) {
 
 	// List vulnerabilities in a manifest
 	s.AddTool(mcp.NewTool("kubescape_list_vulnerabilities",
-		mcp.WithDescription("List all CVEs/vulnerabilities found in a specific vulnerability manifest. Returns severity summary and vulnerability details."),
+		mcp.WithDescription("List CVEs in a specific vulnerability manifest. Always returns severity_summary, which counts EVERY CVE in the manifest. "+
+			"The 'vulnerabilities' array is capped at 'limit' (default 20), ordered worst severity first; check 'truncated' and 'total_count' to see whether more exist. "+
+			"Each entry carries only id, severity and fix_state -- use kubescape_get_vulnerability_details for the description, data source and fix versions of one CVE."),
 		mcp.WithString("namespace", mcp.Description("Namespace of the manifest (default: kubescape)")),
 		mcp.WithString("manifest_name", mcp.Description("Name of the vulnerability manifest"), mcp.Required()),
+		mcp.WithString("severity", mcp.Description("Only return CVEs of this severity: 'Critical', 'High', 'Medium', 'Low', 'Negligible' or 'Unknown'. severity_summary still covers the whole manifest.")),
+		mcp.WithBoolean("fixable_only", mcp.Description("Only return CVEs that have a fix available (default: false)")),
+		mcp.WithNumber("limit", mcp.Description("Maximum CVEs to return (default: 20). Use 0 for no limit -- a single image can hold hundreds of CVEs and overflow the context window.")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_vulnerabilities", tool.handleListVulnerabilitiesInManifest)))
 
 	// Get detailed vulnerability info
@@ -1138,6 +1512,8 @@ func RegisterTools(s *server.MCPServer, kubeconfig string, readOnly bool) {
 // Interfaces for testing - allows mocking the Kubernetes clients
 type KubescapeToolInterface interface {
 	HandleCheckHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	HandleVulnerabilityOverview(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	HandleListVulnerableWorkloads(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 	HandleListVulnerabilityManifests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 	HandleListVulnerabilitiesInManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 	HandleGetVulnerabilityDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
@@ -1158,6 +1534,14 @@ var _ KubescapeToolInterface = (*KubescapeTool)(nil)
 // Export handler methods for testing
 func (k *KubescapeTool) HandleCheckHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return k.handleCheckHealth(ctx, request)
+}
+
+func (k *KubescapeTool) HandleVulnerabilityOverview(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return k.handleVulnerabilityOverview(ctx, request)
+}
+
+func (k *KubescapeTool) HandleListVulnerableWorkloads(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return k.handleListVulnerableWorkloads(ctx, request)
 }
 
 func (k *KubescapeTool) HandleListVulnerabilityManifests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

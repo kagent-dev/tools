@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/kubescape/storage/pkg/apis/softwarecomposition/v1beta1"
 	kubescapefake "github.com/kubescape/storage/pkg/generated/clientset/versioned/fake"
+	spdxv1beta1 "github.com/kubescape/storage/pkg/generated/clientset/versioned/typed/softwarecomposition/v1beta1"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
@@ -46,12 +48,14 @@ func TestRegisterTools(t *testing.T) {
 	})
 
 	// Verify tools are registered by checking the server has tools
-	// NOTE: SBOM tools are disabled (too large for LLM context), so we expect 10 tools
+	// NOTE: SBOM tools are disabled (too large for LLM context), so we expect 12 tools
 	tools := s.ListTools()
-	assert.Len(t, tools, 10)
+	assert.Len(t, tools, 12)
 
 	expectedTools := map[string]bool{
 		"kubescape_check_health":                 false,
+		"kubescape_vulnerability_overview":       false,
+		"kubescape_list_vulnerable_workloads":    false,
 		"kubescape_list_vulnerability_manifests": false,
 		"kubescape_list_vulnerabilities":         false,
 		"kubescape_get_vulnerability_details":    false,
@@ -1191,3 +1195,522 @@ func TestHandleGetNetworkNeighborhood_NotFound(t *testing.T) {
 // func TestHandleGetSBOM_MissingName(t *testing.T) { ... }
 // func TestHandleGetSBOM_MissingNamespace(t *testing.T) { ... }
 // func TestHandleGetSBOM_NotFound(t *testing.T) { ... }
+
+// ---------------------------------------------------------------------------
+// T3: list_vulnerabilities -- bounded output, truthful summary (design 01b)
+// ---------------------------------------------------------------------------
+
+// manifestWithMatches builds a manifest holding n CVEs of the given severity,
+// alternating fix state so fixable filtering can be exercised.
+func manifestWithMatches(name string, perSeverity map[string]int) *v1beta1.VulnerabilityManifest {
+	matches := []v1beta1.Match{}
+	i := 0
+	for severity, n := range perSeverity {
+		for j := 0; j < n; j++ {
+			fixState := "not-fixed"
+			if i%2 == 0 {
+				fixState = "fixed"
+			}
+			matches = append(matches, v1beta1.Match{
+				Vulnerability: v1beta1.Vulnerability{
+					VulnerabilityMetadata: v1beta1.VulnerabilityMetadata{
+						ID:          fmt.Sprintf("CVE-2024-%s-%04d", severity, j),
+						Severity:    severity,
+						Description: "a description long enough to matter for payload size, repeated over and over",
+						DataSource:  "https://security-tracker.debian.org/tracker/CVE-2024-0000",
+					},
+					Fix: v1beta1.Fix{State: fixState, Versions: []string{"1.2.3"}},
+				},
+			})
+			i++
+		}
+	}
+	return &v1beta1.VulnerabilityManifest{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "kubescape"},
+		Spec:       v1beta1.VulnerabilityManifestSpec{Payload: v1beta1.GrypeDocument{Matches: matches}},
+	}
+}
+
+type vulnListResponse struct {
+	ManifestName    string                   `json:"manifest_name"`
+	SeveritySummary map[string]int           `json:"severity_summary"`
+	TotalCount      int                      `json:"total_count"`
+	ReturnedCount   int                      `json:"returned_count"`
+	Truncated       bool                     `json:"truncated"`
+	Vulnerabilities []map[string]interface{} `json:"vulnerabilities"`
+}
+
+func listVulns(t *testing.T, manifest *v1beta1.VulnerabilityManifest, args map[string]interface{}) vulnListResponse {
+	t.Helper()
+	spdxClient := kubescapefake.NewClientset(manifest)
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+	args["manifest_name"] = manifest.Name
+
+	result, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), makeRequest(args))
+	require.NoError(t, err)
+	require.False(t, result.IsError, getResultText(result))
+
+	var resp vulnListResponse
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &resp))
+	return resp
+}
+
+// The whole point of P4: a manifest with hundreds of CVEs must not return
+// hundreds of records. nginx:1.14.0 measured 200,793 B / 466 matches.
+func TestHandleListVulnerabilities_BoundsOutputByDefault(t *testing.T) {
+	m := manifestWithMatches("big", map[string]int{
+		"Critical": 76, "High": 133, "Medium": 99, "Low": 56, "Negligible": 102,
+	})
+
+	resp := listVulns(t, m, nil)
+
+	assert.Equal(t, 466, resp.TotalCount, "total_count must report every CVE, not just the returned ones")
+	assert.Equal(t, 20, resp.ReturnedCount, "default limit should bound the array")
+	assert.Len(t, resp.Vulnerabilities, 20)
+	assert.True(t, resp.Truncated, "the agent must be told it received partial data")
+}
+
+// The severity summary is the cheap answer and must describe the WHOLE manifest
+// even when the array is truncated.
+func TestHandleListVulnerabilities_SummaryCoversAllMatchesNotJustReturned(t *testing.T) {
+	m := manifestWithMatches("big", map[string]int{
+		"Critical": 76, "High": 133, "Medium": 99, "Low": 56, "Negligible": 102,
+	})
+
+	resp := listVulns(t, m, nil)
+
+	assert.Equal(t, 76, resp.SeveritySummary["Critical"])
+	assert.Equal(t, 133, resp.SeveritySummary["High"])
+	assert.Equal(t, 99, resp.SeveritySummary["Medium"])
+	assert.Equal(t, 56, resp.SeveritySummary["Low"])
+}
+
+// Measured live: 102 Negligible CVEs were reported as "Unknown": 102 because
+// severityCounts had no Negligible bucket.
+func TestHandleListVulnerabilities_CountsNegligibleNotUnknown(t *testing.T) {
+	m := manifestWithMatches("negl", map[string]int{"Negligible": 102})
+
+	resp := listVulns(t, m, nil)
+
+	assert.Equal(t, 102, resp.SeveritySummary["Negligible"], "Negligible must have its own bucket")
+	assert.Equal(t, 0, resp.SeveritySummary["Unknown"], "Negligible must not be miscounted as Unknown")
+}
+
+// A genuinely unrecognised severity still lands in Unknown.
+func TestHandleListVulnerabilities_UnrecognisedSeverityCountsAsUnknown(t *testing.T) {
+	m := manifestWithMatches("weird", map[string]int{"Bogus": 3})
+
+	resp := listVulns(t, m, nil)
+
+	assert.Equal(t, 3, resp.SeveritySummary["Unknown"])
+}
+
+// Per-record fields: description (56.1% of the payload) and data_source (19.5%)
+// are dropped; description is truncated mid-word anyway and full text lives in
+// get_vulnerability_details.
+func TestHandleListVulnerabilities_RecordCarriesOnlyIdSeverityFixState(t *testing.T) {
+	m := manifestWithMatches("fields", map[string]int{"Critical": 1})
+
+	resp := listVulns(t, m, nil)
+	require.Len(t, resp.Vulnerabilities, 1)
+
+	entry := resp.Vulnerabilities[0]
+	assert.ElementsMatch(t, []string{"id", "severity", "fix_state", "affected_artifacts"}, keysOf(entry))
+}
+
+func keysOf(m map[string]interface{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// Worst-first, so a truncated array is the part that matters.
+func TestHandleListVulnerabilities_SortsBySeverityDescending(t *testing.T) {
+	m := manifestWithMatches("order", map[string]int{
+		"Negligible": 5, "Critical": 2, "Medium": 3, "High": 4, "Low": 1,
+	})
+
+	resp := listVulns(t, m, map[string]interface{}{"limit": float64(6)})
+
+	got := []string{}
+	for _, v := range resp.Vulnerabilities {
+		got = append(got, v["severity"].(string))
+	}
+	assert.Equal(t, []string{"Critical", "Critical", "High", "High", "High", "High"}, got)
+}
+
+func TestHandleListVulnerabilities_FiltersBySeverity(t *testing.T) {
+	m := manifestWithMatches("filter", map[string]int{"Critical": 3, "Low": 7})
+
+	resp := listVulns(t, m, map[string]interface{}{"severity": "Critical"})
+
+	assert.Equal(t, 3, resp.TotalCount, "total_count reflects the filter")
+	assert.Len(t, resp.Vulnerabilities, 3)
+	for _, v := range resp.Vulnerabilities {
+		assert.Equal(t, "Critical", v["severity"])
+	}
+	// The summary still describes the whole manifest, so the agent keeps context.
+	assert.Equal(t, 7, resp.SeveritySummary["Low"])
+}
+
+func TestHandleListVulnerabilities_FiltersFixableOnly(t *testing.T) {
+	m := manifestWithMatches("fixable", map[string]int{"Critical": 10})
+
+	resp := listVulns(t, m, map[string]interface{}{"fixable_only": true})
+
+	assert.NotZero(t, len(resp.Vulnerabilities))
+	for _, v := range resp.Vulnerabilities {
+		assert.Equal(t, "fixed", v["fix_state"])
+	}
+	assert.Less(t, resp.TotalCount, 10, "fixable_only must actually exclude the unfixed ones")
+}
+
+// An explicit limit above the match count must not claim truncation.
+func TestHandleListVulnerabilities_NotTruncatedWhenLimitExceedsMatches(t *testing.T) {
+	m := manifestWithMatches("small", map[string]int{"High": 3})
+
+	resp := listVulns(t, m, map[string]interface{}{"limit": float64(100)})
+
+	assert.Equal(t, 3, resp.TotalCount)
+	assert.Equal(t, 3, resp.ReturnedCount)
+	assert.False(t, resp.Truncated)
+}
+
+func TestHandleListVulnerabilities_RejectsInvalidSeverity(t *testing.T) {
+	m := manifestWithMatches("bad", map[string]int{"High": 1})
+	spdxClient := kubescapefake.NewClientset(m)
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), makeRequest(map[string]interface{}{
+		"manifest_name": "bad",
+		"severity":      "VeryBad",
+	}))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, getResultText(result), "severity")
+}
+
+// ---------------------------------------------------------------------------
+// T1/T2: overview and workload ranking (design 01b)
+//
+// These read the aggregate resources through the storage API. That API strips
+// spec from every LIST unless ResourceVersion is the "fullSpec" sentinel, so a
+// default LIST returns all-zero counts -- the P0 failure shape at cluster
+// scale. The fake clientset ignores ResourceVersion and returns whatever was
+// seeded, so it CANNOT reproduce the stripping. The invariant is therefore
+// pinned by asserting the outgoing ListOptions, not by observing the response.
+// ---------------------------------------------------------------------------
+
+func counters(all, relevant int64, withRelevant bool) v1beta1.VulnerabilityCounters {
+	c := v1beta1.VulnerabilityCounters{All: all}
+	if withRelevant {
+		c.Relevant = relevant
+	}
+	return c
+}
+
+func nsSummary(namespace string, crit, high int64, refs ...string) *v1beta1.VulnerabilitySummary {
+	objRefs := []v1beta1.VulnerabilitiesObjScope{}
+	for _, r := range refs {
+		objRefs = append(objRefs, v1beta1.VulnerabilitiesObjScope{
+			Namespace: namespace, Name: r, Kind: "vulnerabilitymanifestsummary",
+		})
+	}
+	return &v1beta1.VulnerabilitySummary{
+		ObjectMeta: metav1.ObjectMeta{Name: namespace},
+		Spec: v1beta1.VulnerabilitySummarySpec{
+			Severities: v1beta1.SeveritySummary{
+				Critical: counters(crit, crit/2, true),
+				High:     counters(high, 0, false),
+			},
+			WorkloadVulnerabilitiesObj: objRefs,
+		},
+	}
+}
+
+func workloadSummary(namespace, name, imageTag, manifestName string, crit, high int64) *v1beta1.VulnerabilityManifestSummary {
+	return &v1beta1.VulnerabilityManifestSummary{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				"kubescape.io/image-tag": imageTag,
+				"kubescape.io/status":    "ready",
+			},
+			Labels: map[string]string{
+				"kubescape.io/workload-kind":           "deployment",
+				"kubescape.io/workload-name":           "app",
+				"kubescape.io/workload-container-name": "main",
+			},
+		},
+		Spec: v1beta1.VulnerabilityManifestSummarySpec{
+			Severities: v1beta1.SeveritySummary{
+				Critical: counters(crit, crit/2, true),
+				High:     counters(high, 0, false),
+			},
+			Vulnerabilities: v1beta1.VulnerabilitiesComponents{
+				ImageVulnerabilitiesObj: v1beta1.VulnerabilitiesObjScope{
+					// The server reports the WORKLOAD's namespace here, but the
+					// manifest actually lives in the Kubescape namespace, so
+					// this value is unusable. Verified on a live cluster: a GET
+					// in this namespace returns NotFound.
+					Namespace: namespace, Name: manifestName, Kind: "vulnerabilitymanifests",
+				},
+			},
+		},
+	}
+}
+
+// The fake clientset's recorded actions drop ResourceVersion entirely, so a
+// reactor cannot see it. These thin decorators wrap the typed client and record
+// the ListOptions the handler actually passes, which is the thing under test.
+
+type recordingSpdx struct {
+	spdxv1beta1.SpdxV1beta1Interface
+	recorded *[]metav1.ListOptions
+}
+
+func (r recordingSpdx) VulnerabilitySummaries(ns string) spdxv1beta1.VulnerabilitySummaryInterface {
+	return recordingVulnSummaries{r.SpdxV1beta1Interface.VulnerabilitySummaries(ns), r.recorded}
+}
+
+func (r recordingSpdx) VulnerabilityManifestSummaries(ns string) spdxv1beta1.VulnerabilityManifestSummaryInterface {
+	return recordingManifestSummaries{r.SpdxV1beta1Interface.VulnerabilityManifestSummaries(ns), r.recorded}
+}
+
+type recordingVulnSummaries struct {
+	spdxv1beta1.VulnerabilitySummaryInterface
+	recorded *[]metav1.ListOptions
+}
+
+func (r recordingVulnSummaries) List(ctx context.Context, opts metav1.ListOptions) (*v1beta1.VulnerabilitySummaryList, error) {
+	*r.recorded = append(*r.recorded, opts)
+	return r.VulnerabilitySummaryInterface.List(ctx, opts)
+}
+
+type recordingManifestSummaries struct {
+	spdxv1beta1.VulnerabilityManifestSummaryInterface
+	recorded *[]metav1.ListOptions
+}
+
+func (r recordingManifestSummaries) List(ctx context.Context, opts metav1.ListOptions) (*v1beta1.VulnerabilityManifestSummaryList, error) {
+	*r.recorded = append(*r.recorded, opts)
+	return r.VulnerabilityManifestSummaryInterface.List(ctx, opts)
+}
+
+func recordingClient(c *kubescapefake.Clientset, sink *[]metav1.ListOptions) spdxv1beta1.SpdxV1beta1Interface {
+	return recordingSpdx{c.SpdxV1beta1(), sink}
+}
+
+// THE LINCHPIN TEST. Without ResourceVersion="fullSpec" the storage server
+// returns spec-stripped objects and every count reads zero -- an agent would be
+// told a vulnerable cluster is clean. A fake cannot show that, so assert the
+// request instead.
+func TestHandleVulnerabilityOverview_RequestsFullSpec(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset(nsSummary("verify-targets", 99, 242, "deployment-vuln-nginx-nginx"))
+	var seen []metav1.ListOptions
+
+	tool := NewKubescapeToolWithClients(nil, nil, recordingClient(spdxClient, &seen))
+	_, err := tool.HandleVulnerabilityOverview(context.Background(), makeRequest(nil))
+	require.NoError(t, err)
+
+	require.Len(t, seen, 1)
+	assert.Equal(t, storageFullSpec, seen[0].ResourceVersion,
+		"must request fullSpec: a default LIST returns all-zero counts and would report a vulnerable cluster as clean")
+}
+
+func TestHandleListVulnerableWorkloads_RequestsFullSpec(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset(
+		workloadSummary("verify-targets", "deployment-vuln-nginx-nginx",
+			"docker.io/library/nginx:1.14.0", "docker.io-library-nginx-1.14.0-e34030", 76, 133))
+	var seen []metav1.ListOptions
+
+	tool := NewKubescapeToolWithClients(nil, nil, recordingClient(spdxClient, &seen))
+	_, err := tool.HandleListVulnerableWorkloads(context.Background(), makeRequest(nil))
+	require.NoError(t, err)
+
+	require.Len(t, seen, 1)
+	assert.Equal(t, storageFullSpec, seen[0].ResourceVersion)
+}
+
+func TestHandleVulnerabilityOverview_AggregatesNamespaces(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset(
+		nsSummary("verify-targets", 99, 242, "a", "b"),
+		nsSummary("other", 1, 2, "c"),
+	)
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, err := tool.HandleVulnerabilityOverview(context.Background(), makeRequest(nil))
+	require.NoError(t, err)
+	require.False(t, result.IsError, getResultText(result))
+
+	var resp struct {
+		Scope         string                            `json:"scope"`
+		ClusterTotals map[string]map[string]interface{} `json:"cluster_totals"`
+		Namespaces    []struct {
+			Namespace     string `json:"namespace"`
+			WorkloadCount int    `json:"workload_count"`
+		} `json:"namespaces"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &resp))
+
+	assert.Equal(t, "cluster", resp.Scope)
+	assert.Equal(t, float64(100), resp.ClusterTotals["Critical"]["all"], "cluster total sums namespaces")
+	require.Len(t, resp.Namespaces, 2)
+	assert.Equal(t, "verify-targets", resp.Namespaces[0].Namespace, "worst namespace first")
+	assert.Equal(t, 2, resp.Namespaces[0].WorkloadCount)
+}
+
+// relevant is `json:"relevant,omitempty"`, so a zero is indistinguishable from
+// "relevancy not computed". Never render it as a measured zero.
+func TestHandleVulnerabilityOverview_OmitsRelevantWhenAbsent(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset(nsSummary("verify-targets", 99, 242, "a"))
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, err := tool.HandleVulnerabilityOverview(context.Background(), makeRequest(nil))
+	require.NoError(t, err)
+
+	var resp struct {
+		ClusterTotals map[string]map[string]interface{} `json:"cluster_totals"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &resp))
+
+	// High was built with no relevant value at all.
+	_, present := resp.ClusterTotals["High"]["relevant"]
+	assert.False(t, present, "an absent relevant count must not be reported as 0")
+	// Critical had one, so it survives.
+	assert.Equal(t, float64(49), resp.ClusterTotals["Critical"]["relevant"])
+}
+
+func TestHandleListVulnerableWorkloads_CarriesManifestPointer(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset(
+		workloadSummary("verify-targets", "deployment-vuln-nginx-nginx",
+			"docker.io/library/nginx:1.14.0", "docker.io-library-nginx-1.14.0-e34030", 76, 133))
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, err := tool.HandleListVulnerableWorkloads(context.Background(), makeRequest(nil))
+	require.NoError(t, err)
+	require.False(t, result.IsError, getResultText(result))
+
+	var resp struct {
+		Workloads []map[string]interface{} `json:"workloads"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &resp))
+	require.Len(t, resp.Workloads, 1)
+
+	w := resp.Workloads[0]
+	// The whole point of the ladder: the next call is handed over, never guessed.
+	assert.Equal(t, "docker.io-library-nginx-1.14.0-e34030", w["manifest_name"])
+	assert.Equal(t, "docker.io/library/nginx:1.14.0", w["image"])
+	// The summary was built with the workload's namespace in the ref, which is
+	// what the real server sends and where the manifest is NOT. Reporting it
+	// verbatim hands the agent a pointer that 404s.
+	assert.Equal(t, "kubescape", w["manifest_namespace"],
+		"manifest_namespace must be where manifests actually live, not the unusable value in vulnerabilitiesRef")
+}
+
+func TestHandleListVulnerableWorkloads_SortsAndLimits(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset(
+		workloadSummary("ns", "low-risk", "img:a", "manifest-a", 1, 0),
+		workloadSummary("ns", "high-risk", "img:b", "manifest-b", 76, 0),
+		workloadSummary("ns", "mid-risk", "img:c", "manifest-c", 12, 0),
+	)
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, err := tool.HandleListVulnerableWorkloads(context.Background(), makeRequest(map[string]interface{}{
+		"limit": float64(2),
+	}))
+	require.NoError(t, err)
+
+	var resp struct {
+		TotalWorkloads int                      `json:"total_workloads"`
+		Returned       int                      `json:"returned"`
+		Truncated      bool                     `json:"truncated"`
+		Workloads      []map[string]interface{} `json:"workloads"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &resp))
+
+	assert.Equal(t, 3, resp.TotalWorkloads)
+	assert.Equal(t, 2, resp.Returned)
+	assert.True(t, resp.Truncated)
+	require.Len(t, resp.Workloads, 2)
+	assert.Equal(t, "high-risk", resp.Workloads[0]["workload_summary"])
+	assert.Equal(t, "mid-risk", resp.Workloads[1]["workload_summary"])
+}
+
+// If every namespace reports zero, we cannot tell "clean cluster" from
+// "fullSpec stopped working". Say so rather than reporting good news.
+func TestHandleVulnerabilityOverview_FlagsAllZeroAsUnverified(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset(nsSummary("verify-targets", 0, 0, "a"))
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, err := tool.HandleVulnerabilityOverview(context.Background(), makeRequest(nil))
+	require.NoError(t, err)
+
+	assert.Contains(t, getResultText(result), "could not be confirmed",
+		"an all-zero result must be reported as unconfirmed, never as a clean cluster")
+}
+
+// Grype emits one Match per affected package, so the same CVE ID recurs. Once
+// the package fields are trimmed away those rows are byte-identical and would
+// burn the limit budget on duplicates -- measured live, the first 20 records for
+// nginx:1.14.0 contained CVE-2017-12424 and CVE-2017-15670 twice each.
+func TestHandleListVulnerabilities_DeduplicatesByCVE(t *testing.T) {
+	dup := func(id, severity, fixState string) v1beta1.Match {
+		return v1beta1.Match{Vulnerability: v1beta1.Vulnerability{
+			VulnerabilityMetadata: v1beta1.VulnerabilityMetadata{ID: id, Severity: severity},
+			Fix:                   v1beta1.Fix{State: fixState},
+		}}
+	}
+	m := &v1beta1.VulnerabilityManifest{
+		ObjectMeta: metav1.ObjectMeta{Name: "dupes", Namespace: "kubescape"},
+		Spec: v1beta1.VulnerabilityManifestSpec{Payload: v1beta1.GrypeDocument{Matches: []v1beta1.Match{
+			dup("CVE-2017-12424", "Critical", "fixed"),
+			dup("CVE-2017-12424", "Critical", "fixed"),
+			dup("CVE-2017-12424", "Critical", "fixed"),
+			dup("CVE-2020-0001", "High", "not-fixed"),
+		}}},
+	}
+
+	resp := listVulns(t, m, nil)
+
+	// The summary counts matches, matching the numbers Kubescape itself reports.
+	assert.Equal(t, 3, resp.SeveritySummary["Critical"])
+	assert.Equal(t, 1, resp.SeveritySummary["High"])
+
+	// The array carries distinct CVEs.
+	require.Len(t, resp.Vulnerabilities, 2)
+	assert.Equal(t, 2, resp.TotalCount, "total_count counts distinct CVEs in the array")
+
+	assert.Equal(t, "CVE-2017-12424", resp.Vulnerabilities[0]["id"])
+	assert.Equal(t, float64(3), resp.Vulnerabilities[0]["affected_artifacts"],
+		"the collapsed matches must still be visible as a count")
+	assert.Equal(t, float64(1), resp.Vulnerabilities[1]["affected_artifacts"])
+}
+
+// A CVE fixed in one package but not another is only actionable if the list says
+// so, and "not-fixed" is the safer thing to surface.
+func TestHandleListVulnerabilities_DedupeKeepsWorstFixState(t *testing.T) {
+	mk := func(fixState string) v1beta1.Match {
+		return v1beta1.Match{Vulnerability: v1beta1.Vulnerability{
+			VulnerabilityMetadata: v1beta1.VulnerabilityMetadata{ID: "CVE-2021-1", Severity: "High"},
+			Fix:                   v1beta1.Fix{State: fixState},
+		}}
+	}
+	m := &v1beta1.VulnerabilityManifest{
+		ObjectMeta: metav1.ObjectMeta{Name: "mixed", Namespace: "kubescape"},
+		Spec:       v1beta1.VulnerabilityManifestSpec{Payload: v1beta1.GrypeDocument{Matches: []v1beta1.Match{mk("fixed"), mk("not-fixed")}}},
+	}
+
+	resp := listVulns(t, m, nil)
+
+	require.Len(t, resp.Vulnerabilities, 1)
+	assert.Equal(t, "not-fixed", resp.Vulnerabilities[0]["fix_state"],
+		"a CVE unfixed in any package must not be reported as fixed")
+}
