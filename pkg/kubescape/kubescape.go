@@ -8,12 +8,11 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/errors"
-	"github.com/kagent-dev/tools/internal/telemetry"
+	mcp "github.com/kagent-dev/tools/internal/mcp"
 	helpersv1 "github.com/kubescape/k8s-interface/instanceidhandler/v1/helpers"
 	"github.com/kubescape/storage/pkg/apis/softwarecomposition/v1beta1"
 	spdxv1beta1 "github.com/kubescape/storage/pkg/generated/clientset/versioned/typed/softwarecomposition/v1beta1"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -37,6 +36,11 @@ const (
 	operatorPodLabel = "app.kubernetes.io/name=kubescape-operator"
 	storagePodLabel  = "app.kubernetes.io/name=storage"
 )
+
+// kubescapeErrResult adapts ToolError to an MCP error result.
+func kubescapeErrResult(toolErr *errors.ToolError) *sdkmcp.CallToolResult {
+	return toolErr.ToMCPResult()
+}
 
 // KubescapeTool holds the clients for Kubescape and Kubernetes APIs
 type KubescapeTool struct {
@@ -102,26 +106,218 @@ func getKubeConfig(kubeconfig string) (*rest.Config, error) {
 // HealthCheckResult represents the result of a health check
 type HealthCheckResult struct {
 	Healthy         bool                   `json:"healthy"`
-	Checks          map[string]CheckStatus `json:"checks"`
+	Checks          map[string]CheckStatus `json:"checks,omitempty"`
 	Summary         string                 `json:"summary"`
 	Recommendations []string               `json:"recommendations,omitempty"`
 }
 
 // CheckStatus represents the status of a single check
 type CheckStatus struct {
-	Status  string      `json:"status"`
-	Message string      `json:"message"`
-	Details interface{} `json:"details,omitempty"`
+	Status  string          `json:"status"`
+	Message string          `json:"message"`
+	Details []PodCheckEntry `json:"details,omitempty"`
+}
+
+// PodCheckEntry reports the name and phase of a pod inspected by a health check.
+type PodCheckEntry struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+type checkHealthInput struct {
+	Namespace string `json:"namespace" jsonschema:"Namespace to check (default: kubescape)"`
+}
+
+type listVulnerabilityManifestsInput struct {
+	Namespace string `json:"namespace" jsonschema:"Filter by namespace (optional, defaults to all namespaces)"`
+	Level     string `json:"level" jsonschema:"Type of manifests to list: 'image', 'workload', or 'both' (default: both)"`
+}
+
+type listVulnerabilitiesInManifestInput struct {
+	Namespace    string `json:"namespace" jsonschema:"Namespace of the manifest (default: kubescape)"`
+	ManifestName string `json:"manifest_name" jsonschema:"Name of the vulnerability manifest"`
+}
+
+type getVulnerabilityDetailsInput struct {
+	Namespace    string `json:"namespace" jsonschema:"Namespace of the manifest (default: kubescape)"`
+	ManifestName string `json:"manifest_name" jsonschema:"Name of the vulnerability manifest"`
+	CveID        string `json:"cve_id" jsonschema:"CVE identifier (e.g., CVE-2023-12345)"`
+}
+
+type listConfigurationScansInput struct {
+	Namespace string `json:"namespace" jsonschema:"Filter by namespace (optional, defaults to all namespaces)"`
+}
+
+type getConfigurationScanInput struct {
+	Namespace    string `json:"namespace" jsonschema:"Namespace of the scan (default: kubescape)"`
+	ManifestName string `json:"manifest_name" jsonschema:"Name of the configuration scan manifest"`
+}
+
+type listApplicationProfilesInput struct {
+	Namespace string `json:"namespace" jsonschema:"Filter by namespace (optional, defaults to all namespaces)"`
+}
+
+type getApplicationProfileInput struct {
+	Namespace string `json:"namespace" jsonschema:"Namespace of the profile"`
+	Name      string `json:"name" jsonschema:"Name of the application profile"`
+}
+
+type listNetworkNeighborhoodsInput struct {
+	Namespace string `json:"namespace" jsonschema:"Filter by namespace (optional, defaults to all namespaces)"`
+}
+
+type getNetworkNeighborhoodInput struct {
+	Namespace string `json:"namespace" jsonschema:"Namespace of the network neighborhood"`
+	Name      string `json:"name" jsonschema:"Name of the network neighborhood"`
+}
+
+// Typed response shapes for the read-only scan/report tools. Each is returned
+// directly as the handler's typed Out value, so the SDK derives an output schema
+// and populates CallToolResult.StructuredContent from a concrete Go type.
+
+type vulnerabilityManifestSummary struct {
+	Namespace             string `json:"namespace"`
+	ManifestName          string `json:"manifest_name"`
+	ImageLevel            bool   `json:"image_level"`
+	WorkloadLevel         bool   `json:"workload_level"`
+	ImageID               string `json:"image_id"`
+	ImageTag              string `json:"image_tag"`
+	WorkloadID            string `json:"workload_id"`
+	WorkloadContainerName string `json:"workload_container_name"`
+}
+
+type listVulnerabilityManifestsOutput struct {
+	VulnerabilityManifests []vulnerabilityManifestSummary `json:"vulnerability_manifests"`
+	TotalCount             int                            `json:"total_count"`
+}
+
+type severitySummary struct {
+	Critical int `json:"Critical"`
+	High     int `json:"High"`
+	Medium   int `json:"Medium"`
+	Low      int `json:"Low"`
+	Unknown  int `json:"Unknown"`
+}
+
+type vulnerabilitySummary struct {
+	ID          string   `json:"id"`
+	Severity    string   `json:"severity"`
+	Description string   `json:"description"`
+	DataSource  string   `json:"data_source"`
+	FixState    string   `json:"fix_state,omitempty"`
+	FixVersions []string `json:"fix_versions,omitempty"`
+}
+
+type listVulnerabilitiesInManifestOutput struct {
+	ManifestName    string                 `json:"manifest_name"`
+	Namespace       string                 `json:"namespace"`
+	TotalCount      int                    `json:"total_count"`
+	SeveritySummary severitySummary        `json:"severity_summary"`
+	Vulnerabilities []vulnerabilitySummary `json:"vulnerabilities"`
+}
+
+type configurationScanSummary struct {
+	Namespace    string `json:"namespace"`
+	ManifestName string `json:"manifest_name"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type listConfigurationScansOutput struct {
+	ConfigurationScans []configurationScanSummary `json:"configuration_scans"`
+	TotalCount         int                        `json:"total_count"`
+}
+
+type applicationProfileSummary struct {
+	Namespace                string `json:"namespace"`
+	Name                     string `json:"name"`
+	ContainersCount          int    `json:"containers_count"`
+	InitContainersCount      int    `json:"init_containers_count"`
+	EphemeralContainersCount int    `json:"ephemeral_containers_count"`
+	TotalExecs               int    `json:"total_execs"`
+	TotalOpens               int    `json:"total_opens"`
+	TotalSyscalls            int    `json:"total_syscalls"`
+	TotalCapabilities        int    `json:"total_capabilities"`
+	TotalEndpoints           int    `json:"total_endpoints"`
+	CreatedAt                string `json:"created_at"`
+}
+
+type listApplicationProfilesOutput struct {
+	ApplicationProfiles []applicationProfileSummary `json:"application_profiles"`
+	TotalCount          int                         `json:"total_count"`
+	Description         string                      `json:"description"`
+}
+
+type containerBehavior struct {
+	Name           string                        `json:"name"`
+	Execs          []v1beta1.ExecCalls           `json:"execs"`
+	Opens          []v1beta1.OpenCalls           `json:"opens"`
+	Syscalls       []string                      `json:"syscalls"`
+	Capabilities   []string                      `json:"capabilities"`
+	Endpoints      []v1beta1.HTTPEndpoint        `json:"endpoints"`
+	SeccompProfile *v1beta1.SingleSeccompProfile `json:"seccomp_profile,omitempty"`
+}
+
+type getApplicationProfileOutput struct {
+	Namespace      string              `json:"namespace"`
+	Name           string              `json:"name"`
+	Containers     []containerBehavior `json:"containers"`
+	InitContainers []containerBehavior `json:"init_containers"`
+	Annotations    map[string]string   `json:"annotations,omitempty"`
+	Labels         map[string]string   `json:"labels,omitempty"`
+	Description    string              `json:"description"`
+}
+
+type networkNeighborhoodSummary struct {
+	Namespace       string `json:"namespace"`
+	Name            string `json:"name"`
+	ContainersCount int    `json:"containers_count"`
+	TotalIngress    int    `json:"total_ingress"`
+	TotalEgress     int    `json:"total_egress"`
+	CreatedAt       string `json:"created_at"`
+}
+
+type listNetworkNeighborhoodsOutput struct {
+	NetworkNeighborhoods []networkNeighborhoodSummary `json:"network_neighborhoods"`
+	TotalCount           int                          `json:"total_count"`
+	Description          string                       `json:"description"`
+}
+
+type networkConnection struct {
+	Identifier        string                    `json:"identifier"`
+	Type              v1beta1.CommunicationType `json:"type"`
+	DNS               string                    `json:"dns,omitempty"`
+	Ports             []v1beta1.NetworkPort     `json:"ports,omitempty"`
+	IPAddress         string                    `json:"ip_address,omitempty"`
+	PodSelector       *metav1.LabelSelector     `json:"pod_selector,omitempty"`
+	NamespaceSelector *metav1.LabelSelector     `json:"namespace_selector,omitempty"`
+}
+
+type networkContainer struct {
+	Name    string              `json:"name"`
+	Ingress []networkConnection `json:"ingress"`
+	Egress  []networkConnection `json:"egress"`
+}
+
+type getNetworkNeighborhoodOutput struct {
+	Namespace   string             `json:"namespace"`
+	Name        string             `json:"name"`
+	Containers  []networkContainer `json:"containers"`
+	Annotations map[string]string  `json:"annotations,omitempty"`
+	Labels      map[string]string  `json:"labels,omitempty"`
+	Description string             `json:"description"`
 }
 
 // handleCheckHealth verifies Kubescape operator installation and readiness
-func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request *sdkmcp.CallToolRequest, in checkHealthInput) (*sdkmcp.CallToolResult, HealthCheckResult, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("check_health", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), HealthCheckResult{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", defaultKubescapeNamespace)
+	namespace := in.Namespace
+	if namespace == "" {
+		namespace = defaultKubescapeNamespace
+	}
 
 	result := HealthCheckResult{
 		Healthy: true,
@@ -172,15 +368,15 @@ func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallT
 		recommendations = append(recommendations, "Install Kubescape operator: helm upgrade --install kubescape kubescape/kubescape-operator -n kubescape --create-namespace")
 	} else {
 		runningCount := 0
-		podDetails := []map[string]string{}
+		podDetails := []PodCheckEntry{}
 		for _, pod := range operatorPods.Items {
 			status := string(pod.Status.Phase)
 			if pod.Status.Phase == corev1.PodRunning {
 				runningCount++
 			}
-			podDetails = append(podDetails, map[string]string{
-				"name":   pod.Name,
-				"status": status,
+			podDetails = append(podDetails, PodCheckEntry{
+				Name:   pod.Name,
+				Status: status,
 			})
 		}
 		if runningCount == len(operatorPods.Items) {
@@ -456,21 +652,24 @@ func (k *KubescapeTool) handleCheckHealth(ctx context.Context, request mcp.CallT
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), HealthCheckResult{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // handleListVulnerabilityManifests lists vulnerability manifests at image and workload levels
-func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, request *sdkmcp.CallToolRequest, in listVulnerabilityManifestsInput) (*sdkmcp.CallToolResult, listVulnerabilityManifestsOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("list_vulnerability_manifests", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listVulnerabilityManifestsOutput{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", "")
-	level := mcp.ParseString(request, "level", "both")
+	namespace := in.Namespace
+	level := in.Level
+	if level == "" {
+		level = "both"
+	}
 
 	// Build label selector based on level
 	labelSelector := ""
@@ -498,52 +697,59 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 		toolErr := errors.NewKubescapeError("list_vulnerability_manifests", err).
 			WithContext("namespace", namespace).
 			WithContext("level", level)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listVulnerabilityManifestsOutput{}, nil
 	}
 
 	// Build response
-	vulnerabilityManifests := []map[string]interface{}{}
+	vulnerabilityManifests := []vulnerabilityManifestSummary{}
+	// No vulnerability count is reported here. The aggregated API strips
+	// spec.payload.matches on LIST and serves it only on GET, so the field is
+	// nil on every listed object: counting it would report 0 for every image in
+	// every cluster, and an agent reading that data would conclude the cluster
+	// is clean. An absent field cannot be mistaken for a measured zero. Use
+	// kubescape_list_vulnerabilities with a manifest_name for real counts.
 	for _, manifest := range manifests.Items {
 		isImageLevel := manifest.Annotations[helpersv1.WlidMetadataKey] == ""
-		manifestMap := map[string]interface{}{
-			"namespace":               manifest.Namespace,
-			"manifest_name":           manifest.Name,
-			"image_level":             isImageLevel,
-			"workload_level":          !isImageLevel,
-			"image_id":                manifest.Annotations[helpersv1.ImageIDMetadataKey],
-			"image_tag":               manifest.Annotations[helpersv1.ImageTagMetadataKey],
-			"workload_id":             manifest.Annotations[helpersv1.WlidMetadataKey],
-			"workload_container_name": manifest.Annotations[helpersv1.ContainerNameMetadataKey],
-			"vulnerability_count":     len(manifest.Spec.Payload.Matches),
-		}
-		vulnerabilityManifests = append(vulnerabilityManifests, manifestMap)
+		vulnerabilityManifests = append(vulnerabilityManifests, vulnerabilityManifestSummary{
+			Namespace:             manifest.Namespace,
+			ManifestName:          manifest.Name,
+			ImageLevel:            isImageLevel,
+			WorkloadLevel:         !isImageLevel,
+			ImageID:               manifest.Annotations[helpersv1.ImageIDMetadataKey],
+			ImageTag:              manifest.Annotations[helpersv1.ImageTagMetadataKey],
+			WorkloadID:            manifest.Annotations[helpersv1.WlidMetadataKey],
+			WorkloadContainerName: manifest.Annotations[helpersv1.ContainerNameMetadataKey],
+		})
 	}
 
-	result := map[string]interface{}{
-		"vulnerability_manifests": vulnerabilityManifests,
-		"total_count":             len(vulnerabilityManifests),
+	result := listVulnerabilityManifestsOutput{
+		VulnerabilityManifests: vulnerabilityManifests,
+		TotalCount:             len(vulnerabilityManifests),
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), listVulnerabilityManifestsOutput{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // handleListVulnerabilitiesInManifest lists all CVEs in a specific manifest
-func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context, request *sdkmcp.CallToolRequest, in listVulnerabilitiesInManifestInput) (*sdkmcp.CallToolResult, listVulnerabilitiesInManifestOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("list_vulnerabilities", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listVulnerabilitiesInManifestOutput{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", defaultKubescapeNamespace)
-	manifestName := mcp.ParseString(request, "manifest_name", "")
+	namespace := in.Namespace
+	if namespace == "" {
+		namespace = defaultKubescapeNamespace
+	}
+	manifestName := in.ManifestName
 
 	if manifestName == "" {
-		return mcp.NewToolResultError("manifest_name parameter is required"), nil
+		return mcp.NewToolResultError("manifest_name parameter is required"), listVulnerabilitiesInManifestOutput{}, nil
 	}
 
 	manifest, err := k.spdxClient.VulnerabilityManifests(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -551,75 +757,79 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 		toolErr := errors.NewKubescapeError("get_vulnerability_manifest", err).
 			WithContext("namespace", namespace).
 			WithContext("manifest_name", manifestName)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listVulnerabilitiesInManifestOutput{}, nil
 	}
 
 	// Extract vulnerabilities with summary info
-	vulnerabilities := []map[string]interface{}{}
-	severityCounts := map[string]int{
-		"Critical": 0,
-		"High":     0,
-		"Medium":   0,
-		"Low":      0,
-		"Unknown":  0,
-	}
+	vulnerabilities := []vulnerabilitySummary{}
+	severityCounts := severitySummary{}
 
 	for _, match := range manifest.Spec.Payload.Matches {
 		vuln := match.Vulnerability
 		severity := string(vuln.Severity)
-		if _, exists := severityCounts[severity]; exists {
-			severityCounts[severity]++
-		} else {
-			severityCounts["Unknown"]++
+		switch severity {
+		case "Critical":
+			severityCounts.Critical++
+		case "High":
+			severityCounts.High++
+		case "Medium":
+			severityCounts.Medium++
+		case "Low":
+			severityCounts.Low++
+		default:
+			severityCounts.Unknown++
 		}
 
-		vulnInfo := map[string]interface{}{
-			"id":          vuln.ID,
-			"severity":    severity,
-			"description": truncateString(vuln.Description, 200),
-			"data_source": vuln.DataSource,
+		vulnInfo := vulnerabilitySummary{
+			ID:          vuln.ID,
+			Severity:    severity,
+			Description: truncateString(vuln.Description, 200),
+			DataSource:  vuln.DataSource,
 		}
 
 		if vuln.Fix.State != "" {
-			vulnInfo["fix_state"] = vuln.Fix.State
-			vulnInfo["fix_versions"] = vuln.Fix.Versions
+			vulnInfo.FixState = vuln.Fix.State
+			vulnInfo.FixVersions = vuln.Fix.Versions
 		}
 
 		vulnerabilities = append(vulnerabilities, vulnInfo)
 	}
 
-	result := map[string]interface{}{
-		"manifest_name":    manifestName,
-		"namespace":        namespace,
-		"total_count":      len(vulnerabilities),
-		"severity_summary": severityCounts,
-		"vulnerabilities":  vulnerabilities,
+	result := listVulnerabilitiesInManifestOutput{
+		ManifestName:    manifestName,
+		Namespace:       namespace,
+		TotalCount:      len(vulnerabilities),
+		SeveritySummary: severityCounts,
+		Vulnerabilities: vulnerabilities,
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), listVulnerabilitiesInManifestOutput{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // handleGetVulnerabilityDetails gets detailed info about a specific CVE in a manifest
-func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, request *sdkmcp.CallToolRequest, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, []v1beta1.Match, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("get_vulnerability_details", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), nil, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", defaultKubescapeNamespace)
-	manifestName := mcp.ParseString(request, "manifest_name", "")
-	cveID := mcp.ParseString(request, "cve_id", "")
+	namespace := in.Namespace
+	if namespace == "" {
+		namespace = defaultKubescapeNamespace
+	}
+	manifestName := in.ManifestName
+	cveID := in.CveID
 
 	if manifestName == "" {
-		return mcp.NewToolResultError("manifest_name parameter is required"), nil
+		return mcp.NewToolResultError("manifest_name parameter is required"), nil, nil
 	}
 	if cveID == "" {
-		return mcp.NewToolResultError("cve_id parameter is required"), nil
+		return mcp.NewToolResultError("cve_id parameter is required"), nil, nil
 	}
 
 	manifest, err := k.spdxClient.VulnerabilityManifests(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -627,7 +837,7 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 		toolErr := errors.NewKubescapeError("get_vulnerability_manifest", err).
 			WithContext("namespace", namespace).
 			WithContext("manifest_name", manifestName)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), nil, nil
 	}
 
 	// Find matching CVE entries
@@ -639,25 +849,24 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 	}
 
 	if len(matches) == 0 {
-		return mcp.NewToolResultError(fmt.Sprintf("CVE %s not found in manifest %s", cveID, manifestName)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("CVE %s not found in manifest %s", cveID, manifestName)), nil, nil
 	}
 
-	content, err := json.MarshalIndent(matches, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
-	}
-
-	return mcp.NewToolResultText(string(content)), nil
+	// Return the matches as the typed Out and leave Content unset. For an array
+	// (non-object) output the SDK serialises the value into a TextContent block
+	// itself; setting Content here as well would emit the same list twice for
+	// clients that read Content.
+	return nil, matches, nil
 }
 
 // handleListConfigurationScans lists configuration security scan results
-func (k *KubescapeTool) handleListConfigurationScans(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleListConfigurationScans(ctx context.Context, request *sdkmcp.CallToolRequest, in listConfigurationScansInput) (*sdkmcp.CallToolResult, listConfigurationScansOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("list_configuration_scans", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listConfigurationScansOutput{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", "")
+	namespace := in.Namespace
 
 	queryNamespace := metav1.NamespaceAll
 	if namespace != "" {
@@ -668,44 +877,47 @@ func (k *KubescapeTool) handleListConfigurationScans(ctx context.Context, reques
 	if err != nil {
 		toolErr := errors.NewKubescapeError("list_configuration_scans", err).
 			WithContext("namespace", namespace)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listConfigurationScansOutput{}, nil
 	}
 
-	configManifests := []map[string]interface{}{}
+	configManifests := []configurationScanSummary{}
 	for _, manifest := range manifests.Items {
-		item := map[string]interface{}{
-			"namespace":     manifest.Namespace,
-			"manifest_name": manifest.Name,
-			"created_at":    manifest.CreationTimestamp.Format(time.RFC3339),
-		}
-		configManifests = append(configManifests, item)
+		configManifests = append(configManifests, configurationScanSummary{
+			Namespace:    manifest.Namespace,
+			ManifestName: manifest.Name,
+			CreatedAt:    manifest.CreationTimestamp.Format(time.RFC3339),
+		})
 	}
 
-	result := map[string]interface{}{
-		"configuration_scans": configManifests,
-		"total_count":         len(configManifests),
+	result := listConfigurationScansOutput{
+		ConfigurationScans: configManifests,
+		TotalCount:         len(configManifests),
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), listConfigurationScansOutput{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // handleGetConfigurationScan gets details of a specific configuration scan
-func (k *KubescapeTool) handleGetConfigurationScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleGetConfigurationScan(ctx context.Context, request *sdkmcp.CallToolRequest, in getConfigurationScanInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("get_configuration_scan", k.initError)
-		return toolErr.ToMCPResult(), nil
+		res := kubescapeErrResult(toolErr)
+		return res, mcp.TextOf(res), nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", defaultKubescapeNamespace)
-	manifestName := mcp.ParseString(request, "manifest_name", "")
+	namespace := in.Namespace
+	if namespace == "" {
+		namespace = defaultKubescapeNamespace
+	}
+	manifestName := in.ManifestName
 
 	if manifestName == "" {
-		return mcp.NewToolResultError("manifest_name parameter is required"), nil
+		return mcp.TextError("manifest_name parameter is required")
 	}
 
 	manifest, err := k.spdxClient.WorkloadConfigurationScans(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -713,25 +925,26 @@ func (k *KubescapeTool) handleGetConfigurationScan(ctx context.Context, request 
 		toolErr := errors.NewKubescapeError("get_configuration_scan", err).
 			WithContext("namespace", namespace).
 			WithContext("manifest_name", manifestName)
-		return toolErr.ToMCPResult(), nil
+		res := kubescapeErrResult(toolErr)
+		return res, mcp.TextOf(res), nil
 	}
 
 	content, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.TextError(fmt.Sprintf("failed to marshal result: %v", err))
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.TextResult(string(content))
 }
 
 // handleListApplicationProfiles lists application profiles showing runtime behavior data
-func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, request *sdkmcp.CallToolRequest, in listApplicationProfilesInput) (*sdkmcp.CallToolResult, listApplicationProfilesOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("list_application_profiles", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listApplicationProfilesOutput{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", "")
+	namespace := in.Namespace
 
 	queryNamespace := metav1.NamespaceAll
 	if namespace != "" {
@@ -742,10 +955,10 @@ func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, reque
 	if err != nil {
 		toolErr := errors.NewKubescapeError("list_application_profiles", err).
 			WithContext("namespace", namespace)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listApplicationProfilesOutput{}, nil
 	}
 
-	profileList := []map[string]interface{}{}
+	profileList := []applicationProfileSummary{}
 	for _, profile := range profiles.Items {
 		// Summarize what data is captured per container
 		containersCount := len(profile.Spec.Containers)
@@ -766,26 +979,25 @@ func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, reque
 			totalEndpoints += len(c.Endpoints)
 		}
 
-		profileMap := map[string]interface{}{
-			"namespace":                  profile.Namespace,
-			"name":                       profile.Name,
-			"containers_count":           containersCount,
-			"init_containers_count":      initContainersCount,
-			"ephemeral_containers_count": ephemeralContainersCount,
-			"total_execs":                totalExecs,
-			"total_opens":                totalOpens,
-			"total_syscalls":             totalSyscalls,
-			"total_capabilities":         totalCapabilities,
-			"total_endpoints":            totalEndpoints,
-			"created_at":                 profile.CreationTimestamp.Format(time.RFC3339),
-		}
-		profileList = append(profileList, profileMap)
+		profileList = append(profileList, applicationProfileSummary{
+			Namespace:                profile.Namespace,
+			Name:                     profile.Name,
+			ContainersCount:          containersCount,
+			InitContainersCount:      initContainersCount,
+			EphemeralContainersCount: ephemeralContainersCount,
+			TotalExecs:               totalExecs,
+			TotalOpens:               totalOpens,
+			TotalSyscalls:            totalSyscalls,
+			TotalCapabilities:        totalCapabilities,
+			TotalEndpoints:           totalEndpoints,
+			CreatedAt:                profile.CreationTimestamp.Format(time.RFC3339),
+		})
 	}
 
-	result := map[string]interface{}{
-		"application_profiles": profileList,
-		"total_count":          len(profileList),
-		"description": "ApplicationProfiles capture runtime behavior of workloads including: " +
+	result := listApplicationProfilesOutput{
+		ApplicationProfiles: profileList,
+		TotalCount:          len(profileList),
+		Description: "ApplicationProfiles capture runtime behavior of workloads including: " +
 			"executed processes (Execs), file access patterns (Opens), system calls (Syscalls), " +
 			"Linux capabilities used, and HTTP endpoints accessed. " +
 			"Use this data to prioritize vulnerabilities - a CVE in an unused package is lower priority than one in an actively running process.",
@@ -793,27 +1005,27 @@ func (k *KubescapeTool) handleListApplicationProfiles(ctx context.Context, reque
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), listApplicationProfilesOutput{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // handleGetApplicationProfile gets detailed runtime behavior for a specific workload
-func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request *sdkmcp.CallToolRequest, in getApplicationProfileInput) (*sdkmcp.CallToolResult, getApplicationProfileOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("get_application_profile", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), getApplicationProfileOutput{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", "")
-	name := mcp.ParseString(request, "name", "")
+	namespace := in.Namespace
+	name := in.Name
 
 	if name == "" {
-		return mcp.NewToolResultError("name parameter is required"), nil
+		return mcp.NewToolResultError("name parameter is required"), getApplicationProfileOutput{}, nil
 	}
 	if namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil
+		return mcp.NewToolResultError("namespace parameter is required"), getApplicationProfileOutput{}, nil
 	}
 
 	profile, err := k.spdxClient.ApplicationProfiles(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -821,47 +1033,47 @@ func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request
 		toolErr := errors.NewKubescapeError("get_application_profile", err).
 			WithContext("namespace", namespace).
 			WithContext("name", name)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), getApplicationProfileOutput{}, nil
 	}
 
 	// Build detailed response with container behaviors
-	containers := []map[string]interface{}{}
+	containers := []containerBehavior{}
 	for _, c := range profile.Spec.Containers {
-		containerInfo := map[string]interface{}{
-			"name":         c.Name,
-			"execs":        c.Execs,
-			"opens":        c.Opens,
-			"syscalls":     c.Syscalls,
-			"capabilities": c.Capabilities,
-			"endpoints":    c.Endpoints,
+		containerInfo := containerBehavior{
+			Name:         c.Name,
+			Execs:        c.Execs,
+			Opens:        c.Opens,
+			Syscalls:     c.Syscalls,
+			Capabilities: c.Capabilities,
+			Endpoints:    c.Endpoints,
 		}
 		if c.SeccompProfile.Name != "" || c.SeccompProfile.Path != "" {
-			containerInfo["seccomp_profile"] = c.SeccompProfile
+			seccompProfile := c.SeccompProfile
+			containerInfo.SeccompProfile = &seccompProfile
 		}
 		containers = append(containers, containerInfo)
 	}
 
-	initContainers := []map[string]interface{}{}
+	initContainers := []containerBehavior{}
 	for _, c := range profile.Spec.InitContainers {
-		containerInfo := map[string]interface{}{
-			"name":         c.Name,
-			"execs":        c.Execs,
-			"opens":        c.Opens,
-			"syscalls":     c.Syscalls,
-			"capabilities": c.Capabilities,
-			"endpoints":    c.Endpoints,
-		}
-		initContainers = append(initContainers, containerInfo)
+		initContainers = append(initContainers, containerBehavior{
+			Name:         c.Name,
+			Execs:        c.Execs,
+			Opens:        c.Opens,
+			Syscalls:     c.Syscalls,
+			Capabilities: c.Capabilities,
+			Endpoints:    c.Endpoints,
+		})
 	}
 
-	result := map[string]interface{}{
-		"namespace":       namespace,
-		"name":            name,
-		"containers":      containers,
-		"init_containers": initContainers,
-		"annotations":     profile.Annotations,
-		"labels":          profile.Labels,
-		"description": "This ApplicationProfile shows what the workload containers actually execute at runtime. " +
+	result := getApplicationProfileOutput{
+		Namespace:      namespace,
+		Name:           name,
+		Containers:     containers,
+		InitContainers: initContainers,
+		Annotations:    profile.Annotations,
+		Labels:         profile.Labels,
+		Description: "This ApplicationProfile shows what the workload containers actually execute at runtime. " +
 			"Execs: processes that run; Opens: files read/written; Syscalls: kernel-level operations; " +
 			"Capabilities: special Linux privileges; Endpoints: HTTP APIs called. " +
 			"Compare this with vulnerability findings to prioritize remediation - focus on CVEs affecting actively used components.",
@@ -869,20 +1081,20 @@ func (k *KubescapeTool) handleGetApplicationProfile(ctx context.Context, request
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), getApplicationProfileOutput{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // handleListNetworkNeighborhoods lists network communication patterns for workloads
-func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, request *sdkmcp.CallToolRequest, in listNetworkNeighborhoodsInput) (*sdkmcp.CallToolResult, listNetworkNeighborhoodsOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("list_network_neighborhoods", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listNetworkNeighborhoodsOutput{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", "")
+	namespace := in.Namespace
 
 	queryNamespace := metav1.NamespaceAll
 	if namespace != "" {
@@ -893,10 +1105,10 @@ func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, requ
 	if err != nil {
 		toolErr := errors.NewKubescapeError("list_network_neighborhoods", err).
 			WithContext("namespace", namespace)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), listNetworkNeighborhoodsOutput{}, nil
 	}
 
-	neighborhoodList := []map[string]interface{}{}
+	neighborhoodList := []networkNeighborhoodSummary{}
 	for _, nn := range neighborhoods.Items {
 		totalIngress := 0
 		totalEgress := 0
@@ -905,21 +1117,20 @@ func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, requ
 			totalEgress += len(c.Egress)
 		}
 
-		nnMap := map[string]interface{}{
-			"namespace":        nn.Namespace,
-			"name":             nn.Name,
-			"containers_count": len(nn.Spec.Containers),
-			"total_ingress":    totalIngress,
-			"total_egress":     totalEgress,
-			"created_at":       nn.CreationTimestamp.Format(time.RFC3339),
-		}
-		neighborhoodList = append(neighborhoodList, nnMap)
+		neighborhoodList = append(neighborhoodList, networkNeighborhoodSummary{
+			Namespace:       nn.Namespace,
+			Name:            nn.Name,
+			ContainersCount: len(nn.Spec.Containers),
+			TotalIngress:    totalIngress,
+			TotalEgress:     totalEgress,
+			CreatedAt:       nn.CreationTimestamp.Format(time.RFC3339),
+		})
 	}
 
-	result := map[string]interface{}{
-		"network_neighborhoods": neighborhoodList,
-		"total_count":           len(neighborhoodList),
-		"description": "NetworkNeighborhoods capture actual network communication patterns of workloads. " +
+	result := listNetworkNeighborhoodsOutput{
+		NetworkNeighborhoods: neighborhoodList,
+		TotalCount:           len(neighborhoodList),
+		Description: "NetworkNeighborhoods capture actual network communication patterns of workloads. " +
 			"Ingress: connections coming INTO the workload; Egress: connections going OUT from the workload. " +
 			"Includes DNS names, IP addresses, ports, and protocols. " +
 			"Use this data to understand attack surface and prioritize network-related security findings.",
@@ -927,27 +1138,27 @@ func (k *KubescapeTool) handleListNetworkNeighborhoods(ctx context.Context, requ
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), listNetworkNeighborhoodsOutput{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // handleGetNetworkNeighborhood gets detailed network connections for a specific workload
-func (k *KubescapeTool) handleGetNetworkNeighborhood(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (k *KubescapeTool) handleGetNetworkNeighborhood(ctx context.Context, request *sdkmcp.CallToolRequest, in getNetworkNeighborhoodInput) (*sdkmcp.CallToolResult, getNetworkNeighborhoodOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("get_network_neighborhood", k.initError)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), getNetworkNeighborhoodOutput{}, nil
 	}
 
-	namespace := mcp.ParseString(request, "namespace", "")
-	name := mcp.ParseString(request, "name", "")
+	namespace := in.Namespace
+	name := in.Name
 
 	if name == "" {
-		return mcp.NewToolResultError("name parameter is required"), nil
+		return mcp.NewToolResultError("name parameter is required"), getNetworkNeighborhoodOutput{}, nil
 	}
 	if namespace == "" {
-		return mcp.NewToolResultError("namespace parameter is required"), nil
+		return mcp.NewToolResultError("namespace parameter is required"), getNetworkNeighborhoodOutput{}, nil
 	}
 
 	nn, err := k.spdxClient.NetworkNeighborhoods(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -955,87 +1166,86 @@ func (k *KubescapeTool) handleGetNetworkNeighborhood(ctx context.Context, reques
 		toolErr := errors.NewKubescapeError("get_network_neighborhood", err).
 			WithContext("namespace", namespace).
 			WithContext("name", name)
-		return toolErr.ToMCPResult(), nil
+		return kubescapeErrResult(toolErr), getNetworkNeighborhoodOutput{}, nil
 	}
 
 	// Build detailed response with container network data
-	containers := []map[string]interface{}{}
+	containers := []networkContainer{}
 	for _, c := range nn.Spec.Containers {
 		// Format ingress connections
-		ingressList := []map[string]interface{}{}
+		ingressList := []networkConnection{}
 		for _, ing := range c.Ingress {
-			ingressInfo := map[string]interface{}{
-				"identifier": ing.Identifier,
-				"type":       ing.Type,
+			ingressInfo := networkConnection{
+				Identifier: ing.Identifier,
+				Type:       ing.Type,
 			}
 			if ing.DNS != "" {
-				ingressInfo["dns"] = ing.DNS
+				ingressInfo.DNS = ing.DNS
 			}
 			if len(ing.Ports) > 0 {
-				ingressInfo["ports"] = ing.Ports
+				ingressInfo.Ports = ing.Ports
 			}
 			if len(ing.IPAddress) > 0 {
-				ingressInfo["ip_address"] = ing.IPAddress
+				ingressInfo.IPAddress = ing.IPAddress
 			}
 			if ing.PodSelector != nil {
-				ingressInfo["pod_selector"] = ing.PodSelector
+				ingressInfo.PodSelector = ing.PodSelector
 			}
 			if ing.NamespaceSelector != nil {
-				ingressInfo["namespace_selector"] = ing.NamespaceSelector
+				ingressInfo.NamespaceSelector = ing.NamespaceSelector
 			}
 			ingressList = append(ingressList, ingressInfo)
 		}
 
 		// Format egress connections
-		egressList := []map[string]interface{}{}
+		egressList := []networkConnection{}
 		for _, egr := range c.Egress {
-			egressInfo := map[string]interface{}{
-				"identifier": egr.Identifier,
-				"type":       egr.Type,
+			egressInfo := networkConnection{
+				Identifier: egr.Identifier,
+				Type:       egr.Type,
 			}
 			if egr.DNS != "" {
-				egressInfo["dns"] = egr.DNS
+				egressInfo.DNS = egr.DNS
 			}
 			if len(egr.Ports) > 0 {
-				egressInfo["ports"] = egr.Ports
+				egressInfo.Ports = egr.Ports
 			}
 			if len(egr.IPAddress) > 0 {
-				egressInfo["ip_address"] = egr.IPAddress
+				egressInfo.IPAddress = egr.IPAddress
 			}
 			if egr.PodSelector != nil {
-				egressInfo["pod_selector"] = egr.PodSelector
+				egressInfo.PodSelector = egr.PodSelector
 			}
 			if egr.NamespaceSelector != nil {
-				egressInfo["namespace_selector"] = egr.NamespaceSelector
+				egressInfo.NamespaceSelector = egr.NamespaceSelector
 			}
 			egressList = append(egressList, egressInfo)
 		}
 
-		containerInfo := map[string]interface{}{
-			"name":    c.Name,
-			"ingress": ingressList,
-			"egress":  egressList,
-		}
-		containers = append(containers, containerInfo)
+		containers = append(containers, networkContainer{
+			Name:    c.Name,
+			Ingress: ingressList,
+			Egress:  egressList,
+		})
 	}
 
-	result := map[string]interface{}{
-		"namespace":   namespace,
-		"name":        name,
-		"containers":  containers,
-		"annotations": nn.Annotations,
-		"labels":      nn.Labels,
-		"description": "This NetworkNeighborhood shows actual network connections observed for this workload. " +
+	result := getNetworkNeighborhoodOutput{
+		Namespace:   namespace,
+		Name:        name,
+		Containers:  containers,
+		Annotations: nn.Annotations,
+		Labels:      nn.Labels,
+		Description: "This NetworkNeighborhood shows actual network connections observed for this workload. " +
 			"Ingress connections show what talks TO this workload. Egress connections show what this workload talks TO. " +
 			"Use this to verify if a workload with a vulnerability is actually exposed to the network.",
 	}
 
 	content, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), getNetworkNeighborhoodOutput{}, nil
 	}
 
-	return mcp.NewToolResultText(string(content)), nil
+	return mcp.NewToolResultText(string(content)), result, nil
 }
 
 // Helper function to truncate strings
@@ -1047,160 +1257,131 @@ func truncateString(s string, maxLen int) string {
 }
 
 // RegisterTools registers all Kubescape tools with the MCP server
-func RegisterTools(s *server.MCPServer, kubeconfig string, readOnly bool) {
+func RegisterTools(s *sdkmcp.Server, kubeconfig string, readOnly bool) {
 	tool := NewKubescapeTool(kubeconfig)
+	_ = readOnly // all kubescape tools are read-only
 
-	// Health check tool
-	s.AddTool(mcp.NewTool("kubescape_check_health",
-		mcp.WithDescription("Check if Kubescape operator is installed and operational. Verifies namespace, operator pods, storage pods, CRDs, and scan data availability."),
-		mcp.WithString("namespace", mcp.Description("Namespace to check (default: kubescape)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_check_health", tool.handleCheckHealth)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name:        "kubescape_check_health",
+		Description: "Check if Kubescape operator is installed and operational. Verifies namespace, operator pods, storage pods, CRDs, and scan data availability.",
+	}, tool.handleCheckHealth)
 
-	// List vulnerability manifests
-	s.AddTool(mcp.NewTool("kubescape_list_vulnerability_manifests",
-		mcp.WithDescription("List vulnerability manifests from Kubescape operator. Returns vulnerability scan results at image or workload level."),
-		mcp.WithString("namespace", mcp.Description("Filter by namespace (optional, defaults to all namespaces)")),
-		mcp.WithString("level", mcp.Description("Type of manifests to list: 'image', 'workload', or 'both' (default: both)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_vulnerability_manifests", tool.handleListVulnerabilityManifests)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name: "kubescape_list_vulnerability_manifests",
+		Description: "List vulnerability manifests from Kubescape operator, at image or workload level. " +
+			"This is an index only: it does NOT report how many vulnerabilities each manifest contains, " +
+			"and an entry appearing here says nothing about whether that image is clean. " +
+			"To get vulnerability counts and severities for a manifest, call kubescape_list_vulnerabilities " +
+			"with its manifest_name.",
+	}, tool.handleListVulnerabilityManifests)
 
-	// List vulnerabilities in a manifest
-	s.AddTool(mcp.NewTool("kubescape_list_vulnerabilities",
-		mcp.WithDescription("List all CVEs/vulnerabilities found in a specific vulnerability manifest. Returns severity summary and vulnerability details."),
-		mcp.WithString("namespace", mcp.Description("Namespace of the manifest (default: kubescape)")),
-		mcp.WithString("manifest_name", mcp.Description("Name of the vulnerability manifest"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_vulnerabilities", tool.handleListVulnerabilitiesInManifest)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name:        "kubescape_list_vulnerabilities",
+		Description: "List all CVEs/vulnerabilities found in a specific vulnerability manifest. Returns severity summary and vulnerability details.",
+	}, tool.handleListVulnerabilitiesInManifest)
 
-	// Get detailed vulnerability info
-	s.AddTool(mcp.NewTool("kubescape_get_vulnerability_details",
-		mcp.WithDescription("Get detailed information about a specific CVE in a vulnerability manifest, including affected packages and fix information."),
-		mcp.WithString("namespace", mcp.Description("Namespace of the manifest (default: kubescape)")),
-		mcp.WithString("manifest_name", mcp.Description("Name of the vulnerability manifest"), mcp.Required()),
-		mcp.WithString("cve_id", mcp.Description("CVE identifier (e.g., CVE-2023-12345)"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_get_vulnerability_details", tool.handleGetVulnerabilityDetails)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name:        "kubescape_get_vulnerability_details",
+		Description: "Get detailed information about a specific CVE in a vulnerability manifest, including affected packages and fix information.",
+	}, tool.handleGetVulnerabilityDetails)
 
-	// List configuration scans
-	s.AddTool(mcp.NewTool("kubescape_list_configuration_scans",
-		mcp.WithDescription("List configuration security scan results from Kubescape operator. Shows workloads that have been scanned for security misconfigurations."),
-		mcp.WithString("namespace", mcp.Description("Filter by namespace (optional, defaults to all namespaces)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_configuration_scans", tool.handleListConfigurationScans)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name:        "kubescape_list_configuration_scans",
+		Description: "List configuration security scan results from Kubescape operator. Shows workloads that have been scanned for security misconfigurations.",
+	}, tool.handleListConfigurationScans)
 
-	// Get configuration scan details
-	s.AddTool(mcp.NewTool("kubescape_get_configuration_scan",
-		mcp.WithDescription("Get detailed configuration security scan results for a specific workload, including failed controls and remediation guidance."),
-		mcp.WithString("namespace", mcp.Description("Namespace of the scan (default: kubescape)")),
-		mcp.WithString("manifest_name", mcp.Description("Name of the configuration scan manifest"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_get_configuration_scan", tool.handleGetConfigurationScan)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name:        "kubescape_get_configuration_scan",
+		Description: "Get detailed configuration security scan results for a specific workload, including failed controls and remediation guidance.",
+	}, tool.handleGetConfigurationScan)
 
-	// List application profiles (runtime observability)
-	s.AddTool(mcp.NewTool("kubescape_list_application_profiles",
-		mcp.WithDescription("List ApplicationProfiles showing runtime behavior of workloads. These profiles capture: "+
-			"executed processes (Execs), file access patterns (Opens), system calls (Syscalls), Linux capabilities used, and HTTP endpoints. "+
-			"Use this data to prioritize vulnerability findings - a CVE in an unused package is lower priority than one in an actively running process. "+
-			"Requires 'capabilities.runtimeObservability=enable' in Kubescape Helm chart."),
-		mcp.WithString("namespace", mcp.Description("Filter by namespace (optional, defaults to all namespaces)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_application_profiles", tool.handleListApplicationProfiles)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name: "kubescape_list_application_profiles",
+		Description: "List ApplicationProfiles showing runtime behavior of workloads. These profiles capture: " +
+			"executed processes (Execs), file access patterns (Opens), system calls (Syscalls), Linux capabilities used, and HTTP endpoints. " +
+			"Use this data to prioritize vulnerability findings - a CVE in an unused package is lower priority than one in an actively running process. " +
+			"Requires 'capabilities.runtimeObservability=enable' in Kubescape Helm chart.",
+	}, tool.handleListApplicationProfiles)
 
-	// Get application profile details
-	s.AddTool(mcp.NewTool("kubescape_get_application_profile",
-		mcp.WithDescription("Get detailed runtime behavior profile for a specific workload. Shows what processes run, what files are accessed, "+
-			"what system calls are made, and what capabilities are used per container. "+
-			"Compare with CVE findings to prioritize remediation - focus on vulnerabilities affecting actively used components."),
-		mcp.WithString("namespace", mcp.Description("Namespace of the profile"), mcp.Required()),
-		mcp.WithString("name", mcp.Description("Name of the application profile"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_get_application_profile", tool.handleGetApplicationProfile)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name: "kubescape_get_application_profile",
+		Description: "Get detailed runtime behavior profile for a specific workload. Shows what processes run, what files are accessed, " +
+			"what system calls are made, and what capabilities are used per container. " +
+			"Compare with CVE findings to prioritize remediation - focus on vulnerabilities affecting actively used components.",
+	}, tool.handleGetApplicationProfile)
 
-	// List network neighborhoods (runtime observability)
-	s.AddTool(mcp.NewTool("kubescape_list_network_neighborhoods",
-		mcp.WithDescription("List NetworkNeighborhoods showing actual network communication patterns of workloads. "+
-			"These capture: ingress connections (who talks TO the workload), egress connections (who the workload talks TO), "+
-			"including DNS names, IP addresses, ports, and protocols. "+
-			"Use this to understand attack surface and prioritize network-related security findings. "+
-			"Requires 'capabilities.runtimeObservability=enable' in Kubescape Helm chart."),
-		mcp.WithString("namespace", mcp.Description("Filter by namespace (optional, defaults to all namespaces)")),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_network_neighborhoods", tool.handleListNetworkNeighborhoods)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name: "kubescape_list_network_neighborhoods",
+		Description: "List NetworkNeighborhoods showing actual network communication patterns of workloads. " +
+			"These capture: ingress connections (who talks TO the workload), egress connections (who the workload talks TO), " +
+			"including DNS names, IP addresses, ports, and protocols. " +
+			"Use this to understand attack surface and prioritize network-related security findings. " +
+			"Requires 'capabilities.runtimeObservability=enable' in Kubescape Helm chart.",
+	}, tool.handleListNetworkNeighborhoods)
 
-	// Get network neighborhood details
-	s.AddTool(mcp.NewTool("kubescape_get_network_neighborhood",
-		mcp.WithDescription("Get detailed network connections for a specific workload. Shows all observed ingress and egress traffic "+
-			"with DNS names, IPs, ports, and protocols. Use this to verify if a workload with a vulnerability is actually exposed to the network."),
-		mcp.WithString("namespace", mcp.Description("Namespace of the network neighborhood"), mcp.Required()),
-		mcp.WithString("name", mcp.Description("Name of the network neighborhood"), mcp.Required()),
-	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_get_network_neighborhood", tool.handleGetNetworkNeighborhood)))
+	mcp.AddTool(s, "kubescape", &sdkmcp.Tool{
+		Name: "kubescape_get_network_neighborhood",
+		Description: "Get detailed network connections for a specific workload. Shows all observed ingress and egress traffic " +
+			"with DNS names, IPs, ports, and protocols. Use this to verify if a workload with a vulnerability is actually exposed to the network.",
+	}, tool.handleGetNetworkNeighborhood)
 
 	// NOTE: SBOM tools are disabled as they return too much data for LLM context windows.
-	// SBOMs contain detailed package information that can be very large.
-	// To enable in the future, uncomment the handlers and tool registrations below.
-	//
-	// s.AddTool(mcp.NewTool("kubescape_list_sboms", ...))
-	// s.AddTool(mcp.NewTool("kubescape_get_sbom", ...))
 }
 
 // Interfaces for testing - allows mocking the Kubernetes clients
 type KubescapeToolInterface interface {
-	HandleCheckHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleListVulnerabilityManifests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleListVulnerabilitiesInManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleGetVulnerabilityDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleListConfigurationScans(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleGetConfigurationScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleListApplicationProfiles(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleGetApplicationProfile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleListNetworkNeighborhoods(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	HandleGetNetworkNeighborhood(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	// NOTE: SBOM handlers are disabled as they return too much data for LLM context
-	// HandleListSBOMs(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	// HandleGetSBOM(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	HandleCheckHealth(ctx context.Context, in checkHealthInput) (*sdkmcp.CallToolResult, HealthCheckResult, error)
+	HandleListVulnerabilityManifests(ctx context.Context, in listVulnerabilityManifestsInput) (*sdkmcp.CallToolResult, listVulnerabilityManifestsOutput, error)
+	HandleListVulnerabilitiesInManifest(ctx context.Context, in listVulnerabilitiesInManifestInput) (*sdkmcp.CallToolResult, listVulnerabilitiesInManifestOutput, error)
+	HandleGetVulnerabilityDetails(ctx context.Context, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, []v1beta1.Match, error)
+	HandleListConfigurationScans(ctx context.Context, in listConfigurationScansInput) (*sdkmcp.CallToolResult, listConfigurationScansOutput, error)
+	HandleGetConfigurationScan(ctx context.Context, in getConfigurationScanInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error)
+	HandleListApplicationProfiles(ctx context.Context, in listApplicationProfilesInput) (*sdkmcp.CallToolResult, listApplicationProfilesOutput, error)
+	HandleGetApplicationProfile(ctx context.Context, in getApplicationProfileInput) (*sdkmcp.CallToolResult, getApplicationProfileOutput, error)
+	HandleListNetworkNeighborhoods(ctx context.Context, in listNetworkNeighborhoodsInput) (*sdkmcp.CallToolResult, listNetworkNeighborhoodsOutput, error)
+	HandleGetNetworkNeighborhood(ctx context.Context, in getNetworkNeighborhoodInput) (*sdkmcp.CallToolResult, getNetworkNeighborhoodOutput, error)
 }
 
 // Ensure KubescapeTool implements the interface
 var _ KubescapeToolInterface = (*KubescapeTool)(nil)
 
 // Export handler methods for testing
-func (k *KubescapeTool) HandleCheckHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleCheckHealth(ctx, request)
+func (k *KubescapeTool) HandleCheckHealth(ctx context.Context, in checkHealthInput) (*sdkmcp.CallToolResult, HealthCheckResult, error) {
+	return k.handleCheckHealth(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleListVulnerabilityManifests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleListVulnerabilityManifests(ctx, request)
+func (k *KubescapeTool) HandleListVulnerabilityManifests(ctx context.Context, in listVulnerabilityManifestsInput) (*sdkmcp.CallToolResult, listVulnerabilityManifestsOutput, error) {
+	return k.handleListVulnerabilityManifests(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleListVulnerabilitiesInManifest(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleListVulnerabilitiesInManifest(ctx, request)
+func (k *KubescapeTool) HandleListVulnerabilitiesInManifest(ctx context.Context, in listVulnerabilitiesInManifestInput) (*sdkmcp.CallToolResult, listVulnerabilitiesInManifestOutput, error) {
+	return k.handleListVulnerabilitiesInManifest(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleGetVulnerabilityDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleGetVulnerabilityDetails(ctx, request)
+func (k *KubescapeTool) HandleGetVulnerabilityDetails(ctx context.Context, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, []v1beta1.Match, error) {
+	return k.handleGetVulnerabilityDetails(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleListConfigurationScans(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleListConfigurationScans(ctx, request)
+func (k *KubescapeTool) HandleListConfigurationScans(ctx context.Context, in listConfigurationScansInput) (*sdkmcp.CallToolResult, listConfigurationScansOutput, error) {
+	return k.handleListConfigurationScans(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleGetConfigurationScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleGetConfigurationScan(ctx, request)
+func (k *KubescapeTool) HandleGetConfigurationScan(ctx context.Context, in getConfigurationScanInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
+	return k.handleGetConfigurationScan(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleListApplicationProfiles(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleListApplicationProfiles(ctx, request)
+func (k *KubescapeTool) HandleListApplicationProfiles(ctx context.Context, in listApplicationProfilesInput) (*sdkmcp.CallToolResult, listApplicationProfilesOutput, error) {
+	return k.handleListApplicationProfiles(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleGetApplicationProfile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleGetApplicationProfile(ctx, request)
+func (k *KubescapeTool) HandleGetApplicationProfile(ctx context.Context, in getApplicationProfileInput) (*sdkmcp.CallToolResult, getApplicationProfileOutput, error) {
+	return k.handleGetApplicationProfile(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleListNetworkNeighborhoods(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleListNetworkNeighborhoods(ctx, request)
+func (k *KubescapeTool) HandleListNetworkNeighborhoods(ctx context.Context, in listNetworkNeighborhoodsInput) (*sdkmcp.CallToolResult, listNetworkNeighborhoodsOutput, error) {
+	return k.handleListNetworkNeighborhoods(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleGetNetworkNeighborhood(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return k.handleGetNetworkNeighborhood(ctx, request)
+func (k *KubescapeTool) HandleGetNetworkNeighborhood(ctx context.Context, in getNetworkNeighborhoodInput) (*sdkmcp.CallToolResult, getNetworkNeighborhoodOutput, error) {
+	return k.handleGetNetworkNeighborhood(ctx, &sdkmcp.CallToolRequest{}, in)
 }
-
-// NOTE: SBOM handlers are disabled as they return too much data for LLM context
-// func (k *KubescapeTool) HandleListSBOMs(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-// 	return k.handleListSBOMs(ctx, request)
-// }
-//
-// func (k *KubescapeTool) HandleGetSBOM(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-// 	return k.handleGetSBOM(ctx, request)
-// }

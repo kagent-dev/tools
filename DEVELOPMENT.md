@@ -420,6 +420,6 @@ git commit -m "docs(readme): update installation instructions"
 ### Getting Help
 
 - Check existing issues in the repository
-- Review the CLAUDE.md file for project-specific guidance
+- Review the AGENTS.md file for project-specific guidance
 - Consult Go documentation and best practices
 - Ask questions in code reviews or team discussions

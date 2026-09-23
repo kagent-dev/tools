@@ -8,6 +8,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestGetEnvFloat(t *testing.T) {
+	const key = "KAGENT_TEST_ENV_FLOAT"
+
+	assert.Equal(t, 1.5, getEnvFloat(key, 1.5)) // unset -> fallback
+
+	t.Setenv(key, "0.25")
+	assert.Equal(t, 0.25, getEnvFloat(key, 1.5)) // parsed
+
+	t.Setenv(key, "not-a-float")
+	assert.Equal(t, 1.5, getEnvFloat(key, 1.5)) // parse error -> fallback
+}
+
 func TestLoad(t *testing.T) {
 	// Reset singleton for testing
 	once = sync.Once{}

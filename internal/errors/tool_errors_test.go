@@ -77,10 +77,10 @@ func TestToolErrorWithContext(t *testing.T) {
 	err := NewToolError("TestComponent", "test operation", cause)
 
 	err = err.WithContext("key1", "value1")
-	err = err.WithContext("key2", 42)
+	err = err.WithContext("key2", "42")
 
 	assert.Equal(t, "value1", err.Context["key1"])
-	assert.Equal(t, 42, err.Context["key2"])
+	assert.Equal(t, "42", err.Context["key2"])
 }
 
 func TestToolErrorToMCPResult(t *testing.T) {

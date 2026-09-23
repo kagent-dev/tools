@@ -16,6 +16,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/kagent-dev/tools/internal/logger"
+	mcpserver "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/internal/metrics"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"github.com/kagent-dev/tools/internal/version"
@@ -33,19 +34,23 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var (
-	port        int
-	metricsPort int
-	stdio       bool
-	tools       []string
-	kubeconfig  *string
-	showVersion bool
-	readOnly    bool
+// sessionIdleTTLDefault bounds per-session transport state for clients that go
+// away without sending DELETE (crash, restart, load-balancer timeout). It is a
+// safety net, not a session lifetime: every request from a client resets its
+// timer, so only sessions that have seen no traffic for this long are closed.
+const sessionIdleTTLDefault = 30 * time.Minute
 
+var (
+	port           int
+	metricsPort    int
+	stdio          bool
+	tools          []string
+	kubeconfig     *string
+	showVersion    bool
+	readOnly       bool
 	sessionIdleTTL time.Duration
 
 	// These variables should be set during build time using -ldflags
@@ -68,7 +73,7 @@ func init() {
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
 	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "Run in read-only mode (disable tools that perform write operations)")
-	rootCmd.Flags().DurationVar(&sessionIdleTTL, "session-idle-ttl", 10*time.Minute, "Reclaim streamable HTTP session state after this idle duration (0 disables the sweeper)")
+	rootCmd.Flags().DurationVar(&sessionIdleTTL, "session-idle-ttl", sessionIdleTTLDefault, "Close streamable HTTP sessions idle for this long (0 disables the reaper)")
 	kubeconfig = rootCmd.Flags().String("kubeconfig", "", "kubeconfig file path (optional, defaults to in-cluster config)")
 
 	// if found .env file, load it
@@ -143,16 +148,14 @@ func run(cmd *cobra.Command, args []string) {
 		logger.Get().Info("Running in read-only mode - write operations are disabled")
 	}
 
-	mcp := server.NewMCPServer(
-		Name,
-		Version,
-	)
+	mcpSrv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: Name, Version: Version}, nil)
 
-	// Register tools and wrap handlers with metrics instrumentation.
-	// registerMCP returns a map of tool_name -> tool_provider so that
-	// wrapToolHandlersWithMetrics knows which provider each tool belongs to.
-	toolProviders := registerMCP(mcp, tools, *kubeconfig, readOnly)
-	wrapToolHandlersWithMetrics(mcp, toolProviders)
+	// Attach a single receiving middleware that instruments every tools/call
+	// with an OTel span and Prometheus invocation counters. Per-tool provider
+	// labels are recorded as each provider registers its tools.
+	mcpSrv.AddReceivingMiddleware(mcpserver.ToolMiddleware())
+
+	registerMCP(mcpSrv, tools, *kubeconfig, readOnly)
 
 	// Create wait group for server goroutines
 	var wg sync.WaitGroup
@@ -163,18 +166,17 @@ func run(cmd *cobra.Command, args []string) {
 
 	// HTTP server reference (only used when not in stdio mode)
 	var httpServer *http.Server
-	var metricsServer *http.Server                    // Separate server for metrics if metricsPort is different from main port
-	var streamableServer *server.StreamableHTTPServer // Streamable HTTP transport, shut down to stop its session sweeper
+	var metricsServer *http.Server // Separate server for metrics if metricsPort is different from main port
 
 	// Start server based on chosen mode
 	wg.Add(1)
 	if stdio {
 		go func() {
 			defer wg.Done()
-			runStdioServer(ctx, mcp)
+			runStdioServer(ctx, mcpSrv)
 		}()
 	} else {
-		streamableServer = newStreamableHTTPServer(mcp, sessionIdleTTL)
+		sseServer := newStreamableHTTPHandler(mcpSrv, sessionIdleTTL)
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()
@@ -200,7 +202,9 @@ func run(cmd *cobra.Command, args []string) {
 				Handler: metricsMux,
 			}
 
-			wg.Go(func() {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
 				logger.Get().Info("Starting Prometheus metrics endpoint on /metrics", "port", strconv.Itoa(metricsPort))
 				if err := metricsServer.ListenAndServe(); err != nil {
 					if !errors.Is(err, http.ErrServerClosed) {
@@ -209,7 +213,7 @@ func run(cmd *cobra.Command, args []string) {
 						logger.Get().Info("Metrics server closed gracefully.")
 					}
 				}
-			})
+			}()
 		} else {
 			logger.Get().Info("Starting Prometheus metrics endpoint on /metrics", "port", strconv.Itoa(port))
 			mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
@@ -222,7 +226,7 @@ func run(cmd *cobra.Command, args []string) {
 
 		// Handle all other routes with the MCP server wrapped in telemetry middleware
 		mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			streamableServer.ServeHTTP(w, r)
+			sseServer.ServeHTTP(w, r)
 		})))
 
 		httpServer = &http.Server{
@@ -232,7 +236,7 @@ func run(cmd *cobra.Command, args []string) {
 
 		go func() {
 			defer wg.Done()
-			logger.Get().Info("Running KAgent Tools Server", "port", fmt.Sprintf(":%d", port), "tools", strings.Join(tools, ","), "session_idle_ttl", sessionIdleTTL.String())
+			logger.Get().Info("Running KAgent Tools Server", "port", fmt.Sprintf(":%d", port), "tools", strings.Join(tools, ","))
 			if err := httpServer.ListenAndServe(); err != nil {
 				if !errors.Is(err, http.ErrServerClosed) {
 					logger.Get().Error("Failed to start HTTP server", "error", err)
@@ -268,18 +272,6 @@ func run(cmd *cobra.Command, args []string) {
 			}
 		}
 
-		// Stop the session sweeper and close sessions still registered with the
-		// MCP server, so nothing outlives the transport it belonged to
-		if !stdio && streamableServer != nil {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer shutdownCancel()
-
-			if err := streamableServer.Shutdown(shutdownCtx); err != nil {
-				logger.Get().Error("Failed to shutdown MCP streamable HTTP server gracefully", "error", err)
-				rootSpan.RecordError(err)
-			}
-		}
-
 		// Gracefully shutdown metrics server if running separately
 		if !stdio && metricsServer != nil {
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -299,48 +291,64 @@ func run(cmd *cobra.Command, args []string) {
 	logger.Get().Info("Server shutdown complete")
 }
 
-// newStreamableHTTPServer builds the streamable HTTP transport.
-//
-// A session is registered on `initialize` and released only when the client
-// sends DELETE, so a client that goes away without one leaves its session
-// behind forever. idleTTL bounds that by reclaiming sessions that have seen no
-// traffic for that long; zero or less disables the sweeper.
-func newStreamableHTTPServer(mcpServer *server.MCPServer, idleTTL time.Duration) *server.StreamableHTTPServer {
-	return server.NewStreamableHTTPServer(mcpServer,
-		server.WithHeartbeatInterval(30*time.Second),
-		server.WithSessionIdleTTL(idleTTL),
-	)
-}
-
 // writeResponse writes data to an HTTP response writer with proper error handling
 func writeResponse(w http.ResponseWriter, data []byte) error {
 	_, err := w.Write(data)
 	return err
 }
 
-func runStdioServer(ctx context.Context, mcp *server.MCPServer) {
+// newStreamableHTTPHandler builds the stateful streamable HTTP transport.
+//
+// A session is registered on the first (initialize) POST and released when the
+// client sends DELETE, so a client that goes away without one would leave its
+// session registered forever. SessionTimeout bounds that: the SDK closes any
+// session that has seen no HTTP request for idleTTL. It is a safety net and not
+// a session lifetime, because every request from a client resets its timer.
+//
+// idleTTL <= 0 disables the reaper and restores leak-on-abandon, so it is only
+// appropriate for short-lived or single-client deployments.
+//
+// There is deliberately no equivalent of the old mcp-go
+// server.WithHeartbeatInterval, which sent SSE comment pings on the listening
+// (GET) stream to stop intermediaries from closing an idle connection. The
+// official SDK has no periodic SSE comment heartbeat; its transport flushes an
+// ": ok" comment once so a reverse proxy forwards the response headers promptly
+// (see the comment on StreamableServerTransport in the SDK).
+//
+// ServerOptions.KeepAlive looks like the replacement but is not one: it sends
+// JSON-RPC "ping" requests and closes the session once the failure threshold is
+// reached. A POST-only client, which is the normal request/response mode here,
+// never opens the GET stream the pings arrive on, so enabling KeepAlive would
+// evict live sessions (observed as HTTP 404 on a subsequent request) rather than
+// keep them alive. SessionTimeout is the supported lever for session lifecycle.
+func newStreamableHTTPHandler(mcpSrv *sdkmcp.Server, idleTTL time.Duration) *sdkmcp.StreamableHTTPHandler {
+	return sdkmcp.NewStreamableHTTPHandler(
+		func(*http.Request) *sdkmcp.Server { return mcpSrv },
+		&sdkmcp.StreamableHTTPOptions{SessionTimeout: idleTTL},
+	)
+}
+
+func runStdioServer(ctx context.Context, mcpSrv *sdkmcp.Server) {
 	logger.Get().Info("Running KAgent Tools Server STDIO:", "tools", strings.Join(tools, ","))
-	stdioServer := server.NewStdioServer(mcp)
-	if err := stdioServer.Listen(ctx, os.Stdin, os.Stdout); err != nil {
+	if err := mcpSrv.Run(ctx, &sdkmcp.StdioTransport{}); err != nil {
 		logger.Get().Info("Stdio server stopped", "error", err)
 	}
 }
 
-// registerMCP registers tool providers with the MCP server and returns a mapping
-// of tool_name -> tool_provider. This mapping is built using the ListTools() diff
-// technique: we snapshot the tool list before and after each provider registers,
-// so we know exactly which tools belong to which provider.
-func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfig string, readOnly bool) map[string]string {
-	// A map to hold tool providers and their registration functions
-	toolProviderMap := map[string]func(*server.MCPServer){
-		"argo":       func(s *server.MCPServer) { argo.RegisterTools(s, readOnly) },
-		"cilium":     func(s *server.MCPServer) { cilium.RegisterTools(s, readOnly) },
-		"helm":       func(s *server.MCPServer) { helm.RegisterTools(s, readOnly) },
-		"istio":      func(s *server.MCPServer) { istio.RegisterTools(s, readOnly) },
-		"k8s":        func(s *server.MCPServer) { k8s.RegisterTools(s, nil, kubeconfig, readOnly) },
-		"kubescape":  func(s *server.MCPServer) { kubescape.RegisterTools(s, kubeconfig, readOnly) },
-		"prometheus": func(s *server.MCPServer) { prometheus.RegisterTools(s, readOnly) },
-		"utils":      func(s *server.MCPServer) { utils.RegisterTools(s, readOnly) },
+// registerMCP registers the enabled tool providers with the MCP server. Each
+// provider's RegisterTools call records tool->provider mappings and the tool
+// inventory metric centrally (see internal/mcp.AddTool); invocation metrics and
+// tracing are applied by the receiving middleware installed in run().
+func registerMCP(mcpSrv *sdkmcp.Server, enabledToolProviders []string, kubeconfig string, readOnly bool) {
+	toolProviderMap := map[string]func(*sdkmcp.Server){
+		"argo":       func(s *sdkmcp.Server) { argo.RegisterTools(s, readOnly) },
+		"cilium":     func(s *sdkmcp.Server) { cilium.RegisterTools(s, readOnly) },
+		"helm":       func(s *sdkmcp.Server) { helm.RegisterTools(s, readOnly) },
+		"istio":      func(s *sdkmcp.Server) { istio.RegisterTools(s, readOnly) },
+		"k8s":        func(s *sdkmcp.Server) { k8s.RegisterTools(s, nil, kubeconfig, readOnly) },
+		"kubescape":  func(s *sdkmcp.Server) { kubescape.RegisterTools(s, kubeconfig, readOnly) },
+		"prometheus": func(s *sdkmcp.Server) { prometheus.RegisterTools(s, readOnly) },
+		"utils":      func(s *sdkmcp.Server) { utils.RegisterTools(s, readOnly) },
 	}
 
 	// If no specific tools are specified, register all available tools.
@@ -350,82 +358,11 @@ func registerMCP(mcp *server.MCPServer, enabledToolProviders []string, kubeconfi
 		}
 	}
 
-	// toolToProvider maps each tool name to its provider (e.g., "kubectl_get" -> "k8s").
-	// This is used later by wrapToolHandlersWithMetrics to set the correct tool_provider label.
-	toolToProvider := make(map[string]string)
-
 	for _, toolProviderName := range enabledToolProviders {
 		if registerFunc, ok := toolProviderMap[toolProviderName]; ok {
-			// Snapshot the tool list before this provider registers its tools.
-			// We need this because ListTools() returns ALL tools from ALL providers,
-			// so the only way to know which tools belong to THIS provider is to compare
-			// the list before and after registration.
-			toolsBefore := mcp.ListTools()
-
-			registerFunc(mcp)
-
-			// Determine which tools were just registered by this provider
-			// by finding tools that exist now but didn't exist before.
-			// Record each one in Prometheus so we can observe the full tool inventory.
-			for toolName := range mcp.ListTools() {
-				if _, existed := toolsBefore[toolName]; !existed {
-					metrics.KagentToolsMCPRegisteredTools.WithLabelValues(toolName, toolProviderName).Set(1)
-					toolToProvider[toolName] = toolProviderName
-				}
-			}
+			registerFunc(mcpSrv)
 		} else {
 			logger.Get().Error("Unknown tool specified", "provider", toolProviderName)
 		}
 	}
-
-	return toolToProvider
-}
-
-// wrapToolHandlersWithMetrics applies the wrapper/middleware pattern to instrument
-// all registered MCP tool handlers with Prometheus invocation counters.
-//
-// How it works:
-//  1. Grab all registered tools from the MCP server using ListTools()
-//  2. For each tool, wrap its handler with a function that increments metrics
-//  3. Replace all tools in the MCP server using SetTools()
-//
-// The wrapper function:
-//   - Increments kagent_tools_mcp_invocations_total on every call
-//   - Increments kagent_tools_mcp_invocations_failure_total when the handler returns a
-//     non-nil Go error OR when result.IsError is true (the MCP convention for tool-level
-//     failures - handlers return NewToolResultError(...), nil, not a Go error)
-//   - Calls the original handler unchanged - the tool's behaviour is not affected
-//
-// This uses the standard middleware/decorator pattern: the original handler and the
-// wrapped handler have the same function signature, so they are interchangeable.
-// No changes are required in any pkg/ file - all instrumentation happens centrally here.
-func wrapToolHandlersWithMetrics(mcpServer *server.MCPServer, toolToProvider map[string]string) {
-	allTools := mcpServer.ListTools()
-	wrapped := make([]server.ServerTool, 0, len(allTools))
-
-	for name, st := range allTools {
-		originalHandler := st.Handler
-		toolName := name // capture for closure
-		provider := toolToProvider[toolName]
-
-		wrapped = append(wrapped, server.ServerTool{
-			Tool: st.Tool,
-			Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				metrics.KagentToolsMCPInvocationsTotal.WithLabelValues(toolName, provider).Inc()
-
-				result, err := originalHandler(ctx, req)
-
-				// Count as failure if the Go error is non-nil OR if the tool returned
-				// a result with IsError=true (the MCP convention for tool-level failures,
-				// which always return nil for the Go error).
-				if err != nil || (result != nil && result.IsError) {
-					metrics.KagentToolsMCPInvocationsFailureTotal.WithLabelValues(toolName, provider).Inc()
-				}
-
-				return result, err
-			},
-		})
-	}
-
-	mcpServer.SetTools(wrapped...)
 }

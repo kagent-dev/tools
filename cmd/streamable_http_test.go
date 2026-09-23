@@ -1,151 +1,137 @@
 package main
 
 import (
-	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/server"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/require"
 )
 
-const initializeRequest = `{"jsonrpc":"2.0","id":1,"method":"initialize",` +
+const initializeRequestBody = `{"jsonrpc":"2.0","id":1,"method":"initialize",` +
 	`"params":{"protocolVersion":"2025-03-26","capabilities":{},` +
-	`"clientInfo":{"name":"test","version":"1"}}}`
+	`"clientInfo":{"name":"lifecycle-test","version":"1"}}}`
 
-// sessionRecorder counts the sessions the MCP server registers and releases.
-// A session that is registered but never unregistered is retained state, which
-// is what leaks when a client never sends DELETE.
-type sessionRecorder struct {
-	mu           sync.Mutex
-	registered   int
-	unregistered int
-}
+const listToolsRequestBody = `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`
 
-func (r *sessionRecorder) hooks() *server.Hooks {
-	hooks := &server.Hooks{}
-	hooks.AddOnRegisterSession(func(_ context.Context, _ server.ClientSession) {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		r.registered++
-	})
-	hooks.AddOnUnregisterSession(func(_ context.Context, _ server.ClientSession) {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		r.unregistered++
-	})
-	return hooks
-}
-
-func (r *sessionRecorder) counts() (int, int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.registered, r.unregistered
-}
-
-// newRecordedServer starts the streamable HTTP transport wired exactly as the
-// server wires it, with session hooks attached.
-func newRecordedServer(t *testing.T, idleTTL time.Duration) (*httptest.Server, *sessionRecorder) {
+// newTestTransport starts the streamable HTTP transport wired exactly as run()
+// wires it, and returns the server plus a live HTTP endpoint.
+func newTestTransport(t *testing.T, idleTTL time.Duration) (*sdkmcp.Server, *httptest.Server) {
 	t.Helper()
 
-	recorder := &sessionRecorder{}
-	mcpServer := server.NewMCPServer("test-server", "test", server.WithHooks(recorder.hooks()))
-	streamableServer := newStreamableHTTPServer(mcpServer, idleTTL)
-	t.Cleanup(func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = streamableServer.Shutdown(shutdownCtx)
-	})
-
-	httpServer := httptest.NewServer(streamableServer)
+	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "lifecycle", Version: "test"}, nil)
+	httpServer := httptest.NewServer(newStreamableHTTPHandler(srv, idleTTL))
 	t.Cleanup(httpServer.Close)
-	return httpServer, recorder
+
+	return srv, httpServer
 }
 
-// initializeSession sends an initialize request and returns the session ID the
-// server assigned to it.
-func initializeSession(t *testing.T, httpServer *httptest.Server) string {
+// postJSON sends an MCP POST, optionally resuming an existing session.
+func postJSON(t *testing.T, httpServer *httptest.Server, body, sessionID string) *http.Response {
 	t.Helper()
 
-	req, err := http.NewRequest(http.MethodPost, httpServer.URL, strings.NewReader(initializeRequest))
-	if err != nil {
-		t.Fatalf("build initialize request: %v", err)
-	}
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL, strings.NewReader(body))
+	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-
-	resp, err := httpServer.Client().Do(req)
-	if err != nil {
-		t.Fatalf("send initialize request: %v", err)
+	if sessionID != "" {
+		req.Header.Set("Mcp-Session-Id", sessionID)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("initialize returned status %d, want %d", resp.StatusCode, http.StatusOK)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	return resp
+}
+
+// registeredSessions counts the sessions the server still holds. This is the
+// state that leaks when a session is never released.
+func registeredSessions(srv *sdkmcp.Server) int {
+	total := 0
+	for range srv.Sessions() {
+		total++
 	}
+	return total
+}
+
+// TestStreamableHTTPReclaimsIdleSessions is the regression guard for the session
+// leak: a client that never sends DELETE must not retain its session forever.
+// Before SessionTimeout was wired up, every abandoned session stayed registered
+// for the lifetime of the process and heap grew with the number of sessions
+// ever created.
+func TestStreamableHTTPReclaimsIdleSessions(t *testing.T) {
+	const sessions = 25
+	const idleTTL = 100 * time.Millisecond
+
+	srv, httpServer := newTestTransport(t, idleTTL)
+
+	for i := 0; i < sessions; i++ {
+		resp := postJSON(t, httpServer, initializeRequestBody, "")
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	}
+	require.Equal(t, sessions, registeredSessions(srv),
+		"each initialize should register a session")
+
+	require.Eventually(t, func() bool {
+		return registeredSessions(srv) == 0
+	}, 5*time.Second, 20*time.Millisecond,
+		"idle sessions must be reclaimed instead of leaking")
+}
+
+// TestStreamableHTTPKeepsActiveSessionAlive guards against the opposite failure:
+// the idle reaper must not evict a client that is still making requests. The
+// timer is reset by each request, so traffic spaced within the TTL must keep the
+// session usable.
+func TestStreamableHTTPKeepsActiveSessionAlive(t *testing.T) {
+	const idleTTL = 200 * time.Millisecond
+
+	srv, httpServer := newTestTransport(t, idleTTL)
+
+	resp := postJSON(t, httpServer, initializeRequestBody, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	sessionID := resp.Header.Get("Mcp-Session-Id")
-	if sessionID == "" {
-		t.Fatal("initialize response carried no Mcp-Session-Id header")
+	require.NotEmpty(t, sessionID, "server should assign a session id")
+
+	// Keep the session busy across four TTL windows. Each request lands well
+	// inside the TTL, so the session must survive every one of them.
+	for i := 0; i < 4; i++ {
+		time.Sleep(idleTTL / 2)
+		resp := postJSON(t, httpServer, listToolsRequestBody, sessionID)
+		require.Equalf(t, http.StatusOK, resp.StatusCode,
+			"active client was evicted on request %d", i+1)
 	}
-	return sessionID
+
+	require.Equal(t, 1, registeredSessions(srv))
 }
 
-// waitForUnregistered polls until the expected number of sessions has been
-// released, so the sweeper's own tick interval does not make the test flaky.
-func waitForUnregistered(t *testing.T, recorder *sessionRecorder, want int, timeout time.Duration) {
-	t.Helper()
+// TestStreamableHTTPReleasesSessionOnDelete covers the orderly path: a client
+// that terminates its session must have all of its state released immediately,
+// without waiting for the idle TTL.
+func TestStreamableHTTPReleasesSessionOnDelete(t *testing.T) {
+	// A long TTL proves DELETE is what freed the session, not the reaper.
+	srv, httpServer := newTestTransport(t, time.Hour)
 
-	deadline := time.Now().Add(timeout)
-	for {
-		_, unregistered := recorder.counts()
-		if unregistered >= want {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("released %d sessions after %s, want %d", unregistered, timeout, want)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
+	resp := postJSON(t, httpServer, initializeRequestBody, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	sessionID := resp.Header.Get("Mcp-Session-Id")
+	require.NotEmpty(t, sessionID)
+	require.Equal(t, 1, registeredSessions(srv))
 
-// A client that ends its session explicitly must have it released.
-func TestStreamableHTTPServerReleasesSessionOnDelete(t *testing.T) {
-	httpServer, recorder := newRecordedServer(t, 0)
-	sessionID := initializeSession(t, httpServer)
+	deleteReq, err := http.NewRequest(http.MethodDelete, httpServer.URL, nil)
+	require.NoError(t, err)
+	deleteReq.Header.Set("Mcp-Session-Id", sessionID)
 
-	if registered, _ := recorder.counts(); registered != 1 {
-		t.Fatalf("registered %d sessions, want 1", registered)
-	}
+	deleteResp, err := http.DefaultClient.Do(deleteReq)
+	require.NoError(t, err)
+	defer func() { _ = deleteResp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, deleteResp.Body)
 
-	req, err := http.NewRequest(http.MethodDelete, httpServer.URL, nil)
-	if err != nil {
-		t.Fatalf("build delete request: %v", err)
-	}
-	req.Header.Set("Mcp-Session-Id", sessionID)
-
-	resp, err := httpServer.Client().Do(req)
-	if err != nil {
-		t.Fatalf("send delete request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("delete returned status %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-	waitForUnregistered(t, recorder, 1, 2*time.Second)
-}
-
-// A client that goes away without a DELETE must not retain its session: the
-// idle sweeper is what bounds memory for POST-only clients.
-func TestStreamableHTTPServerSweepsIdleSession(t *testing.T) {
-	httpServer, recorder := newRecordedServer(t, 100*time.Millisecond)
-	initializeSession(t, httpServer)
-
-	if registered, _ := recorder.counts(); registered != 1 {
-		t.Fatalf("registered %d sessions, want 1", registered)
-	}
-	waitForUnregistered(t, recorder, 1, 10*time.Second)
+	require.Equal(t, http.StatusNoContent, deleteResp.StatusCode)
+	require.Equal(t, 0, registeredSessions(srv),
+		"DELETE must release the session immediately")
 }

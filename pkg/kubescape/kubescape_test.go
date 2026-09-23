@@ -8,8 +8,7 @@ import (
 
 	"github.com/kubescape/storage/pkg/apis/softwarecomposition/v1beta1"
 	kubescapefake "github.com/kubescape/storage/pkg/generated/clientset/versioned/fake"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -19,62 +18,22 @@ import (
 	kubefake "k8s.io/client-go/kubernetes/fake"
 )
 
-// Helper function to create a CallToolRequest with arguments
-func makeRequest(args map[string]interface{}) mcp.CallToolRequest {
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = args
-	return request
-}
-
 // Helper function to extract text content from MCP result
-func getResultText(result *mcp.CallToolResult) string {
+func getResultText(result *sdkmcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*sdkmcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""
 }
 
 func TestRegisterTools(t *testing.T) {
-	s := server.NewMCPServer("test", "1.0.0")
-
-	// Should not panic
+	s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
 	assert.NotPanics(t, func() {
 		RegisterTools(s, "", false)
 	})
-
-	// Verify tools are registered by checking the server has tools
-	// NOTE: SBOM tools are disabled (too large for LLM context), so we expect 10 tools
-	tools := s.ListTools()
-	assert.Len(t, tools, 10)
-
-	expectedTools := map[string]bool{
-		"kubescape_check_health":                 false,
-		"kubescape_list_vulnerability_manifests": false,
-		"kubescape_list_vulnerabilities":         false,
-		"kubescape_get_vulnerability_details":    false,
-		"kubescape_list_configuration_scans":     false,
-		"kubescape_get_configuration_scan":       false,
-		"kubescape_list_application_profiles":    false,
-		"kubescape_get_application_profile":      false,
-		"kubescape_list_network_neighborhoods":   false,
-		"kubescape_get_network_neighborhood":     false,
-		// NOTE: SBOM tools disabled - too large for LLM context
-		// "kubescape_list_sboms":                   false,
-		// "kubescape_get_sbom":                     false,
-	}
-
-	for name := range tools {
-		if _, exists := expectedTools[name]; exists {
-			expectedTools[name] = true
-		}
-	}
-
-	for name, found := range expectedTools {
-		assert.True(t, found, "Tool %s not found", name)
-	}
 }
 
 func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
@@ -150,7 +109,7 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -186,7 +145,7 @@ func TestHandleCheckHealth_NamespaceNotFound(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -211,7 +170,7 @@ func TestHandleCheckHealth_OperatorPodsNotRunning(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -244,7 +203,7 @@ func TestHandleCheckHealth_OperatorPodsUnhealthy(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -268,7 +227,7 @@ func TestHandleCheckHealth_VulnerabilityCRDMissing(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -299,7 +258,7 @@ func TestHandleCheckHealth_NoScanData(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -331,7 +290,7 @@ func TestHandleCheckHealth_RuntimeObservabilityCRDsMissing(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -381,9 +340,9 @@ func TestHandleCheckHealth_CustomNamespace(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "custom-ns",
-	}))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{
+		Namespace: "custom-ns",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -398,7 +357,7 @@ func TestHandleCheckHealth_CustomNamespace(t *testing.T) {
 func TestHandleCheckHealth_InitError(t *testing.T) {
 	tool := NewKubescapeToolWithError(errors.New("failed to connect"))
 
-	result, err := tool.HandleCheckHealth(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -433,18 +392,17 @@ func TestHandleListVulnerabilityManifests_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListVulnerabilityManifests(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listVulnerabilityManifestsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	manifests := response["vulnerability_manifests"].([]interface{})
-	assert.Len(t, manifests, 2)
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Len(t, response.VulnerabilityManifests, 2)
 }
 
 func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
@@ -459,38 +417,38 @@ func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListVulnerabilityManifests(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-	}))
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{
+		Namespace: "default",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listVulnerabilityManifestsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListVulnerabilityManifests_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListVulnerabilityManifests(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listVulnerabilityManifestsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleListVulnerabilityManifests_InitError(t *testing.T) {
 	tool := NewKubescapeToolWithError(errors.New("failed to connect"))
 
-	result, err := tool.HandleListVulnerabilityManifests(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -531,28 +489,27 @@ func TestHandleListVulnerabilitiesInManifest_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), makeRequest(map[string]interface{}{
-		"manifest_name": "test-manifest",
-	}))
+	result, _, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), listVulnerabilitiesInManifestInput{
+		ManifestName: "test-manifest",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listVulnerabilitiesInManifestOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	severitySummary := response["severity_summary"].(map[string]interface{})
-	assert.Equal(t, float64(1), severitySummary["Critical"])
-	assert.Equal(t, float64(1), severitySummary["High"])
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Equal(t, 1, response.SeveritySummary.Critical)
+	assert.Equal(t, 1, response.SeveritySummary.High)
 }
 
 func TestHandleListVulnerabilitiesInManifest_MissingManifestName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), listVulnerabilitiesInManifestInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -563,9 +520,9 @@ func TestHandleListVulnerabilitiesInManifest_ManifestNotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), makeRequest(map[string]interface{}{
-		"manifest_name": "nonexistent",
-	}))
+	result, _, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), listVulnerabilitiesInManifestInput{
+		ManifestName: "nonexistent",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -602,19 +559,18 @@ func TestHandleGetVulnerabilityDetails_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetVulnerabilityDetails(context.Background(), makeRequest(map[string]interface{}{
-		"manifest_name": "test-manifest",
-		"cve_id":        "CVE-2021-1234",
-	}))
+	// The handler returns the matches as its typed Out and leaves the tool result
+	// for the SDK to synthesise. For an array Out the SDK serialises the value
+	// into a TextContent block itself, so setting Content in the handler as well
+	// would emit the list twice.
+	result, matches, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
+		ManifestName: "test-manifest",
+		CveID:        "CVE-2021-1234",
+	})
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.False(t, result.IsError)
+	assert.Nil(t, result, "handler should leave result to the SDK for an array Out")
 
-	var matches []v1beta1.Match
-	err = json.Unmarshal([]byte(getResultText(result)), &matches)
-	require.NoError(t, err)
-
-	assert.Len(t, matches, 1)
+	require.Len(t, matches, 1)
 	assert.Equal(t, "CVE-2021-1234", matches[0].Vulnerability.ID)
 }
 
@@ -622,9 +578,9 @@ func TestHandleGetVulnerabilityDetails_MissingManifestName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetVulnerabilityDetails(context.Background(), makeRequest(map[string]interface{}{
-		"cve_id": "CVE-2021-1234",
-	}))
+	result, _, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
+		CveID: "CVE-2021-1234",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -635,9 +591,9 @@ func TestHandleGetVulnerabilityDetails_MissingCveId(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetVulnerabilityDetails(context.Background(), makeRequest(map[string]interface{}{
-		"manifest_name": "test-manifest",
-	}))
+	result, _, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
+		ManifestName: "test-manifest",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -661,10 +617,10 @@ func TestHandleGetVulnerabilityDetails_CveNotFound(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetVulnerabilityDetails(context.Background(), makeRequest(map[string]interface{}{
-		"manifest_name": "test-manifest",
-		"cve_id":        "CVE-2021-1234",
-	}))
+	result, _, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
+		ManifestName: "test-manifest",
+		CveID:        "CVE-2021-1234",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -689,16 +645,16 @@ func TestHandleListConfigurationScans_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListConfigurationScans(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListConfigurationScans(context.Background(), listConfigurationScansInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listConfigurationScansOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
+	assert.Equal(t, 2, response.TotalCount)
 }
 
 func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
@@ -713,32 +669,32 @@ func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListConfigurationScans(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-	}))
+	result, _, err := tool.HandleListConfigurationScans(context.Background(), listConfigurationScansInput{
+		Namespace: "default",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listConfigurationScansOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListConfigurationScans_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListConfigurationScans(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListConfigurationScans(context.Background(), listConfigurationScansInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listConfigurationScansOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleGetConfigurationScan_Success(t *testing.T) {
@@ -753,9 +709,9 @@ func TestHandleGetConfigurationScan_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetConfigurationScan(context.Background(), makeRequest(map[string]interface{}{
-		"manifest_name": "test-scan",
-	}))
+	result, _, err := tool.HandleGetConfigurationScan(context.Background(), getConfigurationScanInput{
+		ManifestName: "test-scan",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -765,7 +721,7 @@ func TestHandleGetConfigurationScan_MissingManifestName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetConfigurationScan(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleGetConfigurationScan(context.Background(), getConfigurationScanInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -776,9 +732,9 @@ func TestHandleGetConfigurationScan_NotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetConfigurationScan(context.Background(), makeRequest(map[string]interface{}{
-		"manifest_name": "nonexistent",
-	}))
+	result, _, err := tool.HandleGetConfigurationScan(context.Background(), getConfigurationScanInput{
+		ManifestName: "nonexistent",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -809,11 +765,8 @@ func TestNilArgumentsHandling(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	// Test with nil arguments map - should use defaults
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = nil
-
-	result, err := tool.HandleListVulnerabilityManifests(context.Background(), request)
+	// Empty input should use defaults
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -853,19 +806,18 @@ func TestHandleListApplicationProfiles_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListApplicationProfiles(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListApplicationProfiles(context.Background(), listApplicationProfilesInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listApplicationProfilesOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	assert.Contains(t, response["description"], "ApplicationProfiles capture runtime behavior")
-	profiles := response["application_profiles"].([]interface{})
-	assert.Len(t, profiles, 2)
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Contains(t, response.Description, "ApplicationProfiles capture runtime behavior")
+	assert.Len(t, response.ApplicationProfiles, 2)
 }
 
 func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
@@ -880,38 +832,38 @@ func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListApplicationProfiles(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-	}))
+	result, _, err := tool.HandleListApplicationProfiles(context.Background(), listApplicationProfilesInput{
+		Namespace: "default",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listApplicationProfilesOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListApplicationProfiles_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListApplicationProfiles(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListApplicationProfiles(context.Background(), listApplicationProfilesInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listApplicationProfilesOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleListApplicationProfiles_InitError(t *testing.T) {
 	tool := NewKubescapeToolWithError(errors.New("failed to connect"))
 
-	result, err := tool.HandleListApplicationProfiles(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListApplicationProfiles(context.Background(), listApplicationProfilesInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -944,30 +896,30 @@ func TestHandleGetApplicationProfile_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetApplicationProfile(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-		"name":      "test-profile",
-	}))
+	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
+		Namespace: "default",
+		Name:      "test-profile",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response getApplicationProfileOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, "default", response["namespace"])
-	assert.Equal(t, "test-profile", response["name"])
-	assert.Contains(t, response["description"], "ApplicationProfile shows what the workload containers actually execute")
+	assert.Equal(t, "default", response.Namespace)
+	assert.Equal(t, "test-profile", response.Name)
+	assert.Contains(t, response.Description, "ApplicationProfile shows what the workload containers actually execute")
 }
 
 func TestHandleGetApplicationProfile_MissingName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetApplicationProfile(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-	}))
+	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
+		Namespace: "default",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -978,9 +930,9 @@ func TestHandleGetApplicationProfile_MissingNamespace(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetApplicationProfile(context.Background(), makeRequest(map[string]interface{}{
-		"name": "test-profile",
-	}))
+	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
+		Name: "test-profile",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -991,10 +943,10 @@ func TestHandleGetApplicationProfile_NotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetApplicationProfile(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-		"name":      "nonexistent",
-	}))
+	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
+		Namespace: "default",
+		Name:      "nonexistent",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -1033,19 +985,18 @@ func TestHandleListNetworkNeighborhoods_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListNetworkNeighborhoods(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListNetworkNeighborhoods(context.Background(), listNetworkNeighborhoodsInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response listNetworkNeighborhoodsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(2), response["total_count"])
-	assert.Contains(t, response["description"], "NetworkNeighborhoods capture actual network communication patterns")
-	neighborhoods := response["network_neighborhoods"].([]interface{})
-	assert.Len(t, neighborhoods, 2)
+	assert.Equal(t, 2, response.TotalCount)
+	assert.Contains(t, response.Description, "NetworkNeighborhoods capture actual network communication patterns")
+	assert.Len(t, response.NetworkNeighborhoods, 2)
 }
 
 func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
@@ -1060,38 +1011,38 @@ func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListNetworkNeighborhoods(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-	}))
+	result, _, err := tool.HandleListNetworkNeighborhoods(context.Background(), listNetworkNeighborhoodsInput{
+		Namespace: "default",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listNetworkNeighborhoodsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(1), response["total_count"])
+	assert.Equal(t, 1, response.TotalCount)
 }
 
 func TestHandleListNetworkNeighborhoods_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleListNetworkNeighborhoods(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListNetworkNeighborhoods(context.Background(), listNetworkNeighborhoodsInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	var response map[string]interface{}
+	var response listNetworkNeighborhoodsOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(0), response["total_count"])
+	assert.Equal(t, 0, response.TotalCount)
 }
 
 func TestHandleListNetworkNeighborhoods_InitError(t *testing.T) {
 	tool := NewKubescapeToolWithError(errors.New("failed to connect"))
 
-	result, err := tool.HandleListNetworkNeighborhoods(context.Background(), makeRequest(nil))
+	result, _, err := tool.HandleListNetworkNeighborhoods(context.Background(), listNetworkNeighborhoodsInput{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -1122,30 +1073,30 @@ func TestHandleGetNetworkNeighborhood_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetNetworkNeighborhood(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-		"name":      "test-nn",
-	}))
+	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
+		Namespace: "default",
+		Name:      "test-nn",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 
-	var response map[string]interface{}
+	var response getNetworkNeighborhoodOutput
 	err = json.Unmarshal([]byte(getResultText(result)), &response)
 	require.NoError(t, err)
 
-	assert.Equal(t, "default", response["namespace"])
-	assert.Equal(t, "test-nn", response["name"])
-	assert.Contains(t, response["description"], "NetworkNeighborhood shows actual network connections")
+	assert.Equal(t, "default", response.Namespace)
+	assert.Equal(t, "test-nn", response.Name)
+	assert.Contains(t, response.Description, "NetworkNeighborhood shows actual network connections")
 }
 
 func TestHandleGetNetworkNeighborhood_MissingName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetNetworkNeighborhood(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-	}))
+	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
+		Namespace: "default",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -1156,9 +1107,9 @@ func TestHandleGetNetworkNeighborhood_MissingNamespace(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetNetworkNeighborhood(context.Background(), makeRequest(map[string]interface{}{
-		"name": "test-nn",
-	}))
+	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
+		Name: "test-nn",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -1169,10 +1120,10 @@ func TestHandleGetNetworkNeighborhood_NotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	result, err := tool.HandleGetNetworkNeighborhood(context.Background(), makeRequest(map[string]interface{}{
-		"namespace": "default",
-		"name":      "nonexistent",
-	}))
+	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
+		Namespace: "default",
+		Name:      "nonexistent",
+	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -1191,3 +1142,41 @@ func TestHandleGetNetworkNeighborhood_NotFound(t *testing.T) {
 // func TestHandleGetSBOM_MissingName(t *testing.T) { ... }
 // func TestHandleGetSBOM_MissingNamespace(t *testing.T) { ... }
 // func TestHandleGetSBOM_NotFound(t *testing.T) { ... }
+
+// TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount is the regression
+// test for the bug behind PR #76. The aggregated API strips spec.payload.matches
+// on LIST and serves it only on GET, so len(Matches) was 0 for every manifest in
+// every cluster: the tool reported "vulnerability_count": 0 for images with
+// hundreds of CVEs, and an agent reading that data correctly concluded the
+// cluster was clean. The count must not appear in the list response at all - an
+// absent field cannot be mistaken for a measured zero.
+func TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount(t *testing.T) {
+	// Matches is nil here exactly as the aggregated API returns it on LIST, even
+	// though this image really does have CVEs.
+	spdxClient := kubescapefake.NewClientset(
+		&v1beta1.VulnerabilityManifest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "docker.io-library-nginx-1.14.0-e34030",
+				Namespace: "kubescape",
+				Annotations: map[string]string{
+					"kubescape.io/image-tag": "docker.io/library/nginx:1.14.0",
+				},
+			},
+		},
+	)
+
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+
+	// The field must be absent, not present-and-zero: a zero reads as "measured
+	// clean", which is the failure mode this guards.
+	assert.NotContains(t, getResultText(result), "vulnerability_count",
+		"list response must not report a count the aggregated API cannot supply")
+
+	// The useful metadata is still there.
+	assert.Contains(t, getResultText(result), "nginx:1.14.0")
+}

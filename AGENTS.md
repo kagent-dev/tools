@@ -73,7 +73,7 @@ tools/
 │   └── tag.yaml                 # Release tagging
 ├── Makefile                     # Build orchestration
 ├── Dockerfile                   # Multi-stage build (multi-arch)
-├── go.mod                       # Go 1.25.6
+├── go.mod                       # Go 1.27.0
 ├── DEVELOPMENT.md               # Development setup and standards
 └── CONTRIBUTION.md              # Contribution process
 ```
@@ -119,24 +119,75 @@ Each provider lives in `pkg/` and registers MCP tools via a `RegisterTools(serve
 
 Before submitting changes, run `make fmt && make lint && make test`.
 
+### Run Locally
+
+```bash
+go run ./cmd                          # defaults to stdio
+./bin/kagent-tools --stdio            # stdio transport
+./bin/kagent-tools --http --port 8084 # HTTP transport
+```
+
+Useful flags: `--tools k8s,helm` (limit providers), `--kubeconfig <path>`,
+`--read-only` (do not register write tools), `--metrics-port`.
+
+`make run` builds the image and runs the server in Docker on
+`http://localhost:8084/mcp`.
+
 ---
 
 ## Code Conventions
 
 ### Tool Registration Pattern
 
-Each provider implements a `RegisterTools` function that adds MCP tool handlers to the server:
+Each provider implements a `RegisterTools` function that adds MCP tool handlers to the server. Registration goes through the wrapper in `internal/mcp`, which records the tool's provider for metrics and relaxes the inferred input schema so optional fields stay optional:
 
 ```go
-func RegisterTools(server *server.MCPServer, readOnly bool) {
-    server.AddTool(mcp.NewTool("tool_name", ...), handleToolName)
+func RegisterTools(s *mcp.Server, readOnly bool) {
+    mcp.AddTool(s, "k8s", &mcp.Tool{
+        Name:        "k8s_get_resources",
+        Description: "Get Kubernetes resources",
+    }, handleGetResources)
+
     if !readOnly {
-        server.AddTool(mcp.NewTool("write_tool", ...), handleWriteTool)
+        mcp.AddTool(s, "k8s", &mcp.Tool{
+            Name:        "k8s_delete_resource",
+            Description: "Delete a Kubernetes resource",
+        }, handleDeleteResource)
     }
 }
 ```
 
-Handler functions are prefixed with `handle` (e.g., `handleKubectlGetEnhanced`, `handleHelmList`).
+Handlers are registered with a typed input and a typed output: `func handleX(ctx context.Context, req *mcp.CallToolRequest, in xInput) (*mcp.CallToolResult, xOutput, error)`. Handler functions are prefixed with `handle` (e.g., `handleKubectlGetEnhanced`, `handleHelmList`).
+
+### Typed MCP Inputs and Outputs
+
+All MCP tool inputs and outputs must be strongly typed. The Go MCP SDK derives an input and output JSON schema from the handler's `In` and `Out` type parameters, populates `CallToolResult.StructuredContent` from the typed `Out` value, and validates that value against the inferred output schema on every call — so an untyped or wrongly-shaped `Out` is not merely untidy, it breaks the tool.
+
+- Define a concrete input struct for every tool with `json` and `jsonschema` tags.
+- Define a concrete output DTO for every structured response.
+- Never register handlers with `Out=any`; typed outputs enable output schema inference and validation.
+- Do not use `any`, `interface{}`, `map[string]any`, `map[string]interface{}`, `[]any`, or `[]interface{}` for handler inputs, handler outputs, public response DTOs, or tests.
+- Handler signature: `func handleX(ctx, req, in xInput) (*mcp.CallToolResult, xOutput, error)`.
+
+**Raw CLI text.** Most providers wrap CLI output in text. Use the shared `mcp.TextOutput` wrapper (`{"output": "..."}`) instead of inventing a per-tool shape, and return it through the helpers so the zero value on an error path still validates:
+
+```go
+// success — text is preserved in Content and mirrored in StructuredContent
+return mcp.TextResult(output)
+
+// tool-level failure — IsError=true, and the empty TextOutput keeps the
+// inferred output schema satisfied
+return mcp.TextError("resource_name is required")
+```
+
+When a helper builds the `*mcp.CallToolResult` itself (e.g. `runKubectlCommand` returning `(*mcp.CallToolResult, error)`), convert it with `mcp.TextOf(res)` and return `res, mcp.TextOf(res), err` so the typed value matches the returned result.
+
+**Output-schema pitfalls.** These are enforced by the SDK at call time and are easy to trip:
+
+- **Zero values are validated on every path, including errors.** A field whose zero value marshals to `null` but whose schema type is non-nullable (notably `map[K]V`) makes *all* error returns fail with `validating tool output`. Give such fields `omitempty`. Slices and pointers infer as nullable (`["null", ...]`) and are safe.
+- **`json.RawMessage` does not mean "arbitrary JSON".** The schema inference treats it as a byte slice and validation then rejects real objects and arrays. For genuinely dynamic JSON, return the raw text through `mcp.TextOutput` rather than a `json.RawMessage` field, or re-indent it in place with `json.Indent` without decoding into `interface{}` (see `prettyJSONBody` in `pkg/prometheus`).
+- **Not every type can be an `Out`.** Third-party structs with custom JSON marshallers can fail schema inference, which makes `mcp.AddTool` *panic* at registration (the server will not start). `v1beta1.WorkloadConfigurationScan` is one such type; such handlers return `mcp.TextOutput`. `cmd/tools_output_schema_test.go` registers every provider and fails if any `Out` type cannot produce a valid schema.
+- **A third-party type may be used** as an `Out` field where inference succeeds (`[]v1beta1.Match`, `v1beta1.ExecCalls`, `metav1.LabelSelector` all work today); prefer a local summary DTO where it does not.
 
 ### CommandBuilder Pattern
 
@@ -211,7 +262,11 @@ The `internal/cache` package provides a thread-safe generic `Cache[T]` with TTL:
 - **Ginkgo v2 + Gomega** for behavioral tests
 - **testify** for assertions and mocking
 - Table-driven tests for comprehensive coverage
-- **Minimum 80% test coverage** enforced by CI
+- **Minimum 80% test coverage** is the repository standard. CI runs
+  `go test -v -cover` and reports coverage but has no threshold gate, so the
+  standard is on you to check (`go test -cover ./pkg/...`). Every `pkg/` package
+  currently exceeds it; `internal/commands` and `internal/cmd` are below it and
+  predate the standard.
 
 ### Mock Infrastructure
 
@@ -228,6 +283,7 @@ ctx := cmd.WithShellExecutor(context.Background(), mockExecutor)
 - Unit tests: co-located `*_test.go` files in each package
 - E2E tests: `test/e2e/` (requires Kind cluster)
 - All public functions require unit tests
+- Decode structured tool results into the same output DTOs used by production code. Avoid `map[string]interface{}` / `[]interface{}` assertions in tests.
 
 ---
 
@@ -281,6 +337,9 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
 - Do not return Go errors from MCP handlers — use `ToolError.ToMCPResult()` instead.
 - Do not duplicate logic across providers — extract to `internal/` packages.
 - Do not bypass the cache for read operations.
+- Do not use untyped maps or `any` for MCP tool input/output schemas or public response bodies.
+- Do not register a handler with `Out=any` — the SDK cannot infer or validate an output schema, and the typed-output contract is what keeps the tool callable.
+- Do not add a map-typed field to an output DTO without `omitempty`, and do not use `json.RawMessage` as a dynamic-JSON output field — both make the SDK reject valid results at call time (see the output-schema pitfalls above).
 - Do not add new tool providers without a corresponding `RegisterTools` function.
 - Do not commit without running `make fmt && make lint && make test`.
 
@@ -294,10 +353,11 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
 4. Register the provider in `cmd/main.go` inside `registerMCP()`.
 5. Add input validation using `internal/security/`.
 6. Use `CommandBuilder` for CLI execution.
-7. Return errors via `ToolError.ToMCPResult()`.
-8. Write unit tests with mock shell executor (80% coverage minimum).
-9. Add E2E tests if the tool interacts with a cluster.
-10. Run `make fmt && make lint && make test` before submitting.
+7. Define concrete typed input and output DTOs; avoid `any`, `interface{}`, and untyped maps. Return `mcp.TextResult(...)` / `mcp.TextError(...)` for raw CLI text, and a concrete DTO for a structured response. Watch the output-schema pitfalls above (`omitempty` on map fields, no `json.RawMessage` fields, no `Out` types that fail schema inference).
+8. Return errors via `ToolError.ToMCPResult()`; remember the `Out` value must still validate on the error path, so return the zero value of the DTO (or `mcp.TextOutput{}`).
+9. Write unit tests with mock shell executor (80% coverage minimum).
+10. Add E2E tests if the tool interacts with a cluster.
+11. Run `make fmt && make lint && make test` before submitting.
 
 ---
 

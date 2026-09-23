@@ -58,11 +58,11 @@ tidy: ## Run go mod tidy to ensure dependencies are up to date.
 
 .PHONY: test
 test: build lint ## Run all tests with build, lint, and coverage
-	go test -tags=test -v -cover ./cmd/... ./pkg/... ./internal/...
+	go test -tags=test -v -cover ./pkg/... ./internal/... ./cmd/...
 
 .PHONY: test-only
 test-only: ## Run tests only (without build/lint for faster iteration)
-	go test -tags=test -v -cover ./cmd/... ./pkg/... ./internal/...
+	go test -tags=test -v -cover ./pkg/... ./internal/... ./cmd/...
 
 .PHONY: e2e
 e2e: test retag
@@ -136,11 +136,11 @@ DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
 
 # tools image build args
-TOOLS_ISTIO_VERSION ?= 1.30.1
+TOOLS_ISTIO_VERSION ?= 1.31.1
 TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.10.0
-TOOLS_KUBECTL_VERSION ?= 1.36.2
-TOOLS_HELM_VERSION ?= 4.2.2
-TOOLS_CILIUM_VERSION ?= 0.19.4
+TOOLS_KUBECTL_VERSION ?= 1.37.0
+TOOLS_HELM_VERSION ?= 4.3.0
+TOOLS_CILIUM_VERSION ?= 0.20.0
 
 # build args
 TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
@@ -278,12 +278,12 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v1.63.4
+GOLANGCI_LINT_VERSION ?= v2.13.2
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

@@ -7,6 +7,11 @@ service:
 tools:
   image:
     registry: cr.kagent.dev
+  metrics:
+    # Must differ from service.ports.tools.targetPort (8084): the deployment
+    # template declares both the tools port and the metrics port, and Helm 4
+    # rejects the resulting duplicate containerPort entries.
+    port: "8085"
 
 otel:
   tracing:
