@@ -561,6 +561,53 @@ func TestHandleKubectlGetEnhanced(t *testing.T) {
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
 	})
+
+	// all_namespaces is declared as a string, but models send a JSON boolean just
+	// as readily. Both must reach kubectl as --all-namespaces; silently dropping
+	// the flag returns one namespace to a caller who asked for the cluster.
+	for _, tc := range []struct {
+		name  string
+		value interface{}
+	}{
+		{"all_namespaces as string", "true"},
+		{"all_namespaces as boolean", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := cmd.NewMockShellExecutor()
+			mock.AddCommandString("kubectl", []string{"get", "pods", "--all-namespaces", "-o", "wide"}, `NAMESPACE   NAME`, nil)
+			ctx := cmd.WithShellExecutor(ctx, mock)
+
+			k8sTool := newTestK8sTool()
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = map[string]interface{}{"resource_type": "pods", "all_namespaces": tc.value}
+			result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+			assert.False(t, result.IsError)
+
+			callLog := mock.GetCallLog()
+			assert.Len(t, callLog, 1)
+			assert.Contains(t, callLog[0].Args, "--all-namespaces")
+		})
+	}
+
+	t.Run("all_namespaces false keeps the query namespaced", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"get", "pods", "-n", "kube-system", "-o", "wide"}, `NAME`, nil)
+		ctx := cmd.WithShellExecutor(ctx, mock)
+
+		k8sTool := newTestK8sTool()
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{"resource_type": "pods", "all_namespaces": false, "namespace": "kube-system"}
+		result, err := k8sTool.handleKubectlGetEnhanced(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		assert.Len(t, callLog, 1)
+		assert.NotContains(t, callLog[0].Args, "--all-namespaces")
+	})
 }
 
 func TestHandleKubectlLogsEnhanced(t *testing.T) {
