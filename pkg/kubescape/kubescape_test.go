@@ -1191,3 +1191,61 @@ func TestHandleGetNetworkNeighborhood_NotFound(t *testing.T) {
 // func TestHandleGetSBOM_MissingName(t *testing.T) { ... }
 // func TestHandleGetSBOM_MissingNamespace(t *testing.T) { ... }
 // func TestHandleGetSBOM_NotFound(t *testing.T) { ... }
+
+// P0: the aggregated API strips spec.payload.matches on LIST and serves it only
+// on GET, so len(Matches) was 0 for every manifest in every cluster, always.
+// The tool reported "vulnerability_count": 0 for images with hundreds of CVEs,
+// and agents correctly concluded from that data that the cluster was clean.
+// The count must not appear in the list response at all: an absent field cannot
+// be mistaken for a measured zero.
+func TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount(t *testing.T) {
+	// Matches is nil here exactly as the aggregated API returns it on LIST,
+	// even though this image really has 466 CVEs.
+	spdxClient := kubescapefake.NewClientset(
+		&v1beta1.VulnerabilityManifest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "docker.io-library-nginx-1.14.0-e34030",
+				Namespace: "kubescape",
+				Annotations: map[string]string{
+					"kubescape.io/image-tag": "docker.io/library/nginx:1.14.0",
+				},
+			},
+		},
+	)
+
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, err := tool.HandleListVulnerabilityManifests(context.Background(), makeRequest(nil))
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &response))
+
+	manifests := response["vulnerability_manifests"].([]interface{})
+	require.Len(t, manifests, 1)
+
+	entry := manifests[0].(map[string]interface{})
+	_, present := entry["vulnerability_count"]
+	assert.False(t, present,
+		"vulnerability_count must be absent from the list response: it is unknowable on LIST, and reporting 0 tells an agent the image is clean")
+
+	// The fields that identify the manifest must survive, so an agent can still
+	// drill into it.
+	assert.Equal(t, "docker.io-library-nginx-1.14.0-e34030", entry["manifest_name"])
+	assert.Equal(t, "docker.io/library/nginx:1.14.0", entry["image_tag"])
+}
+
+// Removing the count is only safe if the agent is told where counts come from.
+// Without that, absence of data reads as absence of risk -- the same false
+// negative in a different costume.
+func TestListVulnerabilityManifestsToolDescribesHowToGetCounts(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	RegisterTools(s, "", false)
+
+	tool, ok := s.ListTools()["kubescape_list_vulnerability_manifests"]
+	require.True(t, ok)
+
+	assert.Contains(t, tool.Tool.Description, "kubescape_list_vulnerabilities",
+		"the tool must name the tool that returns real counts")
+}

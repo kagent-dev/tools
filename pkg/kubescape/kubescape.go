@@ -505,6 +505,10 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 	vulnerabilityManifests := []map[string]interface{}{}
 	for _, manifest := range manifests.Items {
 		isImageLevel := manifest.Annotations[helpersv1.WlidMetadataKey] == ""
+		// No vulnerability count is reported here. The aggregated API strips
+		// spec.payload.matches on LIST and serves it only on GET, so it is nil
+		// on every listed object and len() would report 0 for every image in
+		// every cluster. Use kubescape_list_vulnerabilities for real counts.
 		manifestMap := map[string]interface{}{
 			"namespace":               manifest.Namespace,
 			"manifest_name":           manifest.Name,
@@ -514,7 +518,6 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 			"image_tag":               manifest.Annotations[helpersv1.ImageTagMetadataKey],
 			"workload_id":             manifest.Annotations[helpersv1.WlidMetadataKey],
 			"workload_container_name": manifest.Annotations[helpersv1.ContainerNameMetadataKey],
-			"vulnerability_count":     len(manifest.Spec.Payload.Matches),
 		}
 		vulnerabilityManifests = append(vulnerabilityManifests, manifestMap)
 	}
@@ -1058,7 +1061,10 @@ func RegisterTools(s *server.MCPServer, kubeconfig string, readOnly bool) {
 
 	// List vulnerability manifests
 	s.AddTool(mcp.NewTool("kubescape_list_vulnerability_manifests",
-		mcp.WithDescription("List vulnerability manifests from Kubescape operator. Returns vulnerability scan results at image or workload level."),
+		mcp.WithDescription("List vulnerability manifests from Kubescape operator, at image or workload level. "+
+			"This is an index only: it does NOT report how many vulnerabilities each manifest contains, "+
+			"and an entry appearing here says nothing about whether that image is clean. "+
+			"To get vulnerability counts and severities for a manifest, call kubescape_list_vulnerabilities with its manifest_name."),
 		mcp.WithString("namespace", mcp.Description("Filter by namespace (optional, defaults to all namespaces)")),
 		mcp.WithString("level", mcp.Description("Type of manifests to list: 'image', 'workload', or 'both' (default: both)")),
 	), telemetry.AdaptToolHandler(telemetry.WithTracing("kubescape_list_vulnerability_manifests", tool.handleListVulnerabilityManifests)))
