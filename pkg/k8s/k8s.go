@@ -94,6 +94,7 @@ type logsInput struct {
 	Namespace string `json:"namespace" jsonschema:"Namespace of the pod (default: default)"`
 	Container string `json:"container" jsonschema:"Container name (for multi-container pods)"`
 	TailLines int    `json:"tail_lines" jsonschema:"Number of lines to show from the end (default: 50)"`
+	Previous  bool   `json:"previous" jsonschema:"Return logs from the previous, terminated container instance (kubectl logs --previous)"`
 }
 
 // Get pod logs
@@ -112,6 +113,10 @@ func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request *mcp.Ca
 
 	if in.Container != "" {
 		args = append(args, "-c", in.Container)
+	}
+
+	if in.Previous {
+		args = append(args, "--previous")
 	}
 
 	if in.TailLines > 0 {
@@ -418,10 +423,11 @@ func (k *K8sTool) handleGetEvents(ctx context.Context, request *mcp.CallToolRequ
 
 // execCommandInput is the typed input for k8s_execute_command.
 type execCommandInput struct {
-	PodName   string `json:"pod_name" jsonschema:"Name of the pod to execute in"`
-	Namespace string `json:"namespace" jsonschema:"Namespace of the pod (default: default)"`
-	Container string `json:"container" jsonschema:"Container name (for multi-container pods)"`
-	Command   string `json:"command" jsonschema:"Command to execute"`
+	PodName   string   `json:"pod_name" jsonschema:"Name of the pod to execute in"`
+	Namespace string   `json:"namespace" jsonschema:"Namespace of the pod (default: default)"`
+	Container string   `json:"container" jsonschema:"Container name (for multi-container pods)"`
+	Command   string   `json:"command" jsonschema:"Command to execute. May be given with arguments (e.g. 'uname -a'); it is split into argv tokens. Use args for arguments that contain spaces."`
+	Args      []string `json:"args" jsonschema:"Additional arguments appended after command, passed verbatim as separate argv entries"`
 }
 
 // Execute command in pod
@@ -441,11 +447,34 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request *mcp.CallToolRe
 		return mcp.TextError(fmt.Sprintf("Invalid namespace: %v", err))
 	}
 
-	if err := security.ValidateCommandInput(in.Command); err != nil {
-		return mcp.TextError(fmt.Sprintf("Invalid command: %v", err))
+	if in.Container != "" {
+		if err := security.ValidateK8sResourceName(in.Container); err != nil {
+			return mcp.TextError(fmt.Sprintf("Invalid container name: %v", err))
+		}
 	}
 
-	args := []string{"exec", in.PodName, "-n", in.Namespace, "--", in.Command}
+	// Split the command into argv tokens. Passing the whole string as a single
+	// argv entry after "--" makes the runtime look for an executable whose name
+	// literally contains the spaces, so `uname -a` fails with
+	// `exec: "uname -a": executable file not found in $PATH`. args are appended
+	// verbatim so a caller whose argument contains spaces can pass it separately.
+	commandParts := append(strings.Fields(in.Command), in.Args...)
+	if len(commandParts) == 0 {
+		return mcp.TextError("pod_name and command parameters are required")
+	}
+
+	for _, part := range commandParts {
+		if err := security.ValidateCommandInput(part); err != nil {
+			return mcp.TextError(fmt.Sprintf("Invalid command: %v", err))
+		}
+	}
+
+	args := []string{"exec", in.PodName, "-n", in.Namespace}
+	if in.Container != "" {
+		args = append(args, "-c", in.Container)
+	}
+	args = append(args, "--")
+	args = append(args, commandParts...)
 
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), args...)
 	return res, mcp.TextOf(res), err
@@ -844,8 +873,15 @@ func RegisterTools(s *mcp.Server, llm llms.Model, kubeconfig string, readOnly bo
 
 	// Read-only tools - always registered
 	mcp.AddTool(s, "k8s", &mcp.Tool{
-		Name:        "k8s_get_resources",
-		Description: "Get Kubernetes resources using kubectl",
+		Name: "k8s_get_resources",
+		Description: "List Kubernetes resources with kubectl. " +
+			"Scope: with neither all_namespaces nor namespace set, this queries ONLY the namespace " +
+			"this tool runs in, not the cluster - set all_namespaces=true to survey the cluster. " +
+			"Images: the wide output has a CONTAINERS/IMAGES column for workloads (deployment, " +
+			"daemonset, statefulset, replicaset, job, cronjob) but NOT for pods, so a pod listing is " +
+			"never a source of image versions; read them from a workload listing or use " +
+			"k8s_get_resource_yaml for the authoritative spec. " +
+			"Node versions (kubelet, container runtime): resource_type=node.",
 	}, k8sTool.handleKubectlGetEnhanced)
 
 	mcp.AddTool(s, "k8s", &mcp.Tool{

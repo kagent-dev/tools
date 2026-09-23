@@ -1142,3 +1142,41 @@ func TestHandleGetNetworkNeighborhood_NotFound(t *testing.T) {
 // func TestHandleGetSBOM_MissingName(t *testing.T) { ... }
 // func TestHandleGetSBOM_MissingNamespace(t *testing.T) { ... }
 // func TestHandleGetSBOM_NotFound(t *testing.T) { ... }
+
+// TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount is the regression
+// test for the bug behind PR #76. The aggregated API strips spec.payload.matches
+// on LIST and serves it only on GET, so len(Matches) was 0 for every manifest in
+// every cluster: the tool reported "vulnerability_count": 0 for images with
+// hundreds of CVEs, and an agent reading that data correctly concluded the
+// cluster was clean. The count must not appear in the list response at all - an
+// absent field cannot be mistaken for a measured zero.
+func TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount(t *testing.T) {
+	// Matches is nil here exactly as the aggregated API returns it on LIST, even
+	// though this image really does have CVEs.
+	spdxClient := kubescapefake.NewClientset(
+		&v1beta1.VulnerabilityManifest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "docker.io-library-nginx-1.14.0-e34030",
+				Namespace: "kubescape",
+				Annotations: map[string]string{
+					"kubescape.io/image-tag": "docker.io/library/nginx:1.14.0",
+				},
+			},
+		},
+	)
+
+	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+
+	// The field must be absent, not present-and-zero: a zero reads as "measured
+	// clean", which is the failure mode this guards.
+	assert.NotContains(t, getResultText(result), "vulnerability_count",
+		"list response must not report a count the aggregated API cannot supply")
+
+	// The useful metadata is still there.
+	assert.Contains(t, getResultText(result), "nginx:1.14.0")
+}

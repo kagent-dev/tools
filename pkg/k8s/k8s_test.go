@@ -520,6 +520,39 @@ log line 2`
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
 	})
+
+	t.Run("previous adds --previous before --tail", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl",
+			[]string{"logs", "test-pod", "-n", "default", "--previous", "--tail", "50"},
+			"previous container output", nil)
+		logsCtx := cmd.WithShellExecutor(context.Background(), mock)
+
+		k8sTool := newTestK8sTool()
+		result, _, err := k8sTool.handleKubectlLogsEnhanced(logsCtx, &mcp.CallToolRequest{},
+			logsInput{PodName: "test-pod", Previous: true})
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, []string{"logs", "test-pod", "-n", "default", "--previous", "--tail", "50"}, callLog[0].Args)
+	})
+
+	t.Run("previous is omitted when false", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"logs", "test-pod", "-n", "default", "--tail", "50"}, "out", nil)
+		logsCtx := cmd.WithShellExecutor(context.Background(), mock)
+
+		k8sTool := newTestK8sTool()
+		_, _, err := k8sTool.handleKubectlLogsEnhanced(logsCtx, &mcp.CallToolRequest{},
+			logsInput{PodName: "test-pod", Previous: false})
+		assert.NoError(t, err)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, []string{"logs", "test-pod", "-n", "default", "--tail", "50"}, callLog[0].Args)
+	})
 }
 
 func TestHandleApplyManifest(t *testing.T) {
@@ -606,11 +639,65 @@ drwxr-xr-x 1 root root 4096 Jan  1 12:00 ..`
 		content := getResultText(result)
 		assert.Contains(t, content, "total 8")
 
-		// Verify the correct kubectl command was called
+		// Verify the correct kubectl command was called. The command is split
+		// into argv tokens: passing "ls -la" as one entry makes the container
+		// runtime look for an executable whose name contains the space, which
+		// fails with `exec: "ls -la": executable file not found in $PATH`.
 		callLog := mock.GetCallLog()
 		require.Len(t, callLog, 1)
 		assert.Equal(t, "kubectl", callLog[0].Command)
-		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "ls -la"}, callLog[0].Args)
+		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "ls", "-la"}, callLog[0].Args)
+	})
+
+	t.Run("args are appended verbatim as separate argv entries", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		mock.AddCommandString("kubectl", []string{"exec", "mypod", "-n", "default", "--", "uname", "-a"}, "Linux mypod", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		k8sTool := newTestK8sTool()
+
+		result, _, err := k8sTool.handleExecCommand(ctx, &mcp.CallToolRequest{}, execCommandInput{
+			PodName: "mypod", Namespace: "default", Command: "uname", Args: []string{"-a"},
+		})
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "uname", "-a"}, callLog[0].Args)
+	})
+
+	t.Run("an argument containing spaces is preserved as one token", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		k8sTool := newTestK8sTool()
+
+		_, _, err := k8sTool.handleExecCommand(ctx, &mcp.CallToolRequest{}, execCommandInput{
+			PodName: "mypod", Namespace: "default", Command: "echo", Args: []string{"hello world"},
+		})
+		assert.NoError(t, err)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		// strings.Fields cannot express this, which is why args exists.
+		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "--", "echo", "hello world"}, callLog[0].Args)
+	})
+
+	t.Run("container selects the target container", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		k8sTool := newTestK8sTool()
+
+		_, _, err := k8sTool.handleExecCommand(ctx, &mcp.CallToolRequest{}, execCommandInput{
+			PodName: "mypod", Namespace: "default", Container: "sidecar", Command: "uname",
+		})
+		assert.NoError(t, err)
+
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, []string{"exec", "mypod", "-n", "default", "-c", "sidecar", "--", "uname"}, callLog[0].Args)
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {

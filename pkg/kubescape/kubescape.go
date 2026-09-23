@@ -183,7 +183,6 @@ type vulnerabilityManifestSummary struct {
 	ImageTag              string `json:"image_tag"`
 	WorkloadID            string `json:"workload_id"`
 	WorkloadContainerName string `json:"workload_container_name"`
-	VulnerabilityCount    int    `json:"vulnerability_count"`
 }
 
 type listVulnerabilityManifestsOutput struct {
@@ -702,6 +701,12 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 
 	// Build response
 	vulnerabilityManifests := []vulnerabilityManifestSummary{}
+	// No vulnerability count is reported here. The aggregated API strips
+	// spec.payload.matches on LIST and serves it only on GET, so the field is
+	// nil on every listed object: counting it would report 0 for every image in
+	// every cluster, and an agent reading that data would conclude the cluster
+	// is clean. An absent field cannot be mistaken for a measured zero. Use
+	// kubescape_list_vulnerabilities with a manifest_name for real counts.
 	for _, manifest := range manifests.Items {
 		isImageLevel := manifest.Annotations[helpersv1.WlidMetadataKey] == ""
 		vulnerabilityManifests = append(vulnerabilityManifests, vulnerabilityManifestSummary{
@@ -713,7 +718,6 @@ func (k *KubescapeTool) handleListVulnerabilityManifests(ctx context.Context, re
 			ImageTag:              manifest.Annotations[helpersv1.ImageTagMetadataKey],
 			WorkloadID:            manifest.Annotations[helpersv1.WlidMetadataKey],
 			WorkloadContainerName: manifest.Annotations[helpersv1.ContainerNameMetadataKey],
-			VulnerabilityCount:    len(manifest.Spec.Payload.Matches),
 		})
 	}
 
@@ -1262,8 +1266,12 @@ func RegisterTools(s *mcp.Server, kubeconfig string, readOnly bool) {
 	}, tool.handleCheckHealth)
 
 	mcp.AddTool(s, "kubescape", &mcp.Tool{
-		Name:        "kubescape_list_vulnerability_manifests",
-		Description: "List vulnerability manifests from Kubescape operator. Returns vulnerability scan results at image or workload level.",
+		Name: "kubescape_list_vulnerability_manifests",
+		Description: "List vulnerability manifests from Kubescape operator, at image or workload level. " +
+			"This is an index only: it does NOT report how many vulnerabilities each manifest contains, " +
+			"and an entry appearing here says nothing about whether that image is clean. " +
+			"To get vulnerability counts and severities for a manifest, call kubescape_list_vulnerabilities " +
+			"with its manifest_name.",
 	}, tool.handleListVulnerabilityManifests)
 
 	mcp.AddTool(s, "kubescape", &mcp.Tool{
