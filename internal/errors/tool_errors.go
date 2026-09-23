@@ -6,6 +6,7 @@ import (
 	"time"
 
 	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ToolError represents a structured error with context and recovery suggestions
@@ -28,7 +29,7 @@ func (e *ToolError) Error() string {
 }
 
 // ToMCPResult converts the error to an MCP result with rich context
-func (e *ToolError) ToMCPResult() *mcp.CallToolResult {
+func (e *ToolError) ToMCPResult() *sdkmcp.CallToolResult {
 	var message strings.Builder
 
 	// Format the error message with context

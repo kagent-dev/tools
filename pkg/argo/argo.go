@@ -16,6 +16,7 @@ import (
 	"github.com/kagent-dev/tools/internal/commands"
 	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/pkg/utils"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type verifyArgoRolloutsControllerInstallInput struct {
@@ -23,7 +24,7 @@ type verifyArgoRolloutsControllerInstallInput struct {
 	Label     string `json:"label" jsonschema:"The label of the Argo Rollouts controller pods"`
 }
 
-func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp.CallToolRequest, in verifyArgoRolloutsControllerInstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *sdkmcp.CallToolRequest, in verifyArgoRolloutsControllerInstallInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	ns := in.Namespace
 	if ns == "" {
 		ns = "argo-rollouts"
@@ -69,7 +70,7 @@ func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *mcp
 
 type verifyKubectlPluginInstallInput struct{}
 
-func handleVerifyKubectlPluginInstall(ctx context.Context, request *mcp.CallToolRequest, in verifyKubectlPluginInstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleVerifyKubectlPluginInstall(ctx context.Context, request *sdkmcp.CallToolRequest, in verifyKubectlPluginInstallInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"argo", "rollouts", "version"}
 	output, err := runArgoRolloutCommand(ctx, args)
 	if err != nil {
@@ -97,7 +98,7 @@ type promoteRolloutInput struct {
 	Full        bool   `json:"full" jsonschema:"Promote the rollout to the final step"`
 }
 
-func handlePromoteRollout(ctx context.Context, request *mcp.CallToolRequest, in promoteRolloutInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handlePromoteRollout(ctx context.Context, request *sdkmcp.CallToolRequest, in promoteRolloutInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.RolloutName == "" {
 		return mcp.TextError("rollout_name parameter is required")
 	}
@@ -124,7 +125,7 @@ type pauseRolloutInput struct {
 	Namespace   string `json:"namespace" jsonschema:"The namespace of the rollout"`
 }
 
-func handlePauseRollout(ctx context.Context, request *mcp.CallToolRequest, in pauseRolloutInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handlePauseRollout(ctx context.Context, request *sdkmcp.CallToolRequest, in pauseRolloutInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.RolloutName == "" {
 		return mcp.TextError("rollout_name parameter is required")
 	}
@@ -149,7 +150,7 @@ type setRolloutImageInput struct {
 	Namespace      string `json:"namespace" jsonschema:"The namespace of the rollout"`
 }
 
-func handleSetRolloutImage(ctx context.Context, request *mcp.CallToolRequest, in setRolloutImageInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleSetRolloutImage(ctx context.Context, request *sdkmcp.CallToolRequest, in setRolloutImageInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.RolloutName == "" {
 		return mcp.TextError("rollout_name parameter is required")
 	}
@@ -303,7 +304,7 @@ type verifyGatewayPluginInput struct {
 	ShouldInstall *bool  `json:"should_install" jsonschema:"Whether to install the plugin if not found"`
 }
 
-func handleVerifyGatewayPlugin(ctx context.Context, request *mcp.CallToolRequest, in verifyGatewayPluginInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleVerifyGatewayPlugin(ctx context.Context, request *sdkmcp.CallToolRequest, in verifyGatewayPluginInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	version := in.Version
 	namespace := in.Namespace
 	if namespace == "" {
@@ -343,7 +344,7 @@ type checkPluginLogsInput struct {
 	Timeout   int    `json:"timeout" jsonschema:"Timeout for log collection in seconds"`
 }
 
-func handleCheckPluginLogs(ctx context.Context, request *mcp.CallToolRequest, in checkPluginLogsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleCheckPluginLogs(ctx context.Context, request *sdkmcp.CallToolRequest, in checkPluginLogsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	namespace := in.Namespace
 	if namespace == "" {
 		namespace = "argo-rollouts"
@@ -394,7 +395,7 @@ type listRolloutsInput struct {
 	Type      string `json:"type" jsonschema:"What to list: rollouts or experiments"`
 }
 
-func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest, in listRolloutsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListRollouts(ctx context.Context, request *sdkmcp.CallToolRequest, in listRolloutsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	ns := in.Namespace
 	if ns == "" {
 		ns = "argo-rollouts"
@@ -421,46 +422,46 @@ func handleListRollouts(ctx context.Context, request *mcp.CallToolRequest, in li
 	return mcp.TextResult(output)
 }
 
-func RegisterTools(s *mcp.Server, readOnly bool) {
+func RegisterTools(s *sdkmcp.Server, readOnly bool) {
 	// Read-only tools - always registered
-	mcp.AddTool(s, "argo", &mcp.Tool{
+	mcp.AddTool(s, "argo", &sdkmcp.Tool{
 		Name:        "argo_verify_argo_rollouts_controller_install",
 		Description: "Verify that the Argo Rollouts controller is installed and running",
 	}, handleVerifyArgoRolloutsControllerInstall)
 
-	mcp.AddTool(s, "argo", &mcp.Tool{
+	mcp.AddTool(s, "argo", &sdkmcp.Tool{
 		Name:        "argo_verify_kubectl_plugin_install",
 		Description: "Verify that the kubectl Argo Rollouts plugin is installed",
 	}, handleVerifyKubectlPluginInstall)
 
-	mcp.AddTool(s, "argo", &mcp.Tool{
+	mcp.AddTool(s, "argo", &sdkmcp.Tool{
 		Name:        "argo_rollouts_list",
 		Description: "List rollouts or experiments",
 	}, handleListRollouts)
 
-	mcp.AddTool(s, "argo", &mcp.Tool{
+	mcp.AddTool(s, "argo", &sdkmcp.Tool{
 		Name:        "argo_check_plugin_logs",
 		Description: "Check the logs of the Argo Rollouts Gateway API plugin",
 	}, handleCheckPluginLogs)
 
 	// Write tools - only registered when not in read-only mode
 	if !readOnly {
-		mcp.AddTool(s, "argo", &mcp.Tool{
+		mcp.AddTool(s, "argo", &sdkmcp.Tool{
 			Name:        "argo_promote_rollout",
 			Description: "Promote a paused rollout to the next step",
 		}, handlePromoteRollout)
 
-		mcp.AddTool(s, "argo", &mcp.Tool{
+		mcp.AddTool(s, "argo", &sdkmcp.Tool{
 			Name:        "argo_pause_rollout",
 			Description: "Pause a rollout",
 		}, handlePauseRollout)
 
-		mcp.AddTool(s, "argo", &mcp.Tool{
+		mcp.AddTool(s, "argo", &sdkmcp.Tool{
 			Name:        "argo_set_rollout_image",
 			Description: "Set the image of a rollout",
 		}, handleSetRolloutImage)
 
-		mcp.AddTool(s, "argo", &mcp.Tool{
+		mcp.AddTool(s, "argo", &sdkmcp.Tool{
 			Name:        "argo_verify_gateway_plugin",
 			Description: "Verify the installation status of the Argo Rollouts Gateway API plugin",
 		}, handleVerifyGatewayPlugin)

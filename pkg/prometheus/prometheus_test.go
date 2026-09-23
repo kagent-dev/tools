@@ -7,17 +7,17 @@ import (
 	"strings"
 	"testing"
 
-	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRegisterTools(t *testing.T) {
 	t.Run("read-write", func(t *testing.T) {
-		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, false)
 	})
 	t.Run("read-only", func(t *testing.T) {
-		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, true)
 	})
 }
@@ -26,7 +26,7 @@ func TestPrometheusInputValidation(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("query invalid url", func(t *testing.T) {
-		res, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		res, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			PrometheusURL: "not a url",
 			Query:         "up",
 		})
@@ -35,7 +35,7 @@ func TestPrometheusInputValidation(t *testing.T) {
 	})
 
 	t.Run("range invalid url", func(t *testing.T) {
-		res, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+		res, _, err := handlePrometheusRangeQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusRangeQueryInput{
 			PrometheusURL: "not a url",
 			Query:         "up",
 		})
@@ -44,7 +44,7 @@ func TestPrometheusInputValidation(t *testing.T) {
 	})
 
 	t.Run("labels invalid url", func(t *testing.T) {
-		res, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+		res, _, err := handlePrometheusLabelsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusLabelsInput{
 			PrometheusURL: "not a url",
 		})
 		assert.NoError(t, err)
@@ -52,7 +52,7 @@ func TestPrometheusInputValidation(t *testing.T) {
 	})
 
 	t.Run("targets invalid url", func(t *testing.T) {
-		res, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{
+		res, _, err := handlePrometheusTargetsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusTargetsInput{
 			PrometheusURL: "not a url",
 		})
 		assert.NoError(t, err)
@@ -60,7 +60,7 @@ func TestPrometheusInputValidation(t *testing.T) {
 	})
 
 	t.Run("query invalid promql", func(t *testing.T) {
-		res, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		res, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			PrometheusURL: "http://localhost:9090",
 			Query:         "up; drop",
 		})
@@ -69,7 +69,7 @@ func TestPrometheusInputValidation(t *testing.T) {
 	})
 
 	t.Run("range invalid promql", func(t *testing.T) {
-		res, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+		res, _, err := handlePrometheusRangeQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusRangeQueryInput{
 			PrometheusURL: "http://localhost:9090",
 			Query:         "up; drop",
 		})
@@ -81,7 +81,7 @@ func TestPrometheusInputValidation(t *testing.T) {
 func TestPrometheusLabelsTargetsErrorPaths(t *testing.T) {
 	t.Run("labels client error", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(nil, assert.AnError))
-		res, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+		res, _, err := handlePrometheusLabelsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusLabelsInput{
 			PrometheusURL: "http://localhost:9090",
 		})
 		assert.NoError(t, err)
@@ -90,7 +90,7 @@ func TestPrometheusLabelsTargetsErrorPaths(t *testing.T) {
 
 	t.Run("labels malformed json", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(createMockResponse(200, "not json"), nil))
-		res, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+		res, _, err := handlePrometheusLabelsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusLabelsInput{
 			PrometheusURL: "http://localhost:9090",
 		})
 		assert.NoError(t, err)
@@ -100,7 +100,7 @@ func TestPrometheusLabelsTargetsErrorPaths(t *testing.T) {
 
 	t.Run("targets client error", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(nil, assert.AnError))
-		res, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{
+		res, _, err := handlePrometheusTargetsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusTargetsInput{
 			PrometheusURL: "http://localhost:9090",
 		})
 		assert.NoError(t, err)
@@ -109,7 +109,7 @@ func TestPrometheusLabelsTargetsErrorPaths(t *testing.T) {
 
 	t.Run("targets malformed json", func(t *testing.T) {
 		ctx := contextWithMockClient(newTestClient(createMockResponse(200, "not json"), nil))
-		res, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{
+		res, _, err := handlePrometheusTargetsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusTargetsInput{
 			PrometheusURL: "http://localhost:9090",
 		})
 		assert.NoError(t, err)
@@ -148,11 +148,11 @@ func newTestClient(response *http.Response, err error) *http.Client {
 }
 
 // Helper function to extract text content from MCP result
-func getResultText(result *mcp.CallToolResult) string {
+func getResultText(result *sdkmcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*sdkmcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""
@@ -190,7 +190,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query:         "up",
 			PrometheusURL: "http://localhost:9090",
 		})
@@ -206,7 +206,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 
 	t.Run("missing query parameter", func(t *testing.T) {
 		ctx := context.Background()
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			PrometheusURL: "http://localhost:9090",
 		})
 
@@ -220,7 +220,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(nil, assert.AnError)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: "up",
 		})
 
@@ -234,7 +234,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(500, "Internal Server Error"), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: "up",
 		})
 
@@ -248,7 +248,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, "invalid json {"), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: "up",
 		})
 
@@ -264,7 +264,7 @@ func TestHandlePrometheusQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: "up",
 		})
 
@@ -292,7 +292,7 @@ func TestHandlePrometheusRangeQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+		result, _, err := handlePrometheusRangeQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusRangeQueryInput{
 			Query: "up",
 			Start: "1609459200",
 			End:   "1609459260",
@@ -310,7 +310,7 @@ func TestHandlePrometheusRangeQueryTool(t *testing.T) {
 
 	t.Run("missing query parameter", func(t *testing.T) {
 		ctx := context.Background()
-		result, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{})
+		result, _, err := handlePrometheusRangeQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusRangeQueryInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -323,7 +323,7 @@ func TestHandlePrometheusRangeQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusRangeQueryTool(ctx, &mcp.CallToolRequest{}, prometheusRangeQueryInput{
+		result, _, err := handlePrometheusRangeQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusRangeQueryInput{
 			Query: "up",
 		})
 
@@ -343,7 +343,7 @@ func TestHandlePrometheusLabelsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{})
+		result, _, err := handlePrometheusLabelsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusLabelsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -359,7 +359,7 @@ func TestHandlePrometheusLabelsQueryTool(t *testing.T) {
 		client := newTestClient(nil, assert.AnError)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{})
+		result, _, err := handlePrometheusLabelsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusLabelsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -372,7 +372,7 @@ func TestHandlePrometheusLabelsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusLabelsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusLabelsInput{
+		result, _, err := handlePrometheusLabelsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusLabelsInput{
 			PrometheusURL: "http://custom:9090",
 		})
 
@@ -402,7 +402,7 @@ func TestHandlePrometheusTargetsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{})
+		result, _, err := handlePrometheusTargetsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusTargetsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -418,7 +418,7 @@ func TestHandlePrometheusTargetsQueryTool(t *testing.T) {
 		client := newTestClient(createMockResponse(404, "Not Found"), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusTargetsQueryTool(ctx, &mcp.CallToolRequest{}, prometheusTargetsInput{})
+		result, _, err := handlePrometheusTargetsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusTargetsInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -430,7 +430,7 @@ func TestHandlePrometheusTargetsQueryTool(t *testing.T) {
 func TestHandlePromql(t *testing.T) {
 	t.Run("missing query description", func(t *testing.T) {
 		ctx := context.Background()
-		result, _, err := handlePromql(ctx, &mcp.CallToolRequest{}, promqlInput{})
+		result, _, err := handlePromql(ctx, &sdkmcp.CallToolRequest{}, promqlInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -440,7 +440,7 @@ func TestHandlePromql(t *testing.T) {
 
 	t.Run("with query description", func(t *testing.T) {
 		ctx := context.Background()
-		result, _, err := handlePromql(ctx, &mcp.CallToolRequest{}, promqlInput{
+		result, _, err := handlePromql(ctx, &sdkmcp.CallToolRequest{}, promqlInput{
 			QueryDescription: "CPU usage percentage",
 		})
 
@@ -472,7 +472,7 @@ func TestPrometheusToolsContextCancellation(t *testing.T) {
 		ctx := contextWithMockClient(client)
 		_ = cancelCtx
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: "up",
 		})
 
@@ -498,7 +498,7 @@ func TestPrometheusToolsEdgeCases(t *testing.T) {
 		client := newTestClient(createMockResponse(200, largeResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: "up",
 		})
 
@@ -515,7 +515,7 @@ func TestPrometheusToolsEdgeCases(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: `up{instance=~".*:9090"}`,
 		})
 
@@ -528,7 +528,7 @@ func TestPrometheusToolsEdgeCases(t *testing.T) {
 		client := newTestClient(createMockResponse(200, ""), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: "up",
 		})
 
@@ -545,7 +545,7 @@ func TestPrometheusURLEncoding(t *testing.T) {
 		client := newTestClient(createMockResponse(200, mockResponse), nil)
 		ctx := contextWithMockClient(client)
 
-		result, _, err := handlePrometheusQueryTool(ctx, &mcp.CallToolRequest{}, prometheusQueryInput{
+		result, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{
 			Query: `up{job="test service"}`,
 		})
 

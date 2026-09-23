@@ -13,6 +13,7 @@ import (
 	"github.com/kagent-dev/tools/internal/errors"
 	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/internal/security"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // clientKey is the context key for the http client.
@@ -26,7 +27,7 @@ func getHTTPClient(ctx context.Context) *http.Client {
 }
 
 // prometheusErrResult adapts ToolError to an MCP error result.
-func prometheusErrResult(toolErr *errors.ToolError) *mcp.CallToolResult {
+func prometheusErrResult(toolErr *errors.ToolError) *sdkmcp.CallToolResult {
 	return toolErr.ToMCPResult()
 }
 
@@ -47,7 +48,7 @@ type prometheusQueryInput struct {
 	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
 }
 
-func handlePrometheusQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusQueryInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handlePrometheusQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusQueryInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
 		prometheusURL = "http://localhost:9090"
@@ -125,7 +126,7 @@ type prometheusRangeQueryInput struct {
 	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
 }
 
-func handlePrometheusRangeQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusRangeQueryInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handlePrometheusRangeQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusRangeQueryInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
 		prometheusURL = "http://localhost:9090"
@@ -216,7 +217,7 @@ type prometheusLabelsInput struct {
 	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
 }
 
-func handlePrometheusLabelsQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusLabelsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handlePrometheusLabelsQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusLabelsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
 		prometheusURL = "http://localhost:9090"
@@ -274,7 +275,7 @@ type prometheusTargetsInput struct {
 	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
 }
 
-func handlePrometheusTargetsQueryTool(ctx context.Context, request *mcp.CallToolRequest, in prometheusTargetsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handlePrometheusTargetsQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusTargetsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
 		prometheusURL = "http://localhost:9090"
@@ -313,28 +314,28 @@ func handlePrometheusTargetsQueryTool(ctx context.Context, request *mcp.CallTool
 	return mcp.TextResult(prettyJSONBody(body))
 }
 
-func RegisterTools(s *mcp.Server, readOnly bool) {
-	mcp.AddTool(s, "prometheus", &mcp.Tool{
+func RegisterTools(s *sdkmcp.Server, readOnly bool) {
+	mcp.AddTool(s, "prometheus", &sdkmcp.Tool{
 		Name:        "prometheus_query_tool",
 		Description: "Execute a PromQL query against Prometheus",
 	}, handlePrometheusQueryTool)
 
-	mcp.AddTool(s, "prometheus", &mcp.Tool{
+	mcp.AddTool(s, "prometheus", &sdkmcp.Tool{
 		Name:        "prometheus_query_range_tool",
 		Description: "Execute a PromQL range query against Prometheus",
 	}, handlePrometheusRangeQueryTool)
 
-	mcp.AddTool(s, "prometheus", &mcp.Tool{
+	mcp.AddTool(s, "prometheus", &sdkmcp.Tool{
 		Name:        "prometheus_label_names_tool",
 		Description: "Get all available labels from Prometheus",
 	}, handlePrometheusLabelsQueryTool)
 
-	mcp.AddTool(s, "prometheus", &mcp.Tool{
+	mcp.AddTool(s, "prometheus", &sdkmcp.Tool{
 		Name:        "prometheus_targets_tool",
 		Description: "Get all Prometheus targets and their status",
 	}, handlePrometheusTargetsQueryTool)
 
-	mcp.AddTool(s, "prometheus", &mcp.Tool{
+	mcp.AddTool(s, "prometheus", &sdkmcp.Tool{
 		Name:        "prometheus_promql_tool",
 		Description: "Generate a PromQL query",
 	}, handlePromql)

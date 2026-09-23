@@ -5,6 +5,7 @@ import (
 	_ "embed"
 
 	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
@@ -16,7 +17,7 @@ type promqlInput struct {
 	QueryDescription string `json:"query_description" jsonschema:"A string describing the query to generate"`
 }
 
-func handlePromql(ctx context.Context, request *mcp.CallToolRequest, in promqlInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handlePromql(ctx context.Context, request *sdkmcp.CallToolRequest, in promqlInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	queryDescription := in.QueryDescription
 	if queryDescription == "" {
 		return mcp.TextError("query_description is required")

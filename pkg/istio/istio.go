@@ -8,6 +8,7 @@ import (
 	"github.com/kagent-dev/tools/internal/commands"
 	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/pkg/utils"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type istioProxyStatusInput struct {
@@ -16,7 +17,7 @@ type istioProxyStatusInput struct {
 }
 
 // Istio proxy status
-func handleIstioProxyStatus(ctx context.Context, request *mcp.CallToolRequest, in istioProxyStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleIstioProxyStatus(ctx context.Context, request *sdkmcp.CallToolRequest, in istioProxyStatusInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"proxy-status"}
 
 	if in.Namespace != "" {
@@ -50,7 +51,7 @@ type istioProxyConfigInput struct {
 }
 
 // Istio proxy config
-func handleIstioProxyConfig(ctx context.Context, request *mcp.CallToolRequest, in istioProxyConfigInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleIstioProxyConfig(ctx context.Context, request *sdkmcp.CallToolRequest, in istioProxyConfigInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ConfigType == "" {
 		in.ConfigType = "all"
 	}
@@ -80,7 +81,7 @@ type istioInstallInput struct {
 }
 
 // Istio install
-func handleIstioInstall(ctx context.Context, request *mcp.CallToolRequest, in istioInstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleIstioInstall(ctx context.Context, request *sdkmcp.CallToolRequest, in istioInstallInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Profile == "" {
 		in.Profile = "default"
 	}
@@ -100,7 +101,7 @@ type istioGenerateManifestInput struct {
 }
 
 // Istio generate manifest
-func handleIstioGenerateManifest(ctx context.Context, request *mcp.CallToolRequest, in istioGenerateManifestInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleIstioGenerateManifest(ctx context.Context, request *sdkmcp.CallToolRequest, in istioGenerateManifestInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Profile == "" {
 		in.Profile = "default"
 	}
@@ -121,7 +122,7 @@ type istioAnalyzeClusterConfigurationInput struct {
 }
 
 // Istio analyze
-func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request *mcp.CallToolRequest, in istioAnalyzeClusterConfigurationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request *sdkmcp.CallToolRequest, in istioAnalyzeClusterConfigurationInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"analyze"}
 
 	if in.AllNamespaces {
@@ -143,7 +144,7 @@ type istioVersionInput struct {
 }
 
 // Istio version
-func handleIstioVersion(ctx context.Context, request *mcp.CallToolRequest, in istioVersionInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleIstioVersion(ctx context.Context, request *sdkmcp.CallToolRequest, in istioVersionInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"version"}
 
 	if in.Short {
@@ -161,7 +162,7 @@ func handleIstioVersion(ctx context.Context, request *mcp.CallToolRequest, in is
 type istioRemoteClustersInput struct{}
 
 // Istio remote clusters
-func handleIstioRemoteClusters(ctx context.Context, request *mcp.CallToolRequest, in istioRemoteClustersInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleIstioRemoteClusters(ctx context.Context, request *sdkmcp.CallToolRequest, in istioRemoteClustersInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"remote-clusters"}
 
 	result, err := runIstioCtl(ctx, args)
@@ -178,7 +179,7 @@ type waypointListInput struct {
 }
 
 // Waypoint list
-func handleWaypointList(ctx context.Context, request *mcp.CallToolRequest, in waypointListInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleWaypointList(ctx context.Context, request *sdkmcp.CallToolRequest, in waypointListInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"waypoint", "list"}
 
 	if in.AllNamespaces {
@@ -202,7 +203,7 @@ type waypointGenerateInput struct {
 }
 
 // Waypoint generate
-func handleWaypointGenerate(ctx context.Context, request *mcp.CallToolRequest, in waypointGenerateInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleWaypointGenerate(ctx context.Context, request *sdkmcp.CallToolRequest, in waypointGenerateInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" {
 		in.Name = "waypoint"
 	}
@@ -240,7 +241,7 @@ type waypointApplyInput struct {
 }
 
 // Waypoint apply
-func handleWaypointApply(ctx context.Context, request *mcp.CallToolRequest, in waypointApplyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleWaypointApply(ctx context.Context, request *sdkmcp.CallToolRequest, in waypointApplyInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		return mcp.TextError("namespace parameter is required")
 	}
@@ -266,7 +267,7 @@ type waypointDeleteInput struct {
 }
 
 // Waypoint delete
-func handleWaypointDelete(ctx context.Context, request *mcp.CallToolRequest, in waypointDeleteInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleWaypointDelete(ctx context.Context, request *sdkmcp.CallToolRequest, in waypointDeleteInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		return mcp.TextError("namespace parameter is required")
 	}
@@ -298,7 +299,7 @@ type waypointStatusInput struct {
 }
 
 // Waypoint status
-func handleWaypointStatus(ctx context.Context, request *mcp.CallToolRequest, in waypointStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleWaypointStatus(ctx context.Context, request *sdkmcp.CallToolRequest, in waypointStatusInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		return mcp.TextError("namespace parameter is required")
 	}
@@ -325,7 +326,7 @@ type ztunnelConfigInput struct {
 }
 
 // Ztunnel config
-func handleZtunnelConfig(ctx context.Context, request *mcp.CallToolRequest, in ztunnelConfigInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleZtunnelConfig(ctx context.Context, request *sdkmcp.CallToolRequest, in ztunnelConfigInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ConfigType == "" {
 		in.ConfigType = "all"
 	}
@@ -345,72 +346,72 @@ func handleZtunnelConfig(ctx context.Context, request *mcp.CallToolRequest, in z
 }
 
 // Register Istio tools
-func RegisterTools(s *mcp.Server, readOnly bool) {
+func RegisterTools(s *sdkmcp.Server, readOnly bool) {
 	// Read-only tools - always registered
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_proxy_status",
 		Description: "Get Envoy proxy status for pods, retrieves last sent and acknowledged xDS sync from Istiod to each Envoy in the mesh",
 	}, handleIstioProxyStatus)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_proxy_config",
 		Description: "Get specific proxy configuration for a single pod",
 	}, handleIstioProxyConfig)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_generate_manifest",
 		Description: "Generate Istio manifest for a given profile",
 	}, handleIstioGenerateManifest)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_analyze_cluster_configuration",
 		Description: "Analyze Istio cluster configuration for issues",
 	}, handleIstioAnalyzeClusterConfiguration)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_version",
 		Description: "Get Istio version information",
 	}, handleIstioVersion)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_remote_clusters",
 		Description: "List remote clusters registered with Istio",
 	}, handleIstioRemoteClusters)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_list_waypoints",
 		Description: "List all waypoints in the mesh",
 	}, handleWaypointList)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_generate_waypoint",
 		Description: "Generate a waypoint resource YAML",
 	}, handleWaypointGenerate)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_waypoint_status",
 		Description: "Get the status of a waypoint resource",
 	}, handleWaypointStatus)
 
-	mcp.AddTool(s, "istio", &mcp.Tool{
+	mcp.AddTool(s, "istio", &sdkmcp.Tool{
 		Name:        "istio_ztunnel_config",
 		Description: "Get the ztunnel configuration for a namespace",
 	}, handleZtunnelConfig)
 
 	// Write tools - only registered when write operations are enabled
 	if !readOnly {
-		mcp.AddTool(s, "istio", &mcp.Tool{
+		mcp.AddTool(s, "istio", &sdkmcp.Tool{
 			Name:        "istio_install_istio",
 			Description: "Install Istio with a specified configuration profile",
 		}, handleIstioInstall)
 
-		mcp.AddTool(s, "istio", &mcp.Tool{
+		mcp.AddTool(s, "istio", &sdkmcp.Tool{
 			Name:        "istio_apply_waypoint",
 			Description: "Apply a waypoint resource to the cluster",
 		}, handleWaypointApply)
 
-		mcp.AddTool(s, "istio", &mcp.Tool{
+		mcp.AddTool(s, "istio", &sdkmcp.Tool{
 			Name:        "istio_delete_waypoint",
 			Description: "Delete a waypoint resource from the cluster",
 		}, handleWaypointDelete)

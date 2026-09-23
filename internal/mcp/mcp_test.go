@@ -48,12 +48,12 @@ func TestHeader(t *testing.T) {
 
 func TestAddToolRecordsProvider(t *testing.T) {
 	metrics.KagentToolsMCPRegisteredTools.Reset()
-	s := NewServer(&Implementation{Name: "t", Version: "v"}, nil)
+	s := sdk.NewServer(&sdk.Implementation{Name: "t", Version: "v"}, nil)
 
 	type in struct {
 		Name string `json:"name"`
 	}
-	AddTool(s, "myprovider", &Tool{Name: "my_tool"}, func(_ context.Context, _ *CallToolRequest, _ in) (*CallToolResult, TextOutput, error) {
+	AddTool(s, "myprovider", &sdk.Tool{Name: "my_tool"}, func(_ context.Context, _ *sdk.CallToolRequest, _ in) (*sdk.CallToolResult, TextOutput, error) {
 		return TextResult("ok")
 	})
 
@@ -76,7 +76,7 @@ func TestAddToolRecordsProvider(t *testing.T) {
 // k8s_get_resources with just resource_type), so the inferred Required list and
 // additionalProperties restriction must be cleared.
 func TestAddToolRelaxesInputSchema(t *testing.T) {
-	s := NewServer(&Implementation{Name: "t", Version: "v"}, nil)
+	s := sdk.NewServer(&sdk.Implementation{Name: "t", Version: "v"}, nil)
 
 	type in struct {
 		ResourceType  string `json:"resource_type"`
@@ -85,8 +85,8 @@ func TestAddToolRelaxesInputSchema(t *testing.T) {
 		AllNamespaces bool   `json:"all_namespaces"`
 		Output        string `json:"output"`
 	}
-	tool := &Tool{Name: "relax_tool"}
-	AddTool(s, "p", tool, func(_ context.Context, _ *CallToolRequest, _ in) (*CallToolResult, TextOutput, error) {
+	tool := &sdk.Tool{Name: "relax_tool"}
+	AddTool(s, "p", tool, func(_ context.Context, _ *sdk.CallToolRequest, _ in) (*sdk.CallToolResult, TextOutput, error) {
 		return TextResult("ok")
 	})
 

@@ -13,6 +13,7 @@ import (
 	"github.com/kagent-dev/tools/internal/commands"
 	"github.com/kagent-dev/tools/internal/logger"
 	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // KubeConfigManager manages kubeconfig path with thread safety
@@ -82,7 +83,7 @@ func shellTool(ctx context.Context, params shellParams) (string, error) {
 	return commands.NewCommandBuilder(cmd).WithArgs(args...).Execute(ctx)
 }
 
-func handleShellTool(ctx context.Context, request *mcp.CallToolRequest, in shellParams) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleShellTool(ctx context.Context, request *sdkmcp.CallToolRequest, in shellParams) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Command == "" {
 		return mcp.TextError("command parameter is required")
 	}
@@ -95,7 +96,7 @@ func handleShellTool(ctx context.Context, request *mcp.CallToolRequest, in shell
 	return mcp.TextResult(result)
 }
 
-func handleMCPInspectTool(_ context.Context, request *mcp.CallToolRequest, in inspectInput) (*mcp.CallToolResult, *inspectOutput, error) {
+func handleMCPInspectTool(_ context.Context, request *sdkmcp.CallToolRequest, in inspectInput) (*sdkmcp.CallToolResult, *inspectOutput, error) {
 	output := &inspectOutput{
 		Echo:    in.Echo,
 		Headers: inspectHeaders(mcp.Header(request)),
@@ -191,31 +192,31 @@ func inspectHeaders(headers http.Header) []inspectHeader {
 type datetimeInput struct{}
 
 // handleGetCurrentDateTimeTool provides datetime functionality for both MCP and testing
-func handleGetCurrentDateTimeTool(ctx context.Context, request *mcp.CallToolRequest, in datetimeInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetCurrentDateTimeTool(ctx context.Context, request *sdkmcp.CallToolRequest, in datetimeInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	// Returns the current date and time in ISO 8601 format (RFC3339)
 	// This matches the Python implementation: datetime.datetime.now().isoformat()
 	now := time.Now()
 	return mcp.TextResult(now.Format(time.RFC3339))
 }
 
-func RegisterTools(s *mcp.Server, readOnly bool) {
+func RegisterTools(s *sdkmcp.Server, readOnly bool) {
 	logger.Get().Info("RegisterTools initialized")
 
 	// Register shell tool - disabled in read-only mode as it allows arbitrary command execution
 	if !readOnly {
-		mcp.AddTool(s, "utils", &mcp.Tool{
+		mcp.AddTool(s, "utils", &sdkmcp.Tool{
 			Name:        "shell",
 			Description: "Execute shell commands",
 		}, handleShellTool)
 	}
 
 	// Register datetime tool
-	mcp.AddTool(s, "utils", &mcp.Tool{
+	mcp.AddTool(s, "utils", &sdkmcp.Tool{
 		Name:        "datetime_get_current_time",
 		Description: "Returns the current date and time in ISO 8601 format.",
 	}, handleGetCurrentDateTimeTool)
 
-	mcp.AddTool(s, "utils", &mcp.Tool{
+	mcp.AddTool(s, "utils", &sdkmcp.Tool{
 		Name:        "mcp_inspect",
 		Description: "Echo input and return all HTTP headers received with the MCP request for debugging.",
 	}, handleMCPInspectTool)

@@ -19,7 +19,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -96,7 +95,7 @@ func SweepReadOnlyTools(client *MCPClient) {
 	tools, err := client.listTools()
 	Expect(err).ToNot(HaveOccurred(), "listing tools failed: %v", err)
 
-	advertised := make(map[string]*mcp.Tool, len(tools))
+	advertised := make(map[string]*sdkmcp.Tool, len(tools))
 	for _, t := range tools {
 		advertised[t.Name] = t
 	}

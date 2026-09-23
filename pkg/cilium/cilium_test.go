@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +16,7 @@ import (
 func boolPtr(b bool) *bool { return &b }
 
 func TestRegisterCiliumTools(t *testing.T) {
-	s := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+	s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
 	RegisterTools(s, false) // false = enable all tools including write operations
 	// We can't directly check the tools, but we can ensure the call doesn't panic
 }
@@ -29,7 +29,7 @@ func TestHandleCiliumStatusAndVersion(t *testing.T) {
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleCiliumStatusAndVersion(ctx, &mcp.CallToolRequest{}, noInput{})
+	result, _, err := handleCiliumStatusAndVersion(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -47,7 +47,7 @@ func TestHandleCiliumStatusAndVersionError(t *testing.T) {
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleCiliumStatusAndVersion(ctx, &mcp.CallToolRequest{}, noInput{})
+	result, _, err := handleCiliumStatusAndVersion(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.True(t, result.IsError)
@@ -61,7 +61,7 @@ func TestHandleInstallCilium(t *testing.T) {
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleInstallCilium(ctx, &mcp.CallToolRequest{}, installCiliumInput{})
+	result, _, err := handleInstallCilium(ctx, &sdkmcp.CallToolRequest{}, installCiliumInput{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -75,7 +75,7 @@ func TestHandleUninstallCilium(t *testing.T) {
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleUninstallCilium(ctx, &mcp.CallToolRequest{}, noInput{})
+	result, _, err := handleUninstallCilium(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -89,7 +89,7 @@ func TestHandleUpgradeCilium(t *testing.T) {
 
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleUpgradeCilium(ctx, &mcp.CallToolRequest{}, upgradeCiliumInput{})
+	result, _, err := handleUpgradeCilium(ctx, &sdkmcp.CallToolRequest{}, upgradeCiliumInput{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -103,7 +103,7 @@ func TestHandleConnectToRemoteCluster(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("cilium", []string{"clustermesh", "connect", "--destination-cluster", "my-cluster"}, "✓ Connected to cluster my-cluster!", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
-		result, _, err := handleConnectToRemoteCluster(ctx, &mcp.CallToolRequest{}, connectToRemoteClusterInput{ClusterName: "my-cluster"})
+		result, _, err := handleConnectToRemoteCluster(ctx, &sdkmcp.CallToolRequest{}, connectToRemoteClusterInput{ClusterName: "my-cluster"})
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -111,7 +111,7 @@ func TestHandleConnectToRemoteCluster(t *testing.T) {
 	})
 
 	t.Run("missing cluster_name", func(t *testing.T) {
-		result, _, err := handleConnectToRemoteCluster(ctx, &mcp.CallToolRequest{}, connectToRemoteClusterInput{})
+		result, _, err := handleConnectToRemoteCluster(ctx, &sdkmcp.CallToolRequest{}, connectToRemoteClusterInput{})
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -126,7 +126,7 @@ func TestHandleDisconnectFromRemoteCluster(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("cilium", []string{"clustermesh", "disconnect", "--destination-cluster", "my-cluster"}, "✓ Disconnected from cluster my-cluster!", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
-		result, _, err := handleDisconnectRemoteCluster(ctx, &mcp.CallToolRequest{}, disconnectRemoteClusterInput{ClusterName: "my-cluster"})
+		result, _, err := handleDisconnectRemoteCluster(ctx, &sdkmcp.CallToolRequest{}, disconnectRemoteClusterInput{ClusterName: "my-cluster"})
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -134,7 +134,7 @@ func TestHandleDisconnectFromRemoteCluster(t *testing.T) {
 	})
 
 	t.Run("missing cluster_name", func(t *testing.T) {
-		result, _, err := handleDisconnectRemoteCluster(ctx, &mcp.CallToolRequest{}, disconnectRemoteClusterInput{})
+		result, _, err := handleDisconnectRemoteCluster(ctx, &sdkmcp.CallToolRequest{}, disconnectRemoteClusterInput{})
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
@@ -147,7 +147,7 @@ func TestHandleEnableHubble(t *testing.T) {
 	mock := cmd.NewMockShellExecutor()
 	mock.AddCommandString("cilium", []string{"hubble", "enable"}, "✓ Hubble was successfully enabled!", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
-	result, _, err := handleToggleHubble(ctx, &mcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(true)})
+	result, _, err := handleToggleHubble(ctx, &sdkmcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(true)})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -159,7 +159,7 @@ func TestHandleDisableHubble(t *testing.T) {
 	mock := cmd.NewMockShellExecutor()
 	mock.AddCommandString("cilium", []string{"hubble", "disable"}, "✓ Hubble was successfully disabled!", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
-	result, _, err := handleToggleHubble(ctx, &mcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(false)})
+	result, _, err := handleToggleHubble(ctx, &sdkmcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(false)})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -171,7 +171,7 @@ func TestHandleListBGPPeers(t *testing.T) {
 	mock := cmd.NewMockShellExecutor()
 	mock.AddCommandString("cilium", []string{"bgp", "peers"}, "listing BGP peers", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
-	result, _, err := handleListBGPPeers(ctx, &mcp.CallToolRequest{}, noInput{})
+	result, _, err := handleListBGPPeers(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -183,7 +183,7 @@ func TestHandleListBGPRoutes(t *testing.T) {
 	mock := cmd.NewMockShellExecutor()
 	mock.AddCommandString("cilium", []string{"bgp", "routes"}, "listing BGP routes", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
-	result, _, err := handleListBGPRoutes(ctx, &mcp.CallToolRequest{}, noInput{})
+	result, _, err := handleListBGPRoutes(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.IsError)
@@ -233,7 +233,7 @@ func TestHandleGetEndpointsList(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"endpoint", "list"}, "ENDPOINT   POLICY\n34   Disabled", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleGetEndpointsList(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleGetEndpointsList(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "ENDPOINT")
@@ -245,7 +245,7 @@ func TestHandleGetEndpointDetails(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"endpoint", "get", "34", "-o", "json"}, `{"id": 34}`, nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleGetEndpointDetails(ctx, &mcp.CallToolRequest{}, getEndpointDetailsInput{EndpointID: "34", NodeName: "test-node"})
+	result, _, err := handleGetEndpointDetails(ctx, &sdkmcp.CallToolRequest{}, getEndpointDetailsInput{EndpointID: "34", NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), `"id": 34`)
@@ -257,7 +257,7 @@ func TestHandleGetEndpointLogs(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"endpoint", "logs", "34"}, "endpoint log output", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleGetEndpointLogs(ctx, &mcp.CallToolRequest{}, getEndpointLogsInput{EndpointID: "34", NodeName: "test-node"})
+	result, _, err := handleGetEndpointLogs(ctx, &sdkmcp.CallToolRequest{}, getEndpointLogsInput{EndpointID: "34", NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "endpoint log output")
@@ -269,7 +269,7 @@ func TestHandleGetEndpointHealth(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"endpoint", "health", "34"}, "endpoint health OK", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleGetEndpointHealth(ctx, &mcp.CallToolRequest{}, getEndpointHealthInput{EndpointID: "34", NodeName: "test-node"})
+	result, _, err := handleGetEndpointHealth(ctx, &sdkmcp.CallToolRequest{}, getEndpointHealthInput{EndpointID: "34", NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "endpoint health OK")
@@ -282,7 +282,7 @@ func TestHandleShowConfigurationOptions(t *testing.T) {
 		mockCiliumDbgCommand(mock, []string{"config"}, "PolicyEnforcement=default", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		result, _, err := handleShowConfigurationOptions(ctx, &mcp.CallToolRequest{}, showConfigurationOptionsInput{NodeName: "test-node"})
+		result, _, err := handleShowConfigurationOptions(ctx, &sdkmcp.CallToolRequest{}, showConfigurationOptionsInput{NodeName: "test-node"})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 		assert.Contains(t, getResultText(result), "PolicyEnforcement")
@@ -294,7 +294,7 @@ func TestHandleShowConfigurationOptions(t *testing.T) {
 		mockCiliumDbgCommand(mock, []string{"config", "--all"}, "all config options", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		result, _, err := handleShowConfigurationOptions(ctx, &mcp.CallToolRequest{}, showConfigurationOptionsInput{NodeName: "test-node", ListAll: true})
+		result, _, err := handleShowConfigurationOptions(ctx, &sdkmcp.CallToolRequest{}, showConfigurationOptionsInput{NodeName: "test-node", ListAll: true})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 		assert.Contains(t, getResultText(result), "all config options")
@@ -306,7 +306,7 @@ func TestHandleShowConfigurationOptions(t *testing.T) {
 		mockCiliumDbgCommand(mock, []string{"config", "-r"}, "read only config", nil)
 		ctx = cmd.WithShellExecutor(ctx, mock)
 
-		result, _, err := handleShowConfigurationOptions(ctx, &mcp.CallToolRequest{}, showConfigurationOptionsInput{NodeName: "test-node", ListReadOnly: true})
+		result, _, err := handleShowConfigurationOptions(ctx, &sdkmcp.CallToolRequest{}, showConfigurationOptionsInput{NodeName: "test-node", ListReadOnly: true})
 		require.NoError(t, err)
 		assert.False(t, result.IsError)
 		assert.Contains(t, getResultText(result), "read only config")
@@ -319,7 +319,7 @@ func TestHandleToggleConfigurationOption(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"config", "PolicyEnforcement=enable"}, "option toggled", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleToggleConfigurationOption(ctx, &mcp.CallToolRequest{}, toggleConfigurationOptionInput{Option: "PolicyEnforcement", Value: boolPtr(true), NodeName: "test-node"})
+	result, _, err := handleToggleConfigurationOption(ctx, &sdkmcp.CallToolRequest{}, toggleConfigurationOptionInput{Option: "PolicyEnforcement", Value: boolPtr(true), NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "option toggled")
@@ -331,7 +331,7 @@ func TestHandleListIdentities(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"identity", "list"}, "ID  LABELS\n1   reserved:host", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListIdentities(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleListIdentities(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "reserved:host")
@@ -343,7 +343,7 @@ func TestHandleGetDaemonStatus(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"status"}, "KVStore: Ok\nKubernetes: Ok", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleGetDaemonStatus(ctx, &mcp.CallToolRequest{}, getDaemonStatusInput{NodeName: "test-node"})
+	result, _, err := handleGetDaemonStatus(ctx, &sdkmcp.CallToolRequest{}, getDaemonStatusInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "KVStore: Ok")
@@ -355,7 +355,7 @@ func TestHandleDisplayEncryptionState(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"encrypt", "status"}, "Encryption: Disabled", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleDisplayEncryptionState(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleDisplayEncryptionState(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "Encryption: Disabled")
@@ -367,7 +367,7 @@ func TestHandleShowDNSNames(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"fqdn", "names"}, "DNS names output", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleShowDNSNames(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleShowDNSNames(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "DNS names output")
@@ -379,7 +379,7 @@ func TestHandleFQDNCache(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"fqdn", "cache", "list"}, "FQDN cache entries", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleFQDNCache(ctx, &mcp.CallToolRequest{}, fqdnCacheInput{NodeName: "test-node"})
+	result, _, err := handleFQDNCache(ctx, &sdkmcp.CallToolRequest{}, fqdnCacheInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "FQDN cache entries")
@@ -391,7 +391,7 @@ func TestHandleListClusterNodes(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"node", "list"}, "Name   IPv4 Address\nnode1  10.0.0.1", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListClusterNodes(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleListClusterNodes(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "node1")
@@ -403,7 +403,7 @@ func TestHandleListNodeIds(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"nodeid", "list"}, "ID   IP\n1   10.0.0.1", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListNodeIds(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleListNodeIds(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "10.0.0.1")
@@ -415,7 +415,7 @@ func TestHandleListBPFMaps(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"map", "list"}, "Name   Num entries\ncilium_lb4   22", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListBPFMaps(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleListBPFMaps(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "cilium_lb4")
@@ -427,7 +427,7 @@ func TestHandleGetBPFMap(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"map", "get", "cilium_lb4"}, "map contents", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleGetBPFMap(ctx, &mcp.CallToolRequest{}, bpfMapInput{MapName: "cilium_lb4", NodeName: "test-node"})
+	result, _, err := handleGetBPFMap(ctx, &sdkmcp.CallToolRequest{}, bpfMapInput{MapName: "cilium_lb4", NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "map contents")
@@ -439,7 +439,7 @@ func TestHandleListBPFMapEvents(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"map", "events", "cilium_lb4"}, "map events", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListBPFMapEvents(ctx, &mcp.CallToolRequest{}, bpfMapInput{MapName: "cilium_lb4", NodeName: "test-node"})
+	result, _, err := handleListBPFMapEvents(ctx, &sdkmcp.CallToolRequest{}, bpfMapInput{MapName: "cilium_lb4", NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "map events")
@@ -451,7 +451,7 @@ func TestHandleListMetrics(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"metrics", "list"}, "Metric   Value\ncilium_endpoint_count   4", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListMetrics(ctx, &mcp.CallToolRequest{}, listMetricsInput{NodeName: "test-node"})
+	result, _, err := handleListMetrics(ctx, &sdkmcp.CallToolRequest{}, listMetricsInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "cilium_endpoint_count")
@@ -463,7 +463,7 @@ func TestHandleListServices(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"service", "list"}, "ID   Frontend\n1   10.96.0.1:443", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListServices(ctx, &mcp.CallToolRequest{}, listServicesInput{NodeName: "test-node"})
+	result, _, err := handleListServices(ctx, &sdkmcp.CallToolRequest{}, listServicesInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "10.96.0.1")
@@ -475,7 +475,7 @@ func TestHandleListIPAddresses(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"ip", "list"}, "IP   Identity\n10.0.0.1   1", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListIPAddresses(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleListIPAddresses(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "10.0.0.1")
@@ -487,7 +487,7 @@ func TestHandleDisplaySelectors(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"policy", "selectors"}, "SELECTOR   IDENTITIES", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleDisplaySelectors(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleDisplaySelectors(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "SELECTOR")
@@ -499,7 +499,7 @@ func TestHandleListLocalRedirectPolicies(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"lrp", "list"}, "No local redirect policies", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListLocalRedirectPolicies(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleListLocalRedirectPolicies(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "No local redirect policies")
@@ -511,7 +511,7 @@ func TestHandleRequestDebuggingInformation(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"debuginfo"}, "debug info output", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleRequestDebuggingInformation(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleRequestDebuggingInformation(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "debug info output")
@@ -523,17 +523,17 @@ func TestHandleListXDPCIDRFilters(t *testing.T) {
 	mockCiliumDbgCommand(mock, []string{"prefilter", "list"}, "CIDR filters", nil)
 	ctx = cmd.WithShellExecutor(ctx, mock)
 
-	result, _, err := handleListXDPCIDRFilters(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleListXDPCIDRFilters(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
 	assert.Contains(t, getResultText(result), "CIDR filters")
 }
 
-func getResultText(r *mcp.CallToolResult) string {
+func getResultText(r *sdkmcp.CallToolResult) string {
 	if r == nil || len(r.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := r.Content[0].(*mcp.TextContent); ok {
+	if textContent, ok := r.Content[0].(*sdkmcp.TextContent); ok {
 		return strings.TrimSpace(textContent.Text)
 	}
 	return ""
@@ -545,122 +545,122 @@ func TestCiliumDbgHandlers(t *testing.T) {
 		name    string
 		dbgArgs []string
 		expect  string
-		run     func(context.Context) (*mcp.CallToolResult, error)
+		run     func(context.Context) (*sdkmcp.CallToolResult, error)
 	}{
-		{"manage_endpoint_labels", []string{"endpoint", "labels", "34", "--add", "key=val"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleManageEndpointLabels(ctx, &mcp.CallToolRequest{}, manageEndpointLabelsInput{EndpointID: "34", Labels: "key=val", NodeName: "test-node"})
+		{"manage_endpoint_labels", []string{"endpoint", "labels", "34", "--add", "key=val"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleManageEndpointLabels(ctx, &sdkmcp.CallToolRequest{}, manageEndpointLabelsInput{EndpointID: "34", Labels: "key=val", NodeName: "test-node"})
 			return r, err
 		}},
-		{"manage_endpoint_configuration", []string{"endpoint", "config", "34", "Debug=true"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleManageEndpointConfiguration(ctx, &mcp.CallToolRequest{}, manageEndpointConfigurationInput{EndpointID: "34", Config: "Debug=true", NodeName: "test-node"})
+		{"manage_endpoint_configuration", []string{"endpoint", "config", "34", "Debug=true"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleManageEndpointConfiguration(ctx, &sdkmcp.CallToolRequest{}, manageEndpointConfigurationInput{EndpointID: "34", Config: "Debug=true", NodeName: "test-node"})
 			return r, err
 		}},
-		{"disconnect_endpoint", []string{"endpoint", "disconnect", "34"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDisconnectEndpoint(ctx, &mcp.CallToolRequest{}, disconnectEndpointInput{EndpointID: "34", NodeName: "test-node"})
+		{"disconnect_endpoint", []string{"endpoint", "disconnect", "34"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDisconnectEndpoint(ctx, &sdkmcp.CallToolRequest{}, disconnectEndpointInput{EndpointID: "34", NodeName: "test-node"})
 			return r, err
 		}},
-		{"get_identity_details", []string{"identity", "get", "123"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetIdentityDetails(ctx, &mcp.CallToolRequest{}, getIdentityDetailsInput{IdentityID: "123", NodeName: "test-node"})
+		{"get_identity_details", []string{"identity", "get", "123"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetIdentityDetails(ctx, &sdkmcp.CallToolRequest{}, getIdentityDetailsInput{IdentityID: "123", NodeName: "test-node"})
 			return r, err
 		}},
-		{"flush_ipsec_state", []string{"encrypt", "flush", "-f"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleFlushIPsecState(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+		{"flush_ipsec_state", []string{"encrypt", "flush", "-f"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleFlushIPsecState(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 			return r, err
 		}},
-		{"list_envoy_config", []string{"envoy", "admin", "clusters"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleListEnvoyConfig(ctx, &mcp.CallToolRequest{}, listEnvoyConfigInput{ResourceName: "clusters", NodeName: "test-node"})
+		{"list_envoy_config", []string{"envoy", "admin", "clusters"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleListEnvoyConfig(ctx, &sdkmcp.CallToolRequest{}, listEnvoyConfigInput{ResourceName: "clusters", NodeName: "test-node"})
 			return r, err
 		}},
-		{"show_ipcache_cidr", []string{"ip", "get", "10.0.0.0/24"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleShowIPCacheInformation(ctx, &mcp.CallToolRequest{}, showIPCacheInformationInput{CIDR: "10.0.0.0/24", NodeName: "test-node"})
+		{"show_ipcache_cidr", []string{"ip", "get", "10.0.0.0/24"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleShowIPCacheInformation(ctx, &sdkmcp.CallToolRequest{}, showIPCacheInformationInput{CIDR: "10.0.0.0/24", NodeName: "test-node"})
 			return r, err
 		}},
-		{"show_ipcache_labels", []string{"ip", "get", "--labels", "app=foo"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleShowIPCacheInformation(ctx, &mcp.CallToolRequest{}, showIPCacheInformationInput{Labels: "app=foo", NodeName: "test-node"})
+		{"show_ipcache_labels", []string{"ip", "get", "--labels", "app=foo"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleShowIPCacheInformation(ctx, &sdkmcp.CallToolRequest{}, showIPCacheInformationInput{Labels: "app=foo", NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_kvstore_key", []string{"kvstore", "delete", "foo"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteKeyFromKVStore(ctx, &mcp.CallToolRequest{}, kvStoreKeyInput{Key: "foo", NodeName: "test-node"})
+		{"delete_kvstore_key", []string{"kvstore", "delete", "foo"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteKeyFromKVStore(ctx, &sdkmcp.CallToolRequest{}, kvStoreKeyInput{Key: "foo", NodeName: "test-node"})
 			return r, err
 		}},
-		{"get_kvstore_key", []string{"kvstore", "get", "foo"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetKVStoreKey(ctx, &mcp.CallToolRequest{}, kvStoreKeyInput{Key: "foo", NodeName: "test-node"})
+		{"get_kvstore_key", []string{"kvstore", "get", "foo"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetKVStoreKey(ctx, &sdkmcp.CallToolRequest{}, kvStoreKeyInput{Key: "foo", NodeName: "test-node"})
 			return r, err
 		}},
-		{"set_kvstore_key", []string{"kvstore", "set", "foo=bar"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleSetKVStoreKey(ctx, &mcp.CallToolRequest{}, setKVStoreKeyInput{Key: "foo", Value: "bar", NodeName: "test-node"})
+		{"set_kvstore_key", []string{"kvstore", "set", "foo=bar"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleSetKVStoreKey(ctx, &sdkmcp.CallToolRequest{}, setKVStoreKeyInput{Key: "foo", Value: "bar", NodeName: "test-node"})
 			return r, err
 		}},
-		{"show_load_information", []string{"loadinfo"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleShowLoadInformation(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+		{"show_load_information", []string{"loadinfo"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleShowLoadInformation(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 			return r, err
 		}},
-		{"display_policy_node_info", []string{"policy", "get"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDisplayPolicyNodeInformation(ctx, &mcp.CallToolRequest{}, displayPolicyNodeInformationInput{NodeName: "test-node"})
+		{"display_policy_node_info", []string{"policy", "get"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDisplayPolicyNodeInformation(ctx, &sdkmcp.CallToolRequest{}, displayPolicyNodeInformationInput{NodeName: "test-node"})
 			return r, err
 		}},
-		{"display_policy_node_info_labels", []string{"policy", "get", "k=v"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDisplayPolicyNodeInformation(ctx, &mcp.CallToolRequest{}, displayPolicyNodeInformationInput{Labels: "k=v", NodeName: "test-node"})
+		{"display_policy_node_info_labels", []string{"policy", "get", "k=v"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDisplayPolicyNodeInformation(ctx, &sdkmcp.CallToolRequest{}, displayPolicyNodeInformationInput{Labels: "k=v", NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_policy_rules_all", []string{"policy", "delete", "--all"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeletePolicyRules(ctx, &mcp.CallToolRequest{}, deletePolicyRulesInput{All: true, NodeName: "test-node"})
+		{"delete_policy_rules_all", []string{"policy", "delete", "--all"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeletePolicyRules(ctx, &sdkmcp.CallToolRequest{}, deletePolicyRulesInput{All: true, NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_policy_rules_labels", []string{"policy", "delete", "k=v"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeletePolicyRules(ctx, &mcp.CallToolRequest{}, deletePolicyRulesInput{Labels: "k=v", NodeName: "test-node"})
+		{"delete_policy_rules_labels", []string{"policy", "delete", "k=v"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeletePolicyRules(ctx, &sdkmcp.CallToolRequest{}, deletePolicyRulesInput{Labels: "k=v", NodeName: "test-node"})
 			return r, err
 		}},
-		{"update_xdp_cidr", []string{"prefilter", "update", "--cidr", "10.0.0.0/8"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleUpdateXDPCIDRFilters(ctx, &mcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", NodeName: "test-node"})
+		{"update_xdp_cidr", []string{"prefilter", "update", "--cidr", "10.0.0.0/8"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleUpdateXDPCIDRFilters(ctx, &sdkmcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", NodeName: "test-node"})
 			return r, err
 		}},
-		{"update_xdp_cidr_rev", []string{"prefilter", "update", "--cidr", "10.0.0.0/8", "--revision", "2"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleUpdateXDPCIDRFilters(ctx, &mcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", Revision: "2", NodeName: "test-node"})
+		{"update_xdp_cidr_rev", []string{"prefilter", "update", "--cidr", "10.0.0.0/8", "--revision", "2"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleUpdateXDPCIDRFilters(ctx, &sdkmcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", Revision: "2", NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_xdp_cidr", []string{"prefilter", "delete", "--cidr", "10.0.0.0/8"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteXDPCIDRFilters(ctx, &mcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", NodeName: "test-node"})
+		{"delete_xdp_cidr", []string{"prefilter", "delete", "--cidr", "10.0.0.0/8"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteXDPCIDRFilters(ctx, &sdkmcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_xdp_cidr_rev", []string{"prefilter", "delete", "--cidr", "10.0.0.0/8", "--revision", "2"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteXDPCIDRFilters(ctx, &mcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", Revision: "2", NodeName: "test-node"})
+		{"delete_xdp_cidr_rev", []string{"prefilter", "delete", "--cidr", "10.0.0.0/8", "--revision", "2"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteXDPCIDRFilters(ctx, &sdkmcp.CallToolRequest{}, xdpCIDRFiltersInput{CIDRPrefixes: "10.0.0.0/8", Revision: "2", NodeName: "test-node"})
 			return r, err
 		}},
-		{"validate_cnp", []string{"preflight", "validate-cnp", "--enable-k8s", "--enable-k8s-api-discovery"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleValidateCiliumNetworkPolicies(ctx, &mcp.CallToolRequest{}, validateCiliumNetworkPoliciesInput{EnableK8s: true, EnableK8sAPIDiscovery: true, NodeName: "test-node"})
+		{"validate_cnp", []string{"preflight", "validate-cnp", "--enable-k8s", "--enable-k8s-api-discovery"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleValidateCiliumNetworkPolicies(ctx, &sdkmcp.CallToolRequest{}, validateCiliumNetworkPoliciesInput{EnableK8s: true, EnableK8sAPIDiscovery: true, NodeName: "test-node"})
 			return r, err
 		}},
-		{"list_pcap_recorders", []string{"recorder", "list"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleListPCAPRecorders(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+		{"list_pcap_recorders", []string{"recorder", "list"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleListPCAPRecorders(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 			return r, err
 		}},
-		{"get_pcap_recorder", []string{"recorder", "get", "1"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetPCAPRecorder(ctx, &mcp.CallToolRequest{}, pcapRecorderIDInput{RecorderID: "1", NodeName: "test-node"})
+		{"get_pcap_recorder", []string{"recorder", "get", "1"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetPCAPRecorder(ctx, &sdkmcp.CallToolRequest{}, pcapRecorderIDInput{RecorderID: "1", NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_pcap_recorder", []string{"recorder", "delete", "1"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeletePCAPRecorder(ctx, &mcp.CallToolRequest{}, pcapRecorderIDInput{RecorderID: "1", NodeName: "test-node"})
+		{"delete_pcap_recorder", []string{"recorder", "delete", "1"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeletePCAPRecorder(ctx, &sdkmcp.CallToolRequest{}, pcapRecorderIDInput{RecorderID: "1", NodeName: "test-node"})
 			return r, err
 		}},
-		{"update_pcap_recorder", []string{"recorder", "update", "1", "--filters", "f", "--caplen", "0", "--id", "0"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleUpdatePCAPRecorder(ctx, &mcp.CallToolRequest{}, updatePCAPRecorderInput{RecorderID: "1", Filters: "f", NodeName: "test-node"})
+		{"update_pcap_recorder", []string{"recorder", "update", "1", "--filters", "f", "--caplen", "0", "--id", "0"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleUpdatePCAPRecorder(ctx, &sdkmcp.CallToolRequest{}, updatePCAPRecorderInput{RecorderID: "1", Filters: "f", NodeName: "test-node"})
 			return r, err
 		}},
-		{"get_service_information", []string{"service", "get", "5"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetServiceInformation(ctx, &mcp.CallToolRequest{}, getServiceInformationInput{ServiceID: "5", NodeName: "test-node"})
+		{"get_service_information", []string{"service", "get", "5"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetServiceInformation(ctx, &sdkmcp.CallToolRequest{}, getServiceInformationInput{ServiceID: "5", NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_service_all", []string{"service", "delete", "--all"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteService(ctx, &mcp.CallToolRequest{}, deleteServiceInput{All: true, NodeName: "test-node"})
+		{"delete_service_all", []string{"service", "delete", "--all"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteService(ctx, &sdkmcp.CallToolRequest{}, deleteServiceInput{All: true, NodeName: "test-node"})
 			return r, err
 		}},
-		{"delete_service_id", []string{"service", "delete", "5"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteService(ctx, &mcp.CallToolRequest{}, deleteServiceInput{ServiceID: "5", NodeName: "test-node"})
+		{"delete_service_id", []string{"service", "delete", "5"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteService(ctx, &sdkmcp.CallToolRequest{}, deleteServiceInput{ServiceID: "5", NodeName: "test-node"})
 			return r, err
 		}},
-		{"update_service", []string{"service", "update", "1", "--backends", "b", "--frontend", "f", "--protocol", "TCP", "--states", "active"}, "ok", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleUpdateService(ctx, &mcp.CallToolRequest{}, updateServiceInput{Backends: "b", Frontend: "f", ID: "1", NodeName: "test-node"})
+		{"update_service", []string{"service", "update", "1", "--backends", "b", "--frontend", "f", "--protocol", "TCP", "--states", "active"}, "ok", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleUpdateService(ctx, &sdkmcp.CallToolRequest{}, updateServiceInput{Backends: "b", Frontend: "f", ID: "1", NodeName: "test-node"})
 			return r, err
 		}},
 	}
@@ -683,82 +683,82 @@ func TestCiliumDbgHandlers(t *testing.T) {
 func TestCiliumDbgHandlersMissingParams(t *testing.T) {
 	cases := []struct {
 		name string
-		run  func(context.Context) (*mcp.CallToolResult, error)
+		run  func(context.Context) (*sdkmcp.CallToolResult, error)
 	}{
-		{"manage_endpoint_labels", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleManageEndpointLabels(ctx, &mcp.CallToolRequest{}, manageEndpointLabelsInput{})
+		{"manage_endpoint_labels", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleManageEndpointLabels(ctx, &sdkmcp.CallToolRequest{}, manageEndpointLabelsInput{})
 			return r, err
 		}},
-		{"manage_endpoint_configuration_no_id", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleManageEndpointConfiguration(ctx, &mcp.CallToolRequest{}, manageEndpointConfigurationInput{})
+		{"manage_endpoint_configuration_no_id", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleManageEndpointConfiguration(ctx, &sdkmcp.CallToolRequest{}, manageEndpointConfigurationInput{})
 			return r, err
 		}},
-		{"manage_endpoint_configuration_no_config", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleManageEndpointConfiguration(ctx, &mcp.CallToolRequest{}, manageEndpointConfigurationInput{EndpointID: "34"})
+		{"manage_endpoint_configuration_no_config", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleManageEndpointConfiguration(ctx, &sdkmcp.CallToolRequest{}, manageEndpointConfigurationInput{EndpointID: "34"})
 			return r, err
 		}},
-		{"disconnect_endpoint", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDisconnectEndpoint(ctx, &mcp.CallToolRequest{}, disconnectEndpointInput{})
+		{"disconnect_endpoint", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDisconnectEndpoint(ctx, &sdkmcp.CallToolRequest{}, disconnectEndpointInput{})
 			return r, err
 		}},
-		{"get_identity_details", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetIdentityDetails(ctx, &mcp.CallToolRequest{}, getIdentityDetailsInput{})
+		{"get_identity_details", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetIdentityDetails(ctx, &sdkmcp.CallToolRequest{}, getIdentityDetailsInput{})
 			return r, err
 		}},
-		{"list_envoy_config", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleListEnvoyConfig(ctx, &mcp.CallToolRequest{}, listEnvoyConfigInput{})
+		{"list_envoy_config", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleListEnvoyConfig(ctx, &sdkmcp.CallToolRequest{}, listEnvoyConfigInput{})
 			return r, err
 		}},
-		{"show_ipcache_none", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleShowIPCacheInformation(ctx, &mcp.CallToolRequest{}, showIPCacheInformationInput{})
+		{"show_ipcache_none", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleShowIPCacheInformation(ctx, &sdkmcp.CallToolRequest{}, showIPCacheInformationInput{})
 			return r, err
 		}},
-		{"delete_kvstore_key", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteKeyFromKVStore(ctx, &mcp.CallToolRequest{}, kvStoreKeyInput{})
+		{"delete_kvstore_key", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteKeyFromKVStore(ctx, &sdkmcp.CallToolRequest{}, kvStoreKeyInput{})
 			return r, err
 		}},
-		{"get_kvstore_key", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetKVStoreKey(ctx, &mcp.CallToolRequest{}, kvStoreKeyInput{})
+		{"get_kvstore_key", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetKVStoreKey(ctx, &sdkmcp.CallToolRequest{}, kvStoreKeyInput{})
 			return r, err
 		}},
-		{"set_kvstore_key", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleSetKVStoreKey(ctx, &mcp.CallToolRequest{}, setKVStoreKeyInput{Key: "foo"})
+		{"set_kvstore_key", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleSetKVStoreKey(ctx, &sdkmcp.CallToolRequest{}, setKVStoreKeyInput{Key: "foo"})
 			return r, err
 		}},
-		{"delete_policy_rules_none", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeletePolicyRules(ctx, &mcp.CallToolRequest{}, deletePolicyRulesInput{})
+		{"delete_policy_rules_none", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeletePolicyRules(ctx, &sdkmcp.CallToolRequest{}, deletePolicyRulesInput{})
 			return r, err
 		}},
-		{"update_xdp_cidr", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleUpdateXDPCIDRFilters(ctx, &mcp.CallToolRequest{}, xdpCIDRFiltersInput{})
+		{"update_xdp_cidr", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleUpdateXDPCIDRFilters(ctx, &sdkmcp.CallToolRequest{}, xdpCIDRFiltersInput{})
 			return r, err
 		}},
-		{"delete_xdp_cidr", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteXDPCIDRFilters(ctx, &mcp.CallToolRequest{}, xdpCIDRFiltersInput{})
+		{"delete_xdp_cidr", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteXDPCIDRFilters(ctx, &sdkmcp.CallToolRequest{}, xdpCIDRFiltersInput{})
 			return r, err
 		}},
-		{"get_pcap_recorder", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetPCAPRecorder(ctx, &mcp.CallToolRequest{}, pcapRecorderIDInput{})
+		{"get_pcap_recorder", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetPCAPRecorder(ctx, &sdkmcp.CallToolRequest{}, pcapRecorderIDInput{})
 			return r, err
 		}},
-		{"delete_pcap_recorder", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeletePCAPRecorder(ctx, &mcp.CallToolRequest{}, pcapRecorderIDInput{})
+		{"delete_pcap_recorder", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeletePCAPRecorder(ctx, &sdkmcp.CallToolRequest{}, pcapRecorderIDInput{})
 			return r, err
 		}},
-		{"update_pcap_recorder", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleUpdatePCAPRecorder(ctx, &mcp.CallToolRequest{}, updatePCAPRecorderInput{RecorderID: "1"})
+		{"update_pcap_recorder", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleUpdatePCAPRecorder(ctx, &sdkmcp.CallToolRequest{}, updatePCAPRecorderInput{RecorderID: "1"})
 			return r, err
 		}},
-		{"get_service_information", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleGetServiceInformation(ctx, &mcp.CallToolRequest{}, getServiceInformationInput{})
+		{"get_service_information", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleGetServiceInformation(ctx, &sdkmcp.CallToolRequest{}, getServiceInformationInput{})
 			return r, err
 		}},
-		{"delete_service_none", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleDeleteService(ctx, &mcp.CallToolRequest{}, deleteServiceInput{})
+		{"delete_service_none", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleDeleteService(ctx, &sdkmcp.CallToolRequest{}, deleteServiceInput{})
 			return r, err
 		}},
-		{"update_service", func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleUpdateService(ctx, &mcp.CallToolRequest{}, updateServiceInput{Backends: "b"})
+		{"update_service", func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleUpdateService(ctx, &sdkmcp.CallToolRequest{}, updateServiceInput{Backends: "b"})
 			return r, err
 		}},
 	}
@@ -780,22 +780,22 @@ func TestCiliumCliHandlers(t *testing.T) {
 	cases := []struct {
 		name    string
 		cliArgs []string
-		run     func(context.Context) (*mcp.CallToolResult, error)
+		run     func(context.Context) (*sdkmcp.CallToolResult, error)
 	}{
-		{"show_cluster_mesh_status", []string{"clustermesh", "status"}, func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleShowClusterMeshStatus(ctx, &mcp.CallToolRequest{}, noInput{})
+		{"show_cluster_mesh_status", []string{"clustermesh", "status"}, func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleShowClusterMeshStatus(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 			return r, err
 		}},
-		{"show_features_status", []string{"features", "status"}, func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleShowFeaturesStatus(ctx, &mcp.CallToolRequest{}, noInput{})
+		{"show_features_status", []string{"features", "status"}, func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleShowFeaturesStatus(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 			return r, err
 		}},
-		{"toggle_cluster_mesh_enable", []string{"clustermesh", "enable"}, func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleToggleClusterMesh(ctx, &mcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(true)})
+		{"toggle_cluster_mesh_enable", []string{"clustermesh", "enable"}, func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleToggleClusterMesh(ctx, &sdkmcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(true)})
 			return r, err
 		}},
-		{"toggle_cluster_mesh_disable", []string{"clustermesh", "disable"}, func(ctx context.Context) (*mcp.CallToolResult, error) {
-			r, _, err := handleToggleClusterMesh(ctx, &mcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(false)})
+		{"toggle_cluster_mesh_disable", []string{"clustermesh", "disable"}, func(ctx context.Context) (*sdkmcp.CallToolResult, error) {
+			r, _, err := handleToggleClusterMesh(ctx, &sdkmcp.CallToolRequest{}, enableToggleInput{Enable: boolPtr(false)})
 			return r, err
 		}},
 	}
@@ -817,7 +817,7 @@ func TestCiliumCliHandlersError(t *testing.T) {
 	mock := cmd.NewMockShellExecutor()
 	mock.AddCommandString("cilium", []string{"clustermesh", "status"}, "", assert.AnError)
 	ctx := cmd.WithShellExecutor(context.Background(), mock)
-	result, _, err := handleShowClusterMeshStatus(ctx, &mcp.CallToolRequest{}, noInput{})
+	result, _, err := handleShowClusterMeshStatus(ctx, &sdkmcp.CallToolRequest{}, noInput{})
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 	assert.Contains(t, getResultText(result), "Error getting cluster mesh status")
@@ -828,7 +828,7 @@ func TestCiliumDbgHandlerError(t *testing.T) {
 	mock := cmd.NewMockShellExecutor()
 	mockCiliumDbgCommand(mock, []string{"loadinfo"}, "", assert.AnError)
 	ctx := cmd.WithShellExecutor(context.Background(), mock)
-	result, _, err := handleShowLoadInformation(ctx, &mcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
+	result, _, err := handleShowLoadInformation(ctx, &sdkmcp.CallToolRequest{}, nodeNameInput{NodeName: "test-node"})
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 }

@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRegisterTools(t *testing.T) {
-	s := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
+	s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test-server", Version: "v0.0.1"}, nil)
 	RegisterTools(s, false) // false = enable all tools including write operations
 }
 
@@ -81,7 +81,7 @@ prod-app    production      1               deployed        my-chart-1.0.0`,
 			mock.AddCommandString("helm", tt.expectedArgs, tt.expectedOutput, nil)
 			ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-			result, _, err := handleHelmListReleases(ctx, &mcp.CallToolRequest{}, tt.input)
+			result, _, err := handleHelmListReleases(ctx, &sdkmcp.CallToolRequest{}, tt.input)
 
 			assert.NoError(t, err)
 			assert.False(t, result.IsError)
@@ -115,7 +115,7 @@ prod-app    production      1               deployed        my-chart-1.0.0`,
 		mock.AddCommandString("helm", []string{"list"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmListReleases(ctx, &mcp.CallToolRequest{}, helmListReleasesInput{})
+		result, _, err := handleHelmListReleases(ctx, &sdkmcp.CallToolRequest{}, helmListReleasesInput{})
 
 		assert.NoError(t, err) // MCP handlers should not return Go errors
 		assert.True(t, result.IsError)
@@ -136,7 +136,7 @@ replicaCount: 3`
 		mock.AddCommandString("helm", []string{"get", "all", "myapp", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+		result, _, err := handleHelmGetRelease(ctx, &sdkmcp.CallToolRequest{}, helmGetReleaseInput{
 			Name:      "myapp",
 			Namespace: "default",
 		})
@@ -157,7 +157,7 @@ replicaCount: 3`
 		mock.AddCommandString("helm", []string{"get", "values", "myapp", "-n", "default"}, "replicaCount: 3", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+		result, _, err := handleHelmGetRelease(ctx, &sdkmcp.CallToolRequest{}, helmGetReleaseInput{
 			Name:      "myapp",
 			Namespace: "default",
 			Resource:  "values",
@@ -178,7 +178,7 @@ replicaCount: 3`
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing name
-		result, _, err := handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+		result, _, err := handleHelmGetRelease(ctx, &sdkmcp.CallToolRequest{}, helmGetReleaseInput{
 			Namespace: "default",
 		})
 		assert.NoError(t, err)
@@ -186,7 +186,7 @@ replicaCount: 3`
 		assert.Contains(t, getResultText(result), "name parameter is required")
 
 		// Test missing namespace
-		result, _, err = handleHelmGetRelease(ctx, &mcp.CallToolRequest{}, helmGetReleaseInput{
+		result, _, err = handleHelmGetRelease(ctx, &sdkmcp.CallToolRequest{}, helmGetReleaseInput{
 			Name: "myapp",
 		})
 		assert.NoError(t, err)
@@ -213,7 +213,7 @@ REVISION: 2`
 		mock.AddCommandString("helm", []string{"upgrade", "myapp", "stable/myapp", "--timeout", "30s"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmUpgradeRelease(ctx, &mcp.CallToolRequest{}, helmUpgradeReleaseInput{
+		result, _, err := handleHelmUpgradeRelease(ctx, &sdkmcp.CallToolRequest{}, helmUpgradeReleaseInput{
 			Name:  "myapp",
 			Chart: "stable/myapp",
 		})
@@ -246,7 +246,7 @@ REVISION: 2`
 		mock.AddCommandString("helm", expectedArgs, "Upgraded with options", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmUpgradeRelease(ctx, &mcp.CallToolRequest{}, helmUpgradeReleaseInput{
+		result, _, err := handleHelmUpgradeRelease(ctx, &sdkmcp.CallToolRequest{}, helmUpgradeReleaseInput{
 			Name:      "myapp",
 			Chart:     "stable/myapp",
 			Namespace: "production",
@@ -273,7 +273,7 @@ REVISION: 2`
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing chart
-		result, _, err := handleHelmUpgradeRelease(ctx, &mcp.CallToolRequest{}, helmUpgradeReleaseInput{
+		result, _, err := handleHelmUpgradeRelease(ctx, &sdkmcp.CallToolRequest{}, helmUpgradeReleaseInput{
 			Name: "myapp",
 		})
 		assert.NoError(t, err)
@@ -295,7 +295,7 @@ func TestHandleHelmUninstall(t *testing.T) {
 		mock.AddCommandString("helm", []string{"uninstall", "myapp", "-n", "default"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+		result, _, err := handleHelmUninstall(ctx, &sdkmcp.CallToolRequest{}, helmUninstallInput{
 			Name:      "myapp",
 			Namespace: "default",
 		})
@@ -319,7 +319,7 @@ func TestHandleHelmUninstall(t *testing.T) {
 		mock.AddCommandString("helm", []string{"uninstall", "myapp", "-n", "production", "--dry-run", "--wait"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+		result, _, err := handleHelmUninstall(ctx, &sdkmcp.CallToolRequest{}, helmUninstallInput{
 			Name:      "myapp",
 			Namespace: "production",
 			DryRun:    true,
@@ -341,7 +341,7 @@ func TestHandleHelmUninstall(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing name
-		result, _, err := handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+		result, _, err := handleHelmUninstall(ctx, &sdkmcp.CallToolRequest{}, helmUninstallInput{
 			Namespace: "default",
 		})
 		assert.NoError(t, err)
@@ -349,7 +349,7 @@ func TestHandleHelmUninstall(t *testing.T) {
 		assert.Contains(t, getResultText(result), "name and namespace parameters are required")
 
 		// Test missing namespace
-		result, _, err = handleHelmUninstall(ctx, &mcp.CallToolRequest{}, helmUninstallInput{
+		result, _, err = handleHelmUninstall(ctx, &sdkmcp.CallToolRequest{}, helmUninstallInput{
 			Name: "myapp",
 		})
 		assert.NoError(t, err)
@@ -371,7 +371,7 @@ func TestHandleHelmRepoAdd(t *testing.T) {
 		mock.AddCommandString("helm", []string{"repo", "add", "my-repo", "https://charts.example.com/"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmRepoAdd(ctx, &mcp.CallToolRequest{}, helmRepoAddInput{
+		result, _, err := handleHelmRepoAdd(ctx, &sdkmcp.CallToolRequest{}, helmRepoAddInput{
 			Name: "my-repo",
 			URL:  "https://charts.example.com/",
 		})
@@ -392,7 +392,7 @@ func TestHandleHelmRepoAdd(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		// Test missing name
-		result, _, err := handleHelmRepoAdd(ctx, &mcp.CallToolRequest{}, helmRepoAddInput{
+		result, _, err := handleHelmRepoAdd(ctx, &sdkmcp.CallToolRequest{}, helmRepoAddInput{
 			URL: "https://charts.example.com/",
 		})
 		assert.NoError(t, err)
@@ -416,7 +416,7 @@ Update Complete. ⎈Happy Helming!⎈`
 		mock.AddCommandString("helm", []string{"repo", "update"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleHelmRepoUpdate(ctx, &mcp.CallToolRequest{}, helmRepoUpdateInput{})
+		result, _, err := handleHelmRepoUpdate(ctx, &sdkmcp.CallToolRequest{}, helmRepoUpdateInput{})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -431,11 +431,11 @@ Update Complete. ⎈Happy Helming!⎈`
 }
 
 // Helper function to extract text content from MCP result
-func getResultText(result *mcp.CallToolResult) string {
+func getResultText(result *sdkmcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*sdkmcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""

@@ -8,6 +8,7 @@ import (
 	"github.com/kagent-dev/tools/internal/commands"
 	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/pkg/utils"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type noInput struct{}
@@ -219,7 +220,7 @@ func runCiliumCliWithContext(ctx context.Context, args ...string) (string, error
 		Execute(ctx)
 }
 
-func handleCiliumStatusAndVersion(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleCiliumStatusAndVersion(ctx context.Context, request *sdkmcp.CallToolRequest, in noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	status, err := runCiliumCliWithContext(ctx, "status")
 	if err != nil {
 		return mcp.TextError("Error getting Cilium status: " + err.Error())
@@ -234,7 +235,7 @@ func handleCiliumStatusAndVersion(ctx context.Context, request *mcp.CallToolRequ
 	return mcp.TextResult(result)
 }
 
-func handleUpgradeCilium(ctx context.Context, request *mcp.CallToolRequest, in upgradeCiliumInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleUpgradeCilium(ctx context.Context, request *sdkmcp.CallToolRequest, in upgradeCiliumInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 	datapathMode := in.DatapathMode
 
@@ -254,7 +255,7 @@ func handleUpgradeCilium(ctx context.Context, request *mcp.CallToolRequest, in u
 	return mcp.TextResult(output)
 }
 
-func handleInstallCilium(ctx context.Context, request *mcp.CallToolRequest, in installCiliumInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleInstallCilium(ctx context.Context, request *sdkmcp.CallToolRequest, in installCiliumInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 	clusterID := in.ClusterID
 	datapathMode := in.DatapathMode
@@ -278,7 +279,7 @@ func handleInstallCilium(ctx context.Context, request *mcp.CallToolRequest, in i
 	return mcp.TextResult(output)
 }
 
-func handleUninstallCilium(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleUninstallCilium(ctx context.Context, request *sdkmcp.CallToolRequest, in noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "uninstall")
 	if err != nil {
 		return mcp.TextError("Error uninstalling Cilium: " + err.Error())
@@ -287,7 +288,7 @@ func handleUninstallCilium(ctx context.Context, request *mcp.CallToolRequest, in
 	return mcp.TextResult(output)
 }
 
-func handleConnectToRemoteCluster(ctx context.Context, request *mcp.CallToolRequest, in connectToRemoteClusterInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleConnectToRemoteCluster(ctx context.Context, request *sdkmcp.CallToolRequest, in connectToRemoteClusterInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 	destContext := in.Context
 
@@ -308,7 +309,7 @@ func handleConnectToRemoteCluster(ctx context.Context, request *mcp.CallToolRequ
 	return mcp.TextResult(output)
 }
 
-func handleDisconnectRemoteCluster(ctx context.Context, request *mcp.CallToolRequest, in disconnectRemoteClusterInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDisconnectRemoteCluster(ctx context.Context, request *sdkmcp.CallToolRequest, in disconnectRemoteClusterInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	clusterName := in.ClusterName
 
 	if clusterName == "" {
@@ -325,7 +326,7 @@ func handleDisconnectRemoteCluster(ctx context.Context, request *mcp.CallToolReq
 	return mcp.TextResult(output)
 }
 
-func handleListBGPPeers(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListBGPPeers(ctx context.Context, request *sdkmcp.CallToolRequest, in noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "bgp", "peers")
 	if err != nil {
 		return mcp.TextError("Error listing BGP peers: " + err.Error())
@@ -334,7 +335,7 @@ func handleListBGPPeers(ctx context.Context, request *mcp.CallToolRequest, in no
 	return mcp.TextResult(output)
 }
 
-func handleListBGPRoutes(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListBGPRoutes(ctx context.Context, request *sdkmcp.CallToolRequest, in noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "bgp", "routes")
 	if err != nil {
 		return mcp.TextError("Error listing BGP routes: " + err.Error())
@@ -343,7 +344,7 @@ func handleListBGPRoutes(ctx context.Context, request *mcp.CallToolRequest, in n
 	return mcp.TextResult(output)
 }
 
-func handleShowClusterMeshStatus(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleShowClusterMeshStatus(ctx context.Context, request *sdkmcp.CallToolRequest, in noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "clustermesh", "status")
 	if err != nil {
 		return mcp.TextError("Error getting cluster mesh status: " + err.Error())
@@ -352,7 +353,7 @@ func handleShowClusterMeshStatus(ctx context.Context, request *mcp.CallToolReque
 	return mcp.TextResult(output)
 }
 
-func handleShowFeaturesStatus(ctx context.Context, request *mcp.CallToolRequest, in noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleShowFeaturesStatus(ctx context.Context, request *sdkmcp.CallToolRequest, in noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	output, err := runCiliumCliWithContext(ctx, "features", "status")
 	if err != nil {
 		return mcp.TextError("Error getting features status: " + err.Error())
@@ -361,7 +362,7 @@ func handleShowFeaturesStatus(ctx context.Context, request *mcp.CallToolRequest,
 	return mcp.TextResult(output)
 }
 
-func handleToggleHubble(ctx context.Context, request *mcp.CallToolRequest, in enableToggleInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleToggleHubble(ctx context.Context, request *sdkmcp.CallToolRequest, in enableToggleInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	enable := true
 	if in.Enable != nil {
 		enable = *in.Enable
@@ -381,7 +382,7 @@ func handleToggleHubble(ctx context.Context, request *mcp.CallToolRequest, in en
 	return mcp.TextResult(output)
 }
 
-func handleToggleClusterMesh(ctx context.Context, request *mcp.CallToolRequest, in enableToggleInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleToggleClusterMesh(ctx context.Context, request *sdkmcp.CallToolRequest, in enableToggleInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	enable := true
 	if in.Enable != nil {
 		enable = *in.Enable
@@ -401,105 +402,105 @@ func handleToggleClusterMesh(ctx context.Context, request *mcp.CallToolRequest, 
 	return mcp.TextResult(output)
 }
 
-func RegisterTools(s *mcp.Server, readOnly bool) {
+func RegisterTools(s *sdkmcp.Server, readOnly bool) {
 	// Read-only tools - always registered
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_status_and_version", Description: "Get the status and version of Cilium installation"}, handleCiliumStatusAndVersion)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_bgp_peers", Description: "List BGP peers"}, handleListBGPPeers)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_bgp_routes", Description: "List BGP routes"}, handleListBGPRoutes)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_show_cluster_mesh_status", Description: "Show cluster mesh status"}, handleShowClusterMeshStatus)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_show_features_status", Description: "Show Cilium features status"}, handleShowFeaturesStatus)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_status_and_version", Description: "Get the status and version of Cilium installation"}, handleCiliumStatusAndVersion)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_bgp_peers", Description: "List BGP peers"}, handleListBGPPeers)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_bgp_routes", Description: "List BGP routes"}, handleListBGPRoutes)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_show_cluster_mesh_status", Description: "Show cluster mesh status"}, handleShowClusterMeshStatus)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_show_features_status", Description: "Show Cilium features status"}, handleShowFeaturesStatus)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_upgrade_cilium", Description: "Upgrade Cilium on the cluster"}, handleUpgradeCilium)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_install_cilium", Description: "Install Cilium on the cluster"}, handleInstallCilium)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_uninstall_cilium", Description: "Uninstall Cilium from the cluster"}, handleUninstallCilium)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_connect_to_remote_cluster", Description: "Connect to a remote cluster for cluster mesh"}, handleConnectToRemoteCluster)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_disconnect_remote_cluster", Description: "Disconnect from a remote cluster"}, handleDisconnectRemoteCluster)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_toggle_hubble", Description: "Enable or disable Hubble"}, handleToggleHubble)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_toggle_cluster_mesh", Description: "Enable or disable cluster mesh"}, handleToggleClusterMesh)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_upgrade_cilium", Description: "Upgrade Cilium on the cluster"}, handleUpgradeCilium)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_install_cilium", Description: "Install Cilium on the cluster"}, handleInstallCilium)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_uninstall_cilium", Description: "Uninstall Cilium from the cluster"}, handleUninstallCilium)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_connect_to_remote_cluster", Description: "Connect to a remote cluster for cluster mesh"}, handleConnectToRemoteCluster)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_disconnect_remote_cluster", Description: "Disconnect from a remote cluster"}, handleDisconnectRemoteCluster)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_toggle_hubble", Description: "Enable or disable Hubble"}, handleToggleHubble)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_toggle_cluster_mesh", Description: "Enable or disable cluster mesh"}, handleToggleClusterMesh)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_daemon_status", Description: "Get the status of the Cilium daemon for the cluster"}, handleGetDaemonStatus)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_endpoints_list", Description: "Get the list of all endpoints in the cluster"}, handleGetEndpointsList)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_endpoint_details", Description: "List the details of an endpoint in the cluster"}, handleGetEndpointDetails)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_show_configuration_options", Description: "Show Cilium configuration options"}, handleShowConfigurationOptions)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_daemon_status", Description: "Get the status of the Cilium daemon for the cluster"}, handleGetDaemonStatus)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_endpoints_list", Description: "Get the list of all endpoints in the cluster"}, handleGetEndpointsList)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_endpoint_details", Description: "List the details of an endpoint in the cluster"}, handleGetEndpointDetails)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_show_configuration_options", Description: "Show Cilium configuration options"}, handleShowConfigurationOptions)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_toggle_configuration_option", Description: "Toggle a Cilium configuration option"}, handleToggleConfigurationOption)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_toggle_configuration_option", Description: "Toggle a Cilium configuration option"}, handleToggleConfigurationOption)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_services", Description: "List services for the cluster"}, handleListServices)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_service_information", Description: "Get information about a service in the cluster"}, handleGetServiceInformation)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_services", Description: "List services for the cluster"}, handleListServices)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_service_information", Description: "Get information about a service in the cluster"}, handleGetServiceInformation)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_update_service", Description: "Update a service in the cluster"}, handleUpdateService)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_delete_service", Description: "Delete a service from the cluster"}, handleDeleteService)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_update_service", Description: "Update a service in the cluster"}, handleUpdateService)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_delete_service", Description: "Delete a service from the cluster"}, handleDeleteService)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_endpoint_details", Description: "List the details of an endpoint in the cluster"}, handleGetEndpointDetails)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_endpoint_logs", Description: "Get the logs of an endpoint in the cluster"}, handleGetEndpointLogs)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_endpoint_health", Description: "Get the health of an endpoint in the cluster"}, handleGetEndpointHealth)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_endpoint_details", Description: "List the details of an endpoint in the cluster"}, handleGetEndpointDetails)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_endpoint_logs", Description: "Get the logs of an endpoint in the cluster"}, handleGetEndpointLogs)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_endpoint_health", Description: "Get the health of an endpoint in the cluster"}, handleGetEndpointHealth)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_manage_endpoint_labels", Description: "Manage the labels (add or delete) of an endpoint in the cluster"}, handleManageEndpointLabels)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_manage_endpoint_config", Description: "Manage the configuration of an endpoint in the cluster"}, handleManageEndpointConfiguration)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_disconnect_endpoint", Description: "Disconnect an endpoint from the network"}, handleDisconnectEndpoint)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_manage_endpoint_labels", Description: "Manage the labels (add or delete) of an endpoint in the cluster"}, handleManageEndpointLabels)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_manage_endpoint_config", Description: "Manage the configuration of an endpoint in the cluster"}, handleManageEndpointConfiguration)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_disconnect_endpoint", Description: "Disconnect an endpoint from the network"}, handleDisconnectEndpoint)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_identities", Description: "List all identities in the cluster"}, handleListIdentities)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_identity_details", Description: "Get the details of an identity in the cluster"}, handleGetIdentityDetails)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_request_debugging_information", Description: "Request debugging information for the cluster"}, handleRequestDebuggingInformation)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_display_encryption_state", Description: "Display the encryption state for the cluster"}, handleDisplayEncryptionState)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_identities", Description: "List all identities in the cluster"}, handleListIdentities)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_identity_details", Description: "Get the details of an identity in the cluster"}, handleGetIdentityDetails)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_request_debugging_information", Description: "Request debugging information for the cluster"}, handleRequestDebuggingInformation)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_display_encryption_state", Description: "Display the encryption state for the cluster"}, handleDisplayEncryptionState)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_flush_ipsec_state", Description: "Flush the IPsec state for the cluster"}, handleFlushIPsecState)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_flush_ipsec_state", Description: "Flush the IPsec state for the cluster"}, handleFlushIPsecState)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_envoy_config", Description: "List the Envoy configuration for a resource in the cluster"}, handleListEnvoyConfig)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_fqdn_cache", Description: "Manage the FQDN cache for the cluster"}, handleFQDNCache)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_show_dns_names", Description: "Show the DNS names for the cluster"}, handleShowDNSNames)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_ip_addresses", Description: "List the IP addresses for the cluster"}, handleListIPAddresses)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_show_ip_cache_information", Description: "Show the IP cache information for the cluster"}, handleShowIPCacheInformation)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_envoy_config", Description: "List the Envoy configuration for a resource in the cluster"}, handleListEnvoyConfig)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_fqdn_cache", Description: "Manage the FQDN cache for the cluster"}, handleFQDNCache)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_show_dns_names", Description: "Show the DNS names for the cluster"}, handleShowDNSNames)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_ip_addresses", Description: "List the IP addresses for the cluster"}, handleListIPAddresses)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_show_ip_cache_information", Description: "Show the IP cache information for the cluster"}, handleShowIPCacheInformation)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_delete_key_from_kv_store", Description: "Delete a key from the kvstore for the cluster"}, handleDeleteKeyFromKVStore)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_delete_key_from_kv_store", Description: "Delete a key from the kvstore for the cluster"}, handleDeleteKeyFromKVStore)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_kv_store_key", Description: "Get a key from the kvstore for the cluster"}, handleGetKVStoreKey)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_kv_store_key", Description: "Get a key from the kvstore for the cluster"}, handleGetKVStoreKey)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_set_kv_store_key", Description: "Set a key in the kvstore for the cluster"}, handleSetKVStoreKey)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_set_kv_store_key", Description: "Set a key in the kvstore for the cluster"}, handleSetKVStoreKey)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_show_load_information", Description: "Show load information for the cluster"}, handleShowLoadInformation)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_local_redirect_policies", Description: "List local redirect policies for the cluster"}, handleListLocalRedirectPolicies)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_bpf_map_events", Description: "List BPF map events for the cluster"}, handleListBPFMapEvents)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_bpf_map", Description: "Get BPF map for the cluster"}, handleGetBPFMap)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_bpf_maps", Description: "List BPF maps for the cluster"}, handleListBPFMaps)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_metrics", Description: "List metrics for the cluster"}, handleListMetrics)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_cluster_nodes", Description: "List cluster nodes for the cluster"}, handleListClusterNodes)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_node_ids", Description: "List node IDs for the cluster"}, handleListNodeIds)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_display_policy_node_information", Description: "Display policy node information for the cluster"}, handleDisplayPolicyNodeInformation)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_show_load_information", Description: "Show load information for the cluster"}, handleShowLoadInformation)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_local_redirect_policies", Description: "List local redirect policies for the cluster"}, handleListLocalRedirectPolicies)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_bpf_map_events", Description: "List BPF map events for the cluster"}, handleListBPFMapEvents)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_bpf_map", Description: "Get BPF map for the cluster"}, handleGetBPFMap)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_bpf_maps", Description: "List BPF maps for the cluster"}, handleListBPFMaps)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_metrics", Description: "List metrics for the cluster"}, handleListMetrics)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_cluster_nodes", Description: "List cluster nodes for the cluster"}, handleListClusterNodes)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_node_ids", Description: "List node IDs for the cluster"}, handleListNodeIds)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_display_policy_node_information", Description: "Display policy node information for the cluster"}, handleDisplayPolicyNodeInformation)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_delete_policy_rules", Description: "Delete policy rules for the cluster"}, handleDeletePolicyRules)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_delete_policy_rules", Description: "Delete policy rules for the cluster"}, handleDeletePolicyRules)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_display_selectors", Description: "Display selectors for the cluster"}, handleDisplaySelectors)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_xdp_cidr_filters", Description: "List XDP CIDR filters for the cluster"}, handleListXDPCIDRFilters)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_display_selectors", Description: "Display selectors for the cluster"}, handleDisplaySelectors)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_xdp_cidr_filters", Description: "List XDP CIDR filters for the cluster"}, handleListXDPCIDRFilters)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_update_xdp_cidr_filters", Description: "Update XDP CIDR filters for the cluster"}, handleUpdateXDPCIDRFilters)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_delete_xdp_cidr_filters", Description: "Delete XDP CIDR filters for the cluster"}, handleDeleteXDPCIDRFilters)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_update_xdp_cidr_filters", Description: "Update XDP CIDR filters for the cluster"}, handleUpdateXDPCIDRFilters)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_delete_xdp_cidr_filters", Description: "Delete XDP CIDR filters for the cluster"}, handleDeleteXDPCIDRFilters)
 	}
 
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_validate_cilium_network_policies", Description: "Validate Cilium network policies for the cluster"}, handleValidateCiliumNetworkPolicies)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_list_pcap_recorders", Description: "List PCAP recorders for the cluster"}, handleListPCAPRecorders)
-	mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_get_pcap_recorder", Description: "Get a PCAP recorder for the cluster"}, handleGetPCAPRecorder)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_validate_cilium_network_policies", Description: "Validate Cilium network policies for the cluster"}, handleValidateCiliumNetworkPolicies)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_list_pcap_recorders", Description: "List PCAP recorders for the cluster"}, handleListPCAPRecorders)
+	mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_get_pcap_recorder", Description: "Get a PCAP recorder for the cluster"}, handleGetPCAPRecorder)
 
 	if !readOnly {
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_delete_pcap_recorder", Description: "Delete a PCAP recorder for the cluster"}, handleDeletePCAPRecorder)
-		mcp.AddTool(s, "cilium", &mcp.Tool{Name: "cilium_update_pcap_recorder", Description: "Update a PCAP recorder for the cluster"}, handleUpdatePCAPRecorder)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_delete_pcap_recorder", Description: "Delete a PCAP recorder for the cluster"}, handleDeletePCAPRecorder)
+		mcp.AddTool(s, "cilium", &sdkmcp.Tool{Name: "cilium_update_pcap_recorder", Description: "Update a PCAP recorder for the cluster"}, handleUpdatePCAPRecorder)
 	}
 }
 
@@ -532,7 +533,7 @@ func runCiliumDbgCommandWithContext(ctx context.Context, command, nodeName strin
 		Execute(ctx)
 }
 
-func handleGetEndpointDetails(ctx context.Context, request *mcp.CallToolRequest, in getEndpointDetailsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetEndpointDetails(ctx context.Context, request *sdkmcp.CallToolRequest, in getEndpointDetailsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.OutputFormat == "" {
 		in.OutputFormat = "json"
 	}
@@ -557,7 +558,7 @@ func handleGetEndpointDetails(ctx context.Context, request *mcp.CallToolRequest,
 	return mcp.TextResult(output)
 }
 
-func handleGetEndpointLogs(ctx context.Context, request *mcp.CallToolRequest, in getEndpointLogsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetEndpointLogs(ctx context.Context, request *sdkmcp.CallToolRequest, in getEndpointLogsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	nodeName := in.NodeName
 
@@ -573,7 +574,7 @@ func handleGetEndpointLogs(ctx context.Context, request *mcp.CallToolRequest, in
 	return mcp.TextResult(output)
 }
 
-func handleGetEndpointHealth(ctx context.Context, request *mcp.CallToolRequest, in getEndpointHealthInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetEndpointHealth(ctx context.Context, request *sdkmcp.CallToolRequest, in getEndpointHealthInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	nodeName := in.NodeName
 
@@ -589,7 +590,7 @@ func handleGetEndpointHealth(ctx context.Context, request *mcp.CallToolRequest, 
 	return mcp.TextResult(output)
 }
 
-func handleManageEndpointLabels(ctx context.Context, request *mcp.CallToolRequest, in manageEndpointLabelsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleManageEndpointLabels(ctx context.Context, request *sdkmcp.CallToolRequest, in manageEndpointLabelsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Action == "" {
 		in.Action = "add"
 	}
@@ -610,7 +611,7 @@ func handleManageEndpointLabels(ctx context.Context, request *mcp.CallToolReques
 	return mcp.TextResult(output)
 }
 
-func handleManageEndpointConfiguration(ctx context.Context, request *mcp.CallToolRequest, in manageEndpointConfigurationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleManageEndpointConfiguration(ctx context.Context, request *sdkmcp.CallToolRequest, in manageEndpointConfigurationInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	config := in.Config
 	nodeName := in.NodeName
@@ -631,7 +632,7 @@ func handleManageEndpointConfiguration(ctx context.Context, request *mcp.CallToo
 	return mcp.TextResult(output)
 }
 
-func handleDisconnectEndpoint(ctx context.Context, request *mcp.CallToolRequest, in disconnectEndpointInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDisconnectEndpoint(ctx context.Context, request *sdkmcp.CallToolRequest, in disconnectEndpointInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	endpointID := in.EndpointID
 	nodeName := in.NodeName
 
@@ -647,7 +648,7 @@ func handleDisconnectEndpoint(ctx context.Context, request *mcp.CallToolRequest,
 	return mcp.TextResult(output)
 }
 
-func handleGetEndpointsList(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetEndpointsList(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "endpoint list", nodeName)
@@ -657,7 +658,7 @@ func handleGetEndpointsList(ctx context.Context, request *mcp.CallToolRequest, i
 	return mcp.TextResult(output)
 }
 
-func handleListIdentities(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListIdentities(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "identity list", nodeName)
@@ -667,7 +668,7 @@ func handleListIdentities(ctx context.Context, request *mcp.CallToolRequest, in 
 	return mcp.TextResult(output)
 }
 
-func handleGetIdentityDetails(ctx context.Context, request *mcp.CallToolRequest, in getIdentityDetailsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetIdentityDetails(ctx context.Context, request *sdkmcp.CallToolRequest, in getIdentityDetailsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	identityID := in.IdentityID
 	nodeName := in.NodeName
 
@@ -683,7 +684,7 @@ func handleGetIdentityDetails(ctx context.Context, request *mcp.CallToolRequest,
 	return mcp.TextResult(output)
 }
 
-func handleShowConfigurationOptions(ctx context.Context, request *mcp.CallToolRequest, in showConfigurationOptionsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleShowConfigurationOptions(ctx context.Context, request *sdkmcp.CallToolRequest, in showConfigurationOptionsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	listAll := in.ListAll
 	listReadOnly := in.ListReadOnly
 	listOptions := in.ListOptions
@@ -707,7 +708,7 @@ func handleShowConfigurationOptions(ctx context.Context, request *mcp.CallToolRe
 	return mcp.TextResult(output)
 }
 
-func handleToggleConfigurationOption(ctx context.Context, request *mcp.CallToolRequest, in toggleConfigurationOptionInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleToggleConfigurationOption(ctx context.Context, request *sdkmcp.CallToolRequest, in toggleConfigurationOptionInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	option := in.Option
 	value := true
 	if in.Value != nil {
@@ -732,7 +733,7 @@ func handleToggleConfigurationOption(ctx context.Context, request *mcp.CallToolR
 	return mcp.TextResult(output)
 }
 
-func handleRequestDebuggingInformation(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleRequestDebuggingInformation(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "debuginfo", nodeName)
@@ -742,7 +743,7 @@ func handleRequestDebuggingInformation(ctx context.Context, request *mcp.CallToo
 	return mcp.TextResult(output)
 }
 
-func handleDisplayEncryptionState(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDisplayEncryptionState(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "encrypt status", nodeName)
@@ -752,7 +753,7 @@ func handleDisplayEncryptionState(ctx context.Context, request *mcp.CallToolRequ
 	return mcp.TextResult(output)
 }
 
-func handleFlushIPsecState(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleFlushIPsecState(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "encrypt flush -f", nodeName)
@@ -762,7 +763,7 @@ func handleFlushIPsecState(ctx context.Context, request *mcp.CallToolRequest, in
 	return mcp.TextResult(output)
 }
 
-func handleListEnvoyConfig(ctx context.Context, request *mcp.CallToolRequest, in listEnvoyConfigInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListEnvoyConfig(ctx context.Context, request *sdkmcp.CallToolRequest, in listEnvoyConfigInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	resourceName := in.ResourceName
 	nodeName := in.NodeName
 
@@ -778,7 +779,7 @@ func handleListEnvoyConfig(ctx context.Context, request *mcp.CallToolRequest, in
 	return mcp.TextResult(output)
 }
 
-func handleFQDNCache(ctx context.Context, request *mcp.CallToolRequest, in fqdnCacheInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleFQDNCache(ctx context.Context, request *sdkmcp.CallToolRequest, in fqdnCacheInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Command == "" {
 		in.Command = "list"
 	}
@@ -799,7 +800,7 @@ func handleFQDNCache(ctx context.Context, request *mcp.CallToolRequest, in fqdnC
 	return mcp.TextResult(output)
 }
 
-func handleShowDNSNames(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleShowDNSNames(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "fqdn names", nodeName)
@@ -809,7 +810,7 @@ func handleShowDNSNames(ctx context.Context, request *mcp.CallToolRequest, in no
 	return mcp.TextResult(output)
 }
 
-func handleListIPAddresses(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListIPAddresses(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "ip list", nodeName)
@@ -819,7 +820,7 @@ func handleListIPAddresses(ctx context.Context, request *mcp.CallToolRequest, in
 	return mcp.TextResult(output)
 }
 
-func handleShowIPCacheInformation(ctx context.Context, request *mcp.CallToolRequest, in showIPCacheInformationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleShowIPCacheInformation(ctx context.Context, request *sdkmcp.CallToolRequest, in showIPCacheInformationInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	cidr := in.CIDR
 	labels := in.Labels
 	nodeName := in.NodeName
@@ -840,7 +841,7 @@ func handleShowIPCacheInformation(ctx context.Context, request *mcp.CallToolRequ
 	return mcp.TextResult(output)
 }
 
-func handleDeleteKeyFromKVStore(ctx context.Context, request *mcp.CallToolRequest, in kvStoreKeyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDeleteKeyFromKVStore(ctx context.Context, request *sdkmcp.CallToolRequest, in kvStoreKeyInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	key := in.Key
 	nodeName := in.NodeName
 
@@ -856,7 +857,7 @@ func handleDeleteKeyFromKVStore(ctx context.Context, request *mcp.CallToolReques
 	return mcp.TextResult(output)
 }
 
-func handleGetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in kvStoreKeyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetKVStoreKey(ctx context.Context, request *sdkmcp.CallToolRequest, in kvStoreKeyInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	key := in.Key
 	nodeName := in.NodeName
 
@@ -872,7 +873,7 @@ func handleGetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in k
 	return mcp.TextResult(output)
 }
 
-func handleSetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in setKVStoreKeyInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleSetKVStoreKey(ctx context.Context, request *sdkmcp.CallToolRequest, in setKVStoreKeyInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	key := in.Key
 	value := in.Value
 	nodeName := in.NodeName
@@ -889,7 +890,7 @@ func handleSetKVStoreKey(ctx context.Context, request *mcp.CallToolRequest, in s
 	return mcp.TextResult(output)
 }
 
-func handleShowLoadInformation(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleShowLoadInformation(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "loadinfo", nodeName)
@@ -899,7 +900,7 @@ func handleShowLoadInformation(ctx context.Context, request *mcp.CallToolRequest
 	return mcp.TextResult(output)
 }
 
-func handleListLocalRedirectPolicies(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListLocalRedirectPolicies(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "lrp list", nodeName)
@@ -909,7 +910,7 @@ func handleListLocalRedirectPolicies(ctx context.Context, request *mcp.CallToolR
 	return mcp.TextResult(output)
 }
 
-func handleListBPFMapEvents(ctx context.Context, request *mcp.CallToolRequest, in bpfMapInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListBPFMapEvents(ctx context.Context, request *sdkmcp.CallToolRequest, in bpfMapInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	mapName := in.MapName
 	nodeName := in.NodeName
 
@@ -925,7 +926,7 @@ func handleListBPFMapEvents(ctx context.Context, request *mcp.CallToolRequest, i
 	return mcp.TextResult(output)
 }
 
-func handleGetBPFMap(ctx context.Context, request *mcp.CallToolRequest, in bpfMapInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetBPFMap(ctx context.Context, request *sdkmcp.CallToolRequest, in bpfMapInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	mapName := in.MapName
 	nodeName := in.NodeName
 
@@ -941,7 +942,7 @@ func handleGetBPFMap(ctx context.Context, request *mcp.CallToolRequest, in bpfMa
 	return mcp.TextResult(output)
 }
 
-func handleListBPFMaps(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListBPFMaps(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "map list", nodeName)
@@ -951,7 +952,7 @@ func handleListBPFMaps(ctx context.Context, request *mcp.CallToolRequest, in nod
 	return mcp.TextResult(output)
 }
 
-func handleListMetrics(ctx context.Context, request *mcp.CallToolRequest, in listMetricsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListMetrics(ctx context.Context, request *sdkmcp.CallToolRequest, in listMetricsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	matchPattern := in.MatchPattern
 	nodeName := in.NodeName
 
@@ -969,7 +970,7 @@ func handleListMetrics(ctx context.Context, request *mcp.CallToolRequest, in lis
 	return mcp.TextResult(output)
 }
 
-func handleListClusterNodes(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListClusterNodes(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "node list", nodeName)
@@ -979,7 +980,7 @@ func handleListClusterNodes(ctx context.Context, request *mcp.CallToolRequest, i
 	return mcp.TextResult(output)
 }
 
-func handleListNodeIds(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListNodeIds(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "nodeid list", nodeName)
@@ -989,7 +990,7 @@ func handleListNodeIds(ctx context.Context, request *mcp.CallToolRequest, in nod
 	return mcp.TextResult(output)
 }
 
-func handleDisplayPolicyNodeInformation(ctx context.Context, request *mcp.CallToolRequest, in displayPolicyNodeInformationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDisplayPolicyNodeInformation(ctx context.Context, request *sdkmcp.CallToolRequest, in displayPolicyNodeInformationInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	labels := in.Labels
 	nodeName := in.NodeName
 
@@ -1007,7 +1008,7 @@ func handleDisplayPolicyNodeInformation(ctx context.Context, request *mcp.CallTo
 	return mcp.TextResult(output)
 }
 
-func handleDeletePolicyRules(ctx context.Context, request *mcp.CallToolRequest, in deletePolicyRulesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDeletePolicyRules(ctx context.Context, request *sdkmcp.CallToolRequest, in deletePolicyRulesInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	labels := in.Labels
 	all := in.All
 	nodeName := in.NodeName
@@ -1028,7 +1029,7 @@ func handleDeletePolicyRules(ctx context.Context, request *mcp.CallToolRequest, 
 	return mcp.TextResult(output)
 }
 
-func handleDisplaySelectors(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDisplaySelectors(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "policy selectors", nodeName)
@@ -1038,7 +1039,7 @@ func handleDisplaySelectors(ctx context.Context, request *mcp.CallToolRequest, i
 	return mcp.TextResult(output)
 }
 
-func handleListXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListXDPCIDRFilters(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "prefilter list", nodeName)
@@ -1048,7 +1049,7 @@ func handleListXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest,
 	return mcp.TextResult(output)
 }
 
-func handleUpdateXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in xdpCIDRFiltersInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleUpdateXDPCIDRFilters(ctx context.Context, request *sdkmcp.CallToolRequest, in xdpCIDRFiltersInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	cidrPrefixes := in.CIDRPrefixes
 	revision := in.Revision
 	nodeName := in.NodeName
@@ -1071,7 +1072,7 @@ func handleUpdateXDPCIDRFilters(ctx context.Context, request *mcp.CallToolReques
 	return mcp.TextResult(output)
 }
 
-func handleDeleteXDPCIDRFilters(ctx context.Context, request *mcp.CallToolRequest, in xdpCIDRFiltersInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDeleteXDPCIDRFilters(ctx context.Context, request *sdkmcp.CallToolRequest, in xdpCIDRFiltersInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	cidrPrefixes := in.CIDRPrefixes
 	revision := in.Revision
 	nodeName := in.NodeName
@@ -1094,7 +1095,7 @@ func handleDeleteXDPCIDRFilters(ctx context.Context, request *mcp.CallToolReques
 	return mcp.TextResult(output)
 }
 
-func handleValidateCiliumNetworkPolicies(ctx context.Context, request *mcp.CallToolRequest, in validateCiliumNetworkPoliciesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleValidateCiliumNetworkPolicies(ctx context.Context, request *sdkmcp.CallToolRequest, in validateCiliumNetworkPoliciesInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	enableK8s := in.EnableK8s
 	enableK8sAPIDiscovery := in.EnableK8sAPIDiscovery
 	nodeName := in.NodeName
@@ -1114,7 +1115,7 @@ func handleValidateCiliumNetworkPolicies(ctx context.Context, request *mcp.CallT
 	return mcp.TextResult(output)
 }
 
-func handleListPCAPRecorders(ctx context.Context, request *mcp.CallToolRequest, in nodeNameInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListPCAPRecorders(ctx context.Context, request *sdkmcp.CallToolRequest, in nodeNameInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	nodeName := in.NodeName
 
 	output, err := runCiliumDbgCommand(ctx, "recorder list", nodeName)
@@ -1124,7 +1125,7 @@ func handleListPCAPRecorders(ctx context.Context, request *mcp.CallToolRequest, 
 	return mcp.TextResult(output)
 }
 
-func handleGetPCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in pcapRecorderIDInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetPCAPRecorder(ctx context.Context, request *sdkmcp.CallToolRequest, in pcapRecorderIDInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	recorderID := in.RecorderID
 	nodeName := in.NodeName
 
@@ -1140,7 +1141,7 @@ func handleGetPCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in
 	return mcp.TextResult(output)
 }
 
-func handleDeletePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in pcapRecorderIDInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDeletePCAPRecorder(ctx context.Context, request *sdkmcp.CallToolRequest, in pcapRecorderIDInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	recorderID := in.RecorderID
 	nodeName := in.NodeName
 
@@ -1156,7 +1157,7 @@ func handleDeletePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest,
 	return mcp.TextResult(output)
 }
 
-func handleUpdatePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest, in updatePCAPRecorderInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleUpdatePCAPRecorder(ctx context.Context, request *sdkmcp.CallToolRequest, in updatePCAPRecorderInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Caplen == "" {
 		in.Caplen = "0"
 	}
@@ -1181,7 +1182,7 @@ func handleUpdatePCAPRecorder(ctx context.Context, request *mcp.CallToolRequest,
 	return mcp.TextResult(output)
 }
 
-func handleListServices(ctx context.Context, request *mcp.CallToolRequest, in listServicesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleListServices(ctx context.Context, request *sdkmcp.CallToolRequest, in listServicesInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	showClusterMeshAffinity := in.ShowClusterMeshAffinity
 	nodeName := in.NodeName
 
@@ -1199,7 +1200,7 @@ func handleListServices(ctx context.Context, request *mcp.CallToolRequest, in li
 	return mcp.TextResult(output)
 }
 
-func handleGetServiceInformation(ctx context.Context, request *mcp.CallToolRequest, in getServiceInformationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetServiceInformation(ctx context.Context, request *sdkmcp.CallToolRequest, in getServiceInformationInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	serviceID := in.ServiceID
 	nodeName := in.NodeName
 
@@ -1215,7 +1216,7 @@ func handleGetServiceInformation(ctx context.Context, request *mcp.CallToolReque
 	return mcp.TextResult(output)
 }
 
-func handleDeleteService(ctx context.Context, request *mcp.CallToolRequest, in deleteServiceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleDeleteService(ctx context.Context, request *sdkmcp.CallToolRequest, in deleteServiceInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	serviceID := in.ServiceID
 	all := in.All
 	nodeName := in.NodeName
@@ -1236,7 +1237,7 @@ func handleDeleteService(ctx context.Context, request *mcp.CallToolRequest, in d
 	return mcp.TextResult(output)
 }
 
-func handleUpdateService(ctx context.Context, request *mcp.CallToolRequest, in updateServiceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleUpdateService(ctx context.Context, request *sdkmcp.CallToolRequest, in updateServiceInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.K8sExtTrafficPolicy == "" {
 		in.K8sExtTrafficPolicy = "Cluster"
 	}
@@ -1307,7 +1308,7 @@ func handleUpdateService(ctx context.Context, request *mcp.CallToolRequest, in u
 	return mcp.TextResult(output)
 }
 
-func handleGetDaemonStatus(ctx context.Context, request *mcp.CallToolRequest, in getDaemonStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleGetDaemonStatus(ctx context.Context, request *sdkmcp.CallToolRequest, in getDaemonStatusInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	showAllAddresses := in.ShowAllAddresses
 	showAllClusters := in.ShowAllClusters
 	showAllControllers := in.ShowAllControllers

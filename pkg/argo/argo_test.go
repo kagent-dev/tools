@@ -6,18 +6,18 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRegisterTools(t *testing.T) {
 	t.Run("read-write", func(t *testing.T) {
-		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, false)
 	})
 	t.Run("read-only", func(t *testing.T) {
-		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, true)
 	})
 }
@@ -28,7 +28,7 @@ func TestHandleListRollouts(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "list", "rollouts", "-n", "argo-rollouts"}, "NAME STATUS\nmyapp Healthy", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleListRollouts(ctx, &mcp.CallToolRequest{}, listRolloutsInput{})
+		result, _, err := handleListRollouts(ctx, &sdkmcp.CallToolRequest{}, listRolloutsInput{})
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
 		assert.Contains(t, getResultText(result), "myapp")
@@ -39,7 +39,7 @@ func TestHandleListRollouts(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "list", "experiments", "-n", "prod"}, "NAME", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleListRollouts(ctx, &mcp.CallToolRequest{}, listRolloutsInput{Type: "experiments", Namespace: "prod"})
+		result, _, err := handleListRollouts(ctx, &sdkmcp.CallToolRequest{}, listRolloutsInput{Type: "experiments", Namespace: "prod"})
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
 	})
@@ -49,7 +49,7 @@ func TestHandleListRollouts(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "list", "rollouts", "-n", "argo-rollouts"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleListRollouts(ctx, &mcp.CallToolRequest{}, listRolloutsInput{})
+		result, _, err := handleListRollouts(ctx, &sdkmcp.CallToolRequest{}, listRolloutsInput{})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "Error listing rollouts")
@@ -64,7 +64,7 @@ Download complete, it took 1.5s`
 		mock.AddCommandString("kubectl", []string{"logs", "-n", "argo-rollouts", "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}, logs, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleCheckPluginLogs(ctx, &mcp.CallToolRequest{}, checkPluginLogsInput{})
+		result, _, err := handleCheckPluginLogs(ctx, &sdkmcp.CallToolRequest{}, checkPluginLogsInput{})
 		assert.NoError(t, err)
 		assert.Contains(t, getResultText(result), "0.5.0")
 		assert.Contains(t, getResultText(result), `"installed": true`)
@@ -75,7 +75,7 @@ Download complete, it took 1.5s`
 		mock.AddCommandString("kubectl", []string{"logs", "-n", "argo-rollouts", "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}, "no plugin here", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleCheckPluginLogs(ctx, &mcp.CallToolRequest{}, checkPluginLogsInput{})
+		result, _, err := handleCheckPluginLogs(ctx, &sdkmcp.CallToolRequest{}, checkPluginLogsInput{})
 		assert.NoError(t, err)
 		assert.Contains(t, getResultText(result), "Plugin installation not found")
 	})
@@ -85,7 +85,7 @@ Download complete, it took 1.5s`
 		mock.AddCommandString("kubectl", []string{"logs", "-n", "argo-rollouts", "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleCheckPluginLogs(ctx, &mcp.CallToolRequest{}, checkPluginLogsInput{})
+		result, _, err := handleCheckPluginLogs(ctx, &sdkmcp.CallToolRequest{}, checkPluginLogsInput{})
 		assert.NoError(t, err)
 		assert.Contains(t, getResultText(result), `"installed": false`)
 	})
@@ -119,7 +119,7 @@ func TestHandleVerifyGatewayPluginAlreadyConfigured(t *testing.T) {
 	mock.AddCommandString("kubectl", []string{"get", "configmap", "argo-rollouts-config", "-n", "argo-rollouts", "-o", "yaml"}, "data:\n  trafficRouterPlugins: argoproj-labs/gatewayAPI", nil)
 	ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-	result, _, err := handleVerifyGatewayPlugin(ctx, &mcp.CallToolRequest{}, verifyGatewayPluginInput{})
+	result, _, err := handleVerifyGatewayPlugin(ctx, &sdkmcp.CallToolRequest{}, verifyGatewayPluginInput{})
 	assert.NoError(t, err)
 	assert.Contains(t, getResultText(result), "already configured")
 }
@@ -131,7 +131,7 @@ func TestHandleVerifyArgoRolloutsControllerInstallStatuses(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("kubectl", baseCmd, "Running Running", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &mcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
+		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &sdkmcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
 		assert.NoError(t, err)
 		assert.Contains(t, getResultText(result), "All pods are running")
 	})
@@ -140,7 +140,7 @@ func TestHandleVerifyArgoRolloutsControllerInstallStatuses(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("kubectl", baseCmd, "Running Pending", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &mcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
+		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &sdkmcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
 		assert.NoError(t, err)
 		assert.Contains(t, getResultText(result), "Not all pods are running")
 	})
@@ -149,7 +149,7 @@ func TestHandleVerifyArgoRolloutsControllerInstallStatuses(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("kubectl", baseCmd, "", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &mcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
+		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &sdkmcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
 		assert.NoError(t, err)
 		assert.Contains(t, getResultText(result), "No pods found")
 	})
@@ -158,18 +158,18 @@ func TestHandleVerifyArgoRolloutsControllerInstallStatuses(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		mock.AddCommandString("kubectl", baseCmd, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
-		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &mcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
+		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &sdkmcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 	})
 }
 
 // Helper function to extract text content from MCP result
-func getResultText(result *mcp.CallToolResult) string {
+func getResultText(result *sdkmcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*sdkmcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""
@@ -186,7 +186,7 @@ func TestHandlePromoteRollout(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "promote", "myapp"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePromoteRollout(ctx, &mcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp"})
+		result, _, err := handlePromoteRollout(ctx, &sdkmcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp"})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -207,7 +207,7 @@ func TestHandlePromoteRollout(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "promote", "-n", "production", "myapp"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePromoteRollout(ctx, &mcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp", Namespace: "production"})
+		result, _, err := handlePromoteRollout(ctx, &sdkmcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp", Namespace: "production"})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -226,7 +226,7 @@ func TestHandlePromoteRollout(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "promote", "myapp", "--full"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePromoteRollout(ctx, &mcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp", Full: true})
+		result, _, err := handlePromoteRollout(ctx, &sdkmcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp", Full: true})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -242,7 +242,7 @@ func TestHandlePromoteRollout(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePromoteRollout(ctx, &mcp.CallToolRequest{}, promoteRolloutInput{})
+		result, _, err := handlePromoteRollout(ctx, &sdkmcp.CallToolRequest{}, promoteRolloutInput{})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "rollout_name parameter is required")
@@ -257,7 +257,7 @@ func TestHandlePromoteRollout(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "promote", "myapp"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePromoteRollout(ctx, &mcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp"})
+		result, _, err := handlePromoteRollout(ctx, &sdkmcp.CallToolRequest{}, promoteRolloutInput{RolloutName: "myapp"})
 
 		assert.NoError(t, err) // MCP handlers should not return Go errors
 		assert.True(t, result.IsError)
@@ -274,7 +274,7 @@ func TestHandlePauseRollout(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "pause", "myapp"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePauseRollout(ctx, &mcp.CallToolRequest{}, pauseRolloutInput{RolloutName: "myapp"})
+		result, _, err := handlePauseRollout(ctx, &sdkmcp.CallToolRequest{}, pauseRolloutInput{RolloutName: "myapp"})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -298,7 +298,7 @@ func TestHandlePauseRollout(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "pause", "-n", "production", "myapp"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePauseRollout(ctx, &mcp.CallToolRequest{}, pauseRolloutInput{RolloutName: "myapp", Namespace: "production"})
+		result, _, err := handlePauseRollout(ctx, &sdkmcp.CallToolRequest{}, pauseRolloutInput{RolloutName: "myapp", Namespace: "production"})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -314,7 +314,7 @@ func TestHandlePauseRollout(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handlePauseRollout(ctx, &mcp.CallToolRequest{}, pauseRolloutInput{})
+		result, _, err := handlePauseRollout(ctx, &sdkmcp.CallToolRequest{}, pauseRolloutInput{})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "rollout_name parameter is required")
@@ -334,7 +334,7 @@ func TestHandleSetRolloutImage(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "set", "image", "myapp", "nginx:latest"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleSetRolloutImage(ctx, &mcp.CallToolRequest{}, setRolloutImageInput{RolloutName: "myapp", ContainerImage: "nginx:latest"})
+		result, _, err := handleSetRolloutImage(ctx, &sdkmcp.CallToolRequest{}, setRolloutImageInput{RolloutName: "myapp", ContainerImage: "nginx:latest"})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -358,7 +358,7 @@ func TestHandleSetRolloutImage(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "set", "image", "myapp", "nginx:1.20", "-n", "production"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleSetRolloutImage(ctx, &mcp.CallToolRequest{}, setRolloutImageInput{RolloutName: "myapp", ContainerImage: "nginx:1.20", Namespace: "production"})
+		result, _, err := handleSetRolloutImage(ctx, &sdkmcp.CallToolRequest{}, setRolloutImageInput{RolloutName: "myapp", ContainerImage: "nginx:1.20", Namespace: "production"})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -374,7 +374,7 @@ func TestHandleSetRolloutImage(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleSetRolloutImage(ctx, &mcp.CallToolRequest{}, setRolloutImageInput{ContainerImage: "nginx:latest"})
+		result, _, err := handleSetRolloutImage(ctx, &sdkmcp.CallToolRequest{}, setRolloutImageInput{ContainerImage: "nginx:latest"})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "rollout_name parameter is required")
@@ -388,7 +388,7 @@ func TestHandleSetRolloutImage(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleSetRolloutImage(ctx, &mcp.CallToolRequest{}, setRolloutImageInput{RolloutName: "myapp"})
+		result, _, err := handleSetRolloutImage(ctx, &sdkmcp.CallToolRequest{}, setRolloutImageInput{RolloutName: "myapp"})
 		assert.NoError(t, err)
 		assert.True(t, result.IsError)
 		assert.Contains(t, getResultText(result), "container_image parameter is required")
@@ -456,7 +456,7 @@ func TestHandleVerifyGatewayPlugin(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		shouldInstall := false
-		result, _, err := handleVerifyGatewayPlugin(ctx, &mcp.CallToolRequest{}, verifyGatewayPluginInput{ShouldInstall: &shouldInstall})
+		result, _, err := handleVerifyGatewayPlugin(ctx, &sdkmcp.CallToolRequest{}, verifyGatewayPluginInput{ShouldInstall: &shouldInstall})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -479,7 +479,7 @@ func TestHandleVerifyGatewayPlugin(t *testing.T) {
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 		shouldInstall := false
-		result, _, err := handleVerifyGatewayPlugin(ctx, &mcp.CallToolRequest{}, verifyGatewayPluginInput{ShouldInstall: &shouldInstall, Namespace: "custom-namespace"})
+		result, _, err := handleVerifyGatewayPlugin(ctx, &sdkmcp.CallToolRequest{}, verifyGatewayPluginInput{ShouldInstall: &shouldInstall, Namespace: "custom-namespace"})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -502,7 +502,7 @@ func TestHandleVerifyArgoRolloutsControllerInstall(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"get", "pods", "-l", "app.kubernetes.io/name=argo-rollouts", "-n", "argo-rollouts", "-o", "jsonpath={.items[*].metadata.name}"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &mcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
+		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &sdkmcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -522,7 +522,7 @@ func TestHandleVerifyArgoRolloutsControllerInstall(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"get", "pods", "-l", "app.kubernetes.io/name=argo-rollouts", "-n", "custom-argo", "-o", "jsonpath={.items[*].metadata.name}"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &mcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{Namespace: "custom-argo"})
+		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &sdkmcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{Namespace: "custom-argo"})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -542,7 +542,7 @@ func TestHandleVerifyArgoRolloutsControllerInstall(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"get", "pods", "-l", "app=custom-rollouts", "-n", "argo-rollouts", "-o", "jsonpath={.items[*].metadata.name}"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &mcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{Label: "app=custom-rollouts"})
+		result, _, err := handleVerifyArgoRolloutsControllerInstall(ctx, &sdkmcp.CallToolRequest{}, verifyArgoRolloutsControllerInstallInput{Label: "app=custom-rollouts"})
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
@@ -565,7 +565,7 @@ func TestHandleVerifyKubectlPluginInstall(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"argo", "rollouts", "version"}, expectedOutput, nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleVerifyKubectlPluginInstall(ctx, &mcp.CallToolRequest{}, verifyKubectlPluginInstallInput{})
+		result, _, err := handleVerifyKubectlPluginInstall(ctx, &sdkmcp.CallToolRequest{}, verifyKubectlPluginInstallInput{})
 
 		assert.NoError(t, err)
 		assert.False(t, result.IsError)
@@ -582,7 +582,7 @@ func TestHandleVerifyKubectlPluginInstall(t *testing.T) {
 		mock.AddCommandString("kubectl", []string{"plugin", "list"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, _, err := handleVerifyKubectlPluginInstall(ctx, &mcp.CallToolRequest{}, verifyKubectlPluginInstallInput{})
+		result, _, err := handleVerifyKubectlPluginInstall(ctx, &sdkmcp.CallToolRequest{}, verifyKubectlPluginInstallInput{})
 
 		assert.NoError(t, err) // MCP handlers should not return Go errors
 		assert.NotNil(t, result)

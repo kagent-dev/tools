@@ -6,9 +6,9 @@ import (
 	"errors"
 	"testing"
 
-	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kubescape/storage/pkg/apis/softwarecomposition/v1beta1"
 	kubescapefake "github.com/kubescape/storage/pkg/generated/clientset/versioned/fake"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -19,18 +19,18 @@ import (
 )
 
 // Helper function to extract text content from MCP result
-func getResultText(result *mcp.CallToolResult) string {
+func getResultText(result *sdkmcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*sdkmcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""
 }
 
 func TestRegisterTools(t *testing.T) {
-	s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
 	assert.NotPanics(t, func() {
 		RegisterTools(s, "", false)
 	})

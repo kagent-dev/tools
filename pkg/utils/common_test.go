@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/kagent-dev/tools/internal/cmd"
-	mcp "github.com/kagent-dev/tools/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,12 +69,12 @@ func TestShellTool(t *testing.T) {
 
 func TestRegisterTools(t *testing.T) {
 	t.Run("read-write registers shell", func(t *testing.T) {
-		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, false)
 	})
 
 	t.Run("read-only omits shell", func(t *testing.T) {
-		s := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
 		RegisterTools(s, true)
 	})
 }
@@ -85,13 +85,13 @@ func TestHandleShellTool(t *testing.T) {
 	ctx := cmd.WithShellExecutor(context.Background(), mock)
 
 	t.Run("success", func(t *testing.T) {
-		res, _, err := handleShellTool(ctx, &mcp.CallToolRequest{}, shellParams{Command: "echo hi"})
+		res, _, err := handleShellTool(ctx, &sdkmcp.CallToolRequest{}, shellParams{Command: "echo hi"})
 		require.NoError(t, err)
 		assert.False(t, res.IsError)
 	})
 
 	t.Run("missing command", func(t *testing.T) {
-		res, _, err := handleShellTool(ctx, &mcp.CallToolRequest{}, shellParams{})
+		res, _, err := handleShellTool(ctx, &sdkmcp.CallToolRequest{}, shellParams{})
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 		assert.Contains(t, getResultText(res), "command parameter is required")
@@ -101,7 +101,7 @@ func TestHandleShellTool(t *testing.T) {
 		m := cmd.NewMockShellExecutor()
 		m.AddCommandString("false", []string{}, "", assert.AnError)
 		errCtx := cmd.WithShellExecutor(context.Background(), m)
-		res, _, err := handleShellTool(errCtx, &mcp.CallToolRequest{}, shellParams{Command: "false"})
+		res, _, err := handleShellTool(errCtx, &sdkmcp.CallToolRequest{}, shellParams{Command: "false"})
 		require.NoError(t, err)
 		assert.True(t, res.IsError)
 	})
@@ -111,8 +111,8 @@ func TestHandleMCPInspectTool(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("echoes input and headers", func(t *testing.T) {
-		req := &mcp.CallToolRequest{
-			Extra: &mcp.RequestExtra{
+		req := &sdkmcp.CallToolRequest{
+			Extra: &sdkmcp.RequestExtra{
 				Header: http.Header{
 					"Authorization": []string{"Bearer test-token"},
 					"X-Debug":       []string{"one", "two"},
@@ -147,8 +147,8 @@ func TestHandleMCPInspectTool(t *testing.T) {
 	})
 
 	t.Run("redacts every sensitive header but keeps the value count", func(t *testing.T) {
-		req := &mcp.CallToolRequest{
-			Extra: &mcp.RequestExtra{
+		req := &sdkmcp.CallToolRequest{
+			Extra: &sdkmcp.RequestExtra{
 				Header: http.Header{
 					"Authorization": []string{"Bearer a", "Bearer b"},
 					"Cookie":        []string{"session=secret"},
@@ -181,7 +181,7 @@ func TestHandleMCPInspectTool(t *testing.T) {
 	})
 
 	t.Run("works without headers", func(t *testing.T) {
-		result, output, err := handleMCPInspectTool(ctx, &mcp.CallToolRequest{}, inspectInput{Echo: "stdio"})
+		result, output, err := handleMCPInspectTool(ctx, &sdkmcp.CallToolRequest{}, inspectInput{Echo: "stdio"})
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.False(t, result.IsError)
@@ -189,11 +189,11 @@ func TestHandleMCPInspectTool(t *testing.T) {
 	})
 }
 
-func getResultText(result *mcp.CallToolResult) string {
+func getResultText(result *sdkmcp.CallToolResult) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
-	if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+	if textContent, ok := result.Content[0].(*sdkmcp.TextContent); ok {
 		return textContent.Text
 	}
 	return ""

@@ -19,6 +19,7 @@ import (
 	"github.com/kagent-dev/tools/internal/logger"
 	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/internal/security"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // K8sTool struct to hold the LLM model
@@ -37,7 +38,7 @@ func NewK8sToolWithConfig(kubeconfig string, llmModel llms.Model) *K8sTool {
 }
 
 // runKubectlCommandWithCacheInvalidation runs a kubectl command and invalidates cache if it's a modification operation
-func (k *K8sTool) runKubectlCommandWithCacheInvalidation(ctx context.Context, headers http.Header, args ...string) (*mcp.CallToolResult, error) {
+func (k *K8sTool) runKubectlCommandWithCacheInvalidation(ctx context.Context, headers http.Header, args ...string) (*sdkmcp.CallToolResult, error) {
 	result, err := k.runKubectlCommand(ctx, headers, args...)
 
 	// If command succeeded and it's a modification command, invalidate cache
@@ -62,7 +63,7 @@ type getResourcesInput struct {
 }
 
 // Enhanced kubectl get
-func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *mcp.CallToolRequest, in getResourcesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleKubectlGetEnhanced(ctx context.Context, request *sdkmcp.CallToolRequest, in getResourcesInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" {
 		return mcp.TextError("resource_type parameter is required")
 	}
@@ -98,7 +99,7 @@ type logsInput struct {
 }
 
 // Get pod logs
-func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request *mcp.CallToolRequest, in logsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleKubectlLogsEnhanced(ctx context.Context, request *sdkmcp.CallToolRequest, in logsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.PodName == "" {
 		return mcp.TextError("pod_name parameter is required")
 	}
@@ -135,7 +136,7 @@ type scaleInput struct {
 }
 
 // Scale deployment
-func (k *K8sTool) handleScaleDeployment(ctx context.Context, request *mcp.CallToolRequest, in scaleInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleScaleDeployment(ctx context.Context, request *sdkmcp.CallToolRequest, in scaleInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" {
 		return mcp.TextError("name parameter is required")
 	}
@@ -162,7 +163,7 @@ type patchResourceInput struct {
 }
 
 // Patch resource
-func (k *K8sTool) handlePatchResource(ctx context.Context, request *mcp.CallToolRequest, in patchResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handlePatchResource(ctx context.Context, request *sdkmcp.CallToolRequest, in patchResourceInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -209,7 +210,7 @@ type patchStatusInput struct {
 }
 
 // Patch resource status
-func (k *K8sTool) handlePatchStatus(ctx context.Context, request *mcp.CallToolRequest, in patchStatusInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handlePatchStatus(ctx context.Context, request *sdkmcp.CallToolRequest, in patchStatusInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -252,7 +253,7 @@ type applyManifestInput struct {
 }
 
 // Apply manifest from content
-func (k *K8sTool) handleApplyManifest(ctx context.Context, request *mcp.CallToolRequest, in applyManifestInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleApplyManifest(ctx context.Context, request *sdkmcp.CallToolRequest, in applyManifestInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Manifest == "" {
 		return mcp.TextError("manifest parameter is required")
 	}
@@ -297,7 +298,7 @@ type deleteResourceInput struct {
 }
 
 // Delete resource
-func (k *K8sTool) handleDeleteResource(ctx context.Context, request *mcp.CallToolRequest, in deleteResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleDeleteResource(ctx context.Context, request *sdkmcp.CallToolRequest, in deleteResourceInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -324,7 +325,7 @@ type waitInput struct {
 }
 
 // Wait for a condition on one or more resources (kubectl wait)
-func (k *K8sTool) handleKubectlWait(ctx context.Context, request *mcp.CallToolRequest, in waitInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleKubectlWait(ctx context.Context, request *sdkmcp.CallToolRequest, in waitInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -370,7 +371,7 @@ type serviceConnectivityInput struct {
 }
 
 // Check service connectivity
-func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request *mcp.CallToolRequest, in serviceConnectivityInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleCheckServiceConnectivity(ctx context.Context, request *sdkmcp.CallToolRequest, in serviceConnectivityInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -409,7 +410,7 @@ type eventsInput struct {
 }
 
 // Get cluster events
-func (k *K8sTool) handleGetEvents(ctx context.Context, request *mcp.CallToolRequest, in eventsInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleGetEvents(ctx context.Context, request *sdkmcp.CallToolRequest, in eventsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"get", "events", "-o", "json"}
 	if in.Namespace != "" {
 		args = append(args, "-n", in.Namespace)
@@ -431,7 +432,7 @@ type execCommandInput struct {
 }
 
 // Execute command in pod
-func (k *K8sTool) handleExecCommand(ctx context.Context, request *mcp.CallToolRequest, in execCommandInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleExecCommand(ctx context.Context, request *sdkmcp.CallToolRequest, in execCommandInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Namespace == "" {
 		in.Namespace = "default"
 	}
@@ -484,7 +485,7 @@ func (k *K8sTool) handleExecCommand(ctx context.Context, request *mcp.CallToolRe
 type noInput struct{}
 
 // Get available API resources
-func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleGetAvailableAPIResources(ctx context.Context, request *sdkmcp.CallToolRequest, _ noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), "api-resources")
 	return res, mcp.TextOf(res), err
 }
@@ -497,7 +498,7 @@ type describeInput struct {
 }
 
 // Kubectl describe tool
-func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request *mcp.CallToolRequest, in describeInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleKubectlDescribeTool(ctx context.Context, request *sdkmcp.CallToolRequest, in describeInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" {
 		return mcp.TextError("resource_type and resource_name parameters are required")
 	}
@@ -520,7 +521,7 @@ type rolloutInput struct {
 }
 
 // Rollout operations
-func (k *K8sTool) handleRollout(ctx context.Context, request *mcp.CallToolRequest, in rolloutInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleRollout(ctx context.Context, request *sdkmcp.CallToolRequest, in rolloutInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Action == "" || in.ResourceType == "" || in.ResourceName == "" {
 		return mcp.TextError("action, resource_type, and resource_name parameters are required")
 	}
@@ -535,7 +536,7 @@ func (k *K8sTool) handleRollout(ctx context.Context, request *mcp.CallToolReques
 }
 
 // Get cluster configuration
-func (k *K8sTool) handleGetClusterConfiguration(ctx context.Context, request *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleGetClusterConfiguration(ctx context.Context, request *sdkmcp.CallToolRequest, _ noInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	res, err := k.runKubectlCommand(ctx, mcp.Header(request), "config", "view", "-o", "json")
 	return res, mcp.TextOf(res), err
 }
@@ -549,7 +550,7 @@ type removeAnnotationInput struct {
 }
 
 // Remove annotation
-func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request *mcp.CallToolRequest, in removeAnnotationInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleRemoveAnnotation(ctx context.Context, request *sdkmcp.CallToolRequest, in removeAnnotationInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.AnnotationKey == "" {
 		return mcp.TextError("resource_type, resource_name, and annotation_key parameters are required")
 	}
@@ -572,7 +573,7 @@ type removeLabelInput struct {
 }
 
 // Remove label
-func (k *K8sTool) handleRemoveLabel(ctx context.Context, request *mcp.CallToolRequest, in removeLabelInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleRemoveLabel(ctx context.Context, request *sdkmcp.CallToolRequest, in removeLabelInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.LabelKey == "" {
 		return mcp.TextError("resource_type, resource_name, and label_key parameters are required")
 	}
@@ -595,7 +596,7 @@ type annotateInput struct {
 }
 
 // Annotate resource
-func (k *K8sTool) handleAnnotateResource(ctx context.Context, request *mcp.CallToolRequest, in annotateInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleAnnotateResource(ctx context.Context, request *sdkmcp.CallToolRequest, in annotateInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.Annotations == "" {
 		return mcp.TextError("resource_type, resource_name, and annotations parameters are required")
 	}
@@ -620,7 +621,7 @@ type labelInput struct {
 }
 
 // Label resource
-func (k *K8sTool) handleLabelResource(ctx context.Context, request *mcp.CallToolRequest, in labelInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleLabelResource(ctx context.Context, request *sdkmcp.CallToolRequest, in labelInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" || in.Labels == "" {
 		return mcp.TextError("resource_type, resource_name, and labels parameters are required")
 	}
@@ -643,7 +644,7 @@ type createFromURLInput struct {
 }
 
 // Create resource from URL
-func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request *mcp.CallToolRequest, in createFromURLInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleCreateResourceFromURL(ctx context.Context, request *sdkmcp.CallToolRequest, in createFromURLInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.URL == "" {
 		return mcp.TextError("url parameter is required")
 	}
@@ -665,7 +666,7 @@ type getResourceYAMLInput struct {
 }
 
 // Get resource YAML
-func (k *K8sTool) handleGetResourceYAML(ctx context.Context, request *mcp.CallToolRequest, in getResourceYAMLInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleGetResourceYAML(ctx context.Context, request *sdkmcp.CallToolRequest, in getResourceYAMLInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceName == "" {
 		return mcp.TextError("resource_type and resource_name are required")
 	}
@@ -688,7 +689,7 @@ type createResourceInput struct {
 }
 
 // Create resource from YAML content
-func (k *K8sTool) handleCreateResource(ctx context.Context, request *mcp.CallToolRequest, in createResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleCreateResource(ctx context.Context, request *sdkmcp.CallToolRequest, in createResourceInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.YAMLContent == "" {
 		return mcp.TextError("yaml_content is required")
 	}
@@ -762,7 +763,7 @@ type generateResourceInput struct {
 }
 
 // Generate resource using LLM
-func (k *K8sTool) handleGenerateResource(ctx context.Context, request *mcp.CallToolRequest, in generateResourceInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func (k *K8sTool) handleGenerateResource(ctx context.Context, request *sdkmcp.CallToolRequest, in generateResourceInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.ResourceType == "" || in.ResourceDescription == "" {
 		return mcp.TextError("resource_type and resource_description parameters are required")
 	}
@@ -829,7 +830,7 @@ func (k *K8sTool) tokenForKubectl(headers http.Header) (string, error) {
 }
 
 // runKubectlCommand is a helper function to execute kubectl commands
-func (k *K8sTool) runKubectlCommand(ctx context.Context, headers http.Header, args ...string) (*mcp.CallToolResult, error) {
+func (k *K8sTool) runKubectlCommand(ctx context.Context, headers http.Header, args ...string) (*sdkmcp.CallToolResult, error) {
 	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -848,7 +849,7 @@ func (k *K8sTool) runKubectlCommand(ctx context.Context, headers http.Header, ar
 }
 
 // runKubectlCommandWithTimeout is a helper function to execute kubectl commands with a timeout
-func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, headers http.Header, timeout time.Duration, args ...string) (*mcp.CallToolResult, error) {
+func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, headers http.Header, timeout time.Duration, args ...string) (*sdkmcp.CallToolResult, error) {
 	token, err := k.tokenForKubectl(headers)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -868,11 +869,11 @@ func (k *K8sTool) runKubectlCommandWithTimeout(ctx context.Context, headers http
 }
 
 // RegisterTools registers all k8s tools with the MCP server
-func RegisterTools(s *mcp.Server, llm llms.Model, kubeconfig string, readOnly bool) {
+func RegisterTools(s *sdkmcp.Server, llm llms.Model, kubeconfig string, readOnly bool) {
 	k8sTool := NewK8sToolWithConfig(kubeconfig, llm)
 
 	// Read-only tools - always registered
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name: "k8s_get_resources",
 		Description: "List Kubernetes resources with kubectl. " +
 			"Scope: with neither all_namespaces nor namespace set, this queries ONLY the namespace " +
@@ -884,114 +885,114 @@ func RegisterTools(s *mcp.Server, llm llms.Model, kubeconfig string, readOnly bo
 			"Node versions (kubelet, container runtime): resource_type=node.",
 	}, k8sTool.handleKubectlGetEnhanced)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_get_pod_logs",
 		Description: "Get logs from a Kubernetes pod",
 	}, k8sTool.handleKubectlLogsEnhanced)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_get_events",
 		Description: "Get events from a Kubernetes namespace",
 	}, k8sTool.handleGetEvents)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_get_available_api_resources",
 		Description: "Get available Kubernetes API resources",
 	}, k8sTool.handleGetAvailableAPIResources)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_get_cluster_configuration",
 		Description: "Get cluster configuration details",
 	}, k8sTool.handleGetClusterConfiguration)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_get_resource_yaml",
 		Description: "Get the YAML representation of a Kubernetes resource",
 	}, k8sTool.handleGetResourceYAML)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_describe_resource",
 		Description: "Describe a Kubernetes resource in detail",
 	}, k8sTool.handleKubectlDescribeTool)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_wait",
 		Description: "Wait for a condition on Kubernetes resources (kubectl wait). Blocks until the condition is met or the timeout elapses.",
 	}, k8sTool.handleKubectlWait)
 
-	mcp.AddTool(s, "k8s", &mcp.Tool{
+	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 		Name:        "k8s_generate_resource",
 		Description: fmt.Sprintf("Generate a Kubernetes resource YAML from a description. Supported resource_type values: %s", strings.Join(slices.Collect(resourceTypes), ", ")),
 	}, k8sTool.handleGenerateResource)
 
 	// Write tools - only registered when write operations are enabled
 	if !readOnly {
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_scale",
 			Description: "Scale a Kubernetes deployment",
 		}, k8sTool.handleScaleDeployment)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_patch_resource",
 			Description: "Patch a Kubernetes resource. Defaults to a strategic merge patch, which is only supported for built-in types; set patch_type to \"merge\" (or \"json\") to patch a CustomResource/CRD.",
 		}, k8sTool.handlePatchResource)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_patch_status",
 			Description: "Patch the status of a Kubernetes resource",
 		}, k8sTool.handlePatchStatus)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_apply_manifest",
 			Description: "Apply a YAML manifest to the Kubernetes cluster",
 		}, k8sTool.handleApplyManifest)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_delete_resource",
 			Description: "Delete a Kubernetes resource",
 		}, k8sTool.handleDeleteResource)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_check_service_connectivity",
 			Description: "Check connectivity to a service using a temporary curl pod",
 		}, k8sTool.handleCheckServiceConnectivity)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_execute_command",
 			Description: "Execute a command in a Kubernetes pod",
 		}, k8sTool.handleExecCommand)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_rollout",
 			Description: "Perform rollout operations on Kubernetes resources (history, pause, restart, resume, status, undo)",
 		}, k8sTool.handleRollout)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_label_resource",
 			Description: "Add or update labels on a Kubernetes resource",
 		}, k8sTool.handleLabelResource)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_annotate_resource",
 			Description: "Add or update annotations on a Kubernetes resource",
 		}, k8sTool.handleAnnotateResource)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_remove_annotation",
 			Description: "Remove an annotation from a Kubernetes resource",
 		}, k8sTool.handleRemoveAnnotation)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_remove_label",
 			Description: "Remove a label from a Kubernetes resource",
 		}, k8sTool.handleRemoveLabel)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_create_resource",
 			Description: "Create a Kubernetes resource from YAML content",
 		}, k8sTool.handleCreateResource)
 
-		mcp.AddTool(s, "k8s", &mcp.Tool{
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
 			Name:        "k8s_create_resource_from_url",
 			Description: "Create a Kubernetes resource from a URL pointing to a YAML manifest",
 		}, k8sTool.handleCreateResourceFromURL)

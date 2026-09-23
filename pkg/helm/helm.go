@@ -11,10 +11,11 @@ import (
 	mcp "github.com/kagent-dev/tools/internal/mcp"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/pkg/utils"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // toolErrorResult formats a ToolError as an MCP error result.
-func toolErrorResult(toolErr *errors.ToolError) *mcp.CallToolResult {
+func toolErrorResult(toolErr *errors.ToolError) *sdkmcp.CallToolResult {
 	return toolErr.ToMCPResult()
 }
 
@@ -32,7 +33,7 @@ type helmListReleasesInput struct {
 }
 
 // Helm list releases
-func handleHelmListReleases(ctx context.Context, request *mcp.CallToolRequest, in helmListReleasesInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleHelmListReleases(ctx context.Context, request *sdkmcp.CallToolRequest, in helmListReleasesInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"list"}
 
 	if in.Namespace != "" {
@@ -128,7 +129,7 @@ type helmGetReleaseInput struct {
 }
 
 // Helm get release
-func handleHelmGetRelease(ctx context.Context, request *mcp.CallToolRequest, in helmGetReleaseInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleHelmGetRelease(ctx context.Context, request *sdkmcp.CallToolRequest, in helmGetReleaseInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Resource == "" {
 		in.Resource = "all"
 	}
@@ -164,7 +165,7 @@ type helmUpgradeReleaseInput struct {
 }
 
 // Helm upgrade release
-func handleHelmUpgradeRelease(ctx context.Context, request *mcp.CallToolRequest, in helmUpgradeReleaseInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleHelmUpgradeRelease(ctx context.Context, request *sdkmcp.CallToolRequest, in helmUpgradeReleaseInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" || in.Chart == "" {
 		return mcp.TextError("name and chart parameters are required")
 	}
@@ -238,7 +239,7 @@ type helmUninstallInput struct {
 }
 
 // Helm uninstall release
-func handleHelmUninstall(ctx context.Context, request *mcp.CallToolRequest, in helmUninstallInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleHelmUninstall(ctx context.Context, request *sdkmcp.CallToolRequest, in helmUninstallInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" || in.Namespace == "" {
 		return mcp.TextError("name and namespace parameters are required")
 	}
@@ -267,7 +268,7 @@ type helmRepoAddInput struct {
 }
 
 // Helm repo add
-func handleHelmRepoAdd(ctx context.Context, request *mcp.CallToolRequest, in helmRepoAddInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleHelmRepoAdd(ctx context.Context, request *sdkmcp.CallToolRequest, in helmRepoAddInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	if in.Name == "" || in.URL == "" {
 		return mcp.TextError("name and url parameters are required")
 	}
@@ -295,7 +296,7 @@ func handleHelmRepoAdd(ctx context.Context, request *mcp.CallToolRequest, in hel
 type helmRepoUpdateInput struct{}
 
 // Helm repo update
-func handleHelmRepoUpdate(ctx context.Context, request *mcp.CallToolRequest, in helmRepoUpdateInput) (*mcp.CallToolResult, mcp.TextOutput, error) {
+func handleHelmRepoUpdate(ctx context.Context, request *sdkmcp.CallToolRequest, in helmRepoUpdateInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"repo", "update"}
 
 	result, err := runHelmCommand(ctx, args)
@@ -307,36 +308,36 @@ func handleHelmRepoUpdate(ctx context.Context, request *mcp.CallToolRequest, in 
 }
 
 // Register Helm tools
-func RegisterTools(s *mcp.Server, readOnly bool) {
+func RegisterTools(s *sdkmcp.Server, readOnly bool) {
 	// Read-only tools - always registered
-	mcp.AddTool(s, "helm", &mcp.Tool{
+	mcp.AddTool(s, "helm", &sdkmcp.Tool{
 		Name:        "helm_list_releases",
 		Description: "List Helm releases in a namespace",
 	}, handleHelmListReleases)
 
-	mcp.AddTool(s, "helm", &mcp.Tool{
+	mcp.AddTool(s, "helm", &sdkmcp.Tool{
 		Name:        "helm_get_release",
 		Description: "Get extended information about a Helm release",
 	}, handleHelmGetRelease)
 
-	mcp.AddTool(s, "helm", &mcp.Tool{
+	mcp.AddTool(s, "helm", &sdkmcp.Tool{
 		Name:        "helm_repo_update",
 		Description: "Update information of available charts locally from chart repositories",
 	}, handleHelmRepoUpdate)
 
 	// Write tools - only registered when not in read-only mode
 	if !readOnly {
-		mcp.AddTool(s, "helm", &mcp.Tool{
+		mcp.AddTool(s, "helm", &sdkmcp.Tool{
 			Name:        "helm_upgrade",
 			Description: "Upgrade or install a Helm release",
 		}, handleHelmUpgradeRelease)
 
-		mcp.AddTool(s, "helm", &mcp.Tool{
+		mcp.AddTool(s, "helm", &sdkmcp.Tool{
 			Name:        "helm_uninstall",
 			Description: "Uninstall a Helm release",
 		}, handleHelmUninstall)
 
-		mcp.AddTool(s, "helm", &mcp.Tool{
+		mcp.AddTool(s, "helm", &sdkmcp.Tool{
 			Name:        "helm_repo_add",
 			Description: "Add a Helm repository",
 		}, handleHelmRepoAdd)

@@ -1,8 +1,13 @@
 // Package mcp adapts the modelcontextprotocol/go-sdk server to the kagent-tools
-// providers. It re-exports the SDK types the providers need, supplies result
-// constructors compatible with the previous mark3labs helpers, and centralizes
-// tracing/metrics instrumentation as a single receiving middleware so provider
-// packages register tools with one typed call and no per-tool wrapping.
+// providers. It supplies the typed-output helpers (TextOutput/TextResult/
+// TextError/TextOf) and the instrumented AddTool registration path used by every
+// provider, and centralizes tracing/metrics instrumentation as a single
+// receiving middleware.
+//
+// The SDK's own types are used directly — providers import
+// github.com/modelcontextprotocol/go-sdk/mcp as sdkmcp rather than going through
+// aliases here. Only what carries repository-specific behaviour is defined or
+// wrapped in this package.
 package mcp
 
 import (
@@ -20,29 +25,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
-
-// Re-exported SDK types so provider packages depend on a single import.
-type (
-	// Server is the MCP server tools are registered on.
-	Server = sdk.Server
-	// Tool describes a tool's name, description and (inferred) input schema.
-	Tool = sdk.Tool
-	// CallToolRequest is the server-side request passed to a tool handler.
-	CallToolRequest = sdk.CallToolRequest
-	// CallToolResult is the result returned by a tool handler.
-	CallToolResult = sdk.CallToolResult
-	// Implementation identifies the server to clients.
-	Implementation = sdk.Implementation
-	// Content is a single piece of tool result content.
-	Content = sdk.Content
-	// TextContent is textual tool result content.
-	TextContent = sdk.TextContent
-	// RequestExtra carries transport-level extras (e.g. HTTP headers) on a request.
-	RequestExtra = sdk.RequestExtra
-)
-
-// NewServer constructs a new MCP server.
-var NewServer = sdk.NewServer
 
 // NewToolResultText returns a successful text result.
 func NewToolResultText(text string) *sdk.CallToolResult {
