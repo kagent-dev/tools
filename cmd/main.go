@@ -46,6 +46,8 @@ var (
 	showVersion bool
 	readOnly    bool
 
+	sessionIdleTTL time.Duration
+
 	// These variables should be set during build time using -ldflags
 	Name      = "kagent-tools-server"
 	Version   = version.Version
@@ -66,6 +68,7 @@ func init() {
 	rootCmd.Flags().StringSliceVar(&tools, "tools", []string{}, "List of tools to register. If empty, all tools are registered.")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information and exit")
 	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "Run in read-only mode (disable tools that perform write operations)")
+	rootCmd.Flags().DurationVar(&sessionIdleTTL, "session-idle-ttl", 10*time.Minute, "Reclaim streamable HTTP session state after this idle duration (0 disables the sweeper)")
 	kubeconfig = rootCmd.Flags().String("kubeconfig", "", "kubeconfig file path (optional, defaults to in-cluster config)")
 
 	// if found .env file, load it
@@ -160,7 +163,8 @@ func run(cmd *cobra.Command, args []string) {
 
 	// HTTP server reference (only used when not in stdio mode)
 	var httpServer *http.Server
-	var metricsServer *http.Server // Separate server for metrics if metricsPort is different from main port
+	var metricsServer *http.Server                    // Separate server for metrics if metricsPort is different from main port
+	var streamableServer *server.StreamableHTTPServer // Streamable HTTP transport, shut down to stop its session sweeper
 
 	// Start server based on chosen mode
 	wg.Add(1)
@@ -170,9 +174,7 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcp)
 		}()
 	} else {
-		sseServer := server.NewStreamableHTTPServer(mcp,
-			server.WithHeartbeatInterval(30*time.Second),
-		)
+		streamableServer = newStreamableHTTPServer(mcp, sessionIdleTTL)
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()
@@ -198,9 +200,7 @@ func run(cmd *cobra.Command, args []string) {
 				Handler: metricsMux,
 			}
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				logger.Get().Info("Starting Prometheus metrics endpoint on /metrics", "port", strconv.Itoa(metricsPort))
 				if err := metricsServer.ListenAndServe(); err != nil {
 					if !errors.Is(err, http.ErrServerClosed) {
@@ -209,7 +209,7 @@ func run(cmd *cobra.Command, args []string) {
 						logger.Get().Info("Metrics server closed gracefully.")
 					}
 				}
-			}()
+			})
 		} else {
 			logger.Get().Info("Starting Prometheus metrics endpoint on /metrics", "port", strconv.Itoa(port))
 			mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
@@ -222,7 +222,7 @@ func run(cmd *cobra.Command, args []string) {
 
 		// Handle all other routes with the MCP server wrapped in telemetry middleware
 		mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			sseServer.ServeHTTP(w, r)
+			streamableServer.ServeHTTP(w, r)
 		})))
 
 		httpServer = &http.Server{
@@ -232,7 +232,7 @@ func run(cmd *cobra.Command, args []string) {
 
 		go func() {
 			defer wg.Done()
-			logger.Get().Info("Running KAgent Tools Server", "port", fmt.Sprintf(":%d", port), "tools", strings.Join(tools, ","))
+			logger.Get().Info("Running KAgent Tools Server", "port", fmt.Sprintf(":%d", port), "tools", strings.Join(tools, ","), "session_idle_ttl", sessionIdleTTL.String())
 			if err := httpServer.ListenAndServe(); err != nil {
 				if !errors.Is(err, http.ErrServerClosed) {
 					logger.Get().Error("Failed to start HTTP server", "error", err)
@@ -268,6 +268,18 @@ func run(cmd *cobra.Command, args []string) {
 			}
 		}
 
+		// Stop the session sweeper and close sessions still registered with the
+		// MCP server, so nothing outlives the transport it belonged to
+		if !stdio && streamableServer != nil {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+
+			if err := streamableServer.Shutdown(shutdownCtx); err != nil {
+				logger.Get().Error("Failed to shutdown MCP streamable HTTP server gracefully", "error", err)
+				rootSpan.RecordError(err)
+			}
+		}
+
 		// Gracefully shutdown metrics server if running separately
 		if !stdio && metricsServer != nil {
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -285,6 +297,19 @@ func run(cmd *cobra.Command, args []string) {
 	// Wait for all server operations to complete
 	wg.Wait()
 	logger.Get().Info("Server shutdown complete")
+}
+
+// newStreamableHTTPServer builds the streamable HTTP transport.
+//
+// A session is registered on `initialize` and released only when the client
+// sends DELETE, so a client that goes away without one leaves its session
+// behind forever. idleTTL bounds that by reclaiming sessions that have seen no
+// traffic for that long; zero or less disables the sweeper.
+func newStreamableHTTPServer(mcpServer *server.MCPServer, idleTTL time.Duration) *server.StreamableHTTPServer {
+	return server.NewStreamableHTTPServer(mcpServer,
+		server.WithHeartbeatInterval(30*time.Second),
+		server.WithSessionIdleTTL(idleTTL),
+	)
 }
 
 // writeResponse writes data to an HTTP response writer with proper error handling
