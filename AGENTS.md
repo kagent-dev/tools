@@ -119,6 +119,20 @@ Each provider lives in `pkg/` and registers MCP tools via a `RegisterTools(serve
 
 Before submitting changes, run `make fmt && make lint && make test`.
 
+### Run Locally
+
+```bash
+go run ./cmd                          # defaults to stdio
+./bin/kagent-tools --stdio            # stdio transport
+./bin/kagent-tools --http --port 8084 # HTTP transport
+```
+
+Useful flags: `--tools k8s,helm` (limit providers), `--kubeconfig <path>`,
+`--read-only` (do not register write tools), `--metrics-port`.
+
+`make run` builds the image and runs the server in Docker on
+`http://localhost:8084/mcp`.
+
 ---
 
 ## Code Conventions
