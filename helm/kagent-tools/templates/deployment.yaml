@@ -19,10 +19,7 @@ spec:
       labels:
         {{- include "kagent-tools.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- with include "kagent-tools.imagePullSecrets" . }}{{- . | nindent 6 }}{{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -48,7 +45,6 @@ spec:
       {{- end }}
       {{- end }}
 
-
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "kagent-tools.serviceAccountName" . }}
@@ -69,8 +65,8 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.tools.image.registry }}/{{ .Values.tools.image.repository }}:{{ coalesce .Values.global.tag .Values.tools.image.tag .Chart.Version }}"
-          imagePullPolicy: {{ .Values.tools.image.pullPolicy }}
+          image: {{ include "kagent-tools.image" . | quote }}
+          imagePullPolicy: {{ include "kagent-tools.imagePullPolicy" (dict "root" . "local" .Values.tools.image.pullPolicy) }}
           resources:
             {{- toYaml .Values.tools.resources | nindent 12 }}
           env:
@@ -84,7 +80,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "kagent-tools.fullname" . }}-openai
                   key: OPENAI_API_KEY
-                  optional: true # if the secret is not found, the tool will not be available
+                  optional: true
             - name: OTEL_TRACING_ENABLED
               value: {{ .Values.otel.tracing.enabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -95,6 +91,16 @@ spec:
               value: {{ .Values.otel.tracing.exporter.otlp.insecure | quote }}
             - name: TOKEN_PASSTHROUGH
               value: {{ (index .Values.tools "k8s" | default dict).tokenPassthrough | default false | quote }}
+            - name: PROMETHEUS_URL
+              value: {{ .Values.tools.prometheus.url | quote }}
+            - name: PROMETHEUS_USERNAME
+              value: {{ .Values.tools.prometheus.username | quote }}
+            - name: PROMETHEUS_PASSWORD
+              value: {{ .Values.tools.prometheus.password | quote }}
+            - name: GRAFANA_URL
+              value: {{ .Values.tools.grafana.url | quote }}
+            - name: GRAFANA_API_KEY
+              value: {{ .Values.tools.grafana.apiKey | quote }}
           {{- with .Values.tools.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}

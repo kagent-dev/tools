@@ -9,8 +9,23 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
+
+func TestWithContext(t *testing.T) {
+	// Without a span the base logger is returned unchanged.
+	assert.NotNil(t, WithContext(context.Background()))
+
+	// With a valid span context, trace_id/span_id are attached (exercises the branch).
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    trace.TraceID{0x01},
+		SpanID:     trace.SpanID{0x02},
+		TraceFlags: trace.FlagsSampled,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+	assert.NotNil(t, WithContext(ctx))
+}
 
 func TestRedactArgsForLog(t *testing.T) {
 	t.Run("redacts token value", func(t *testing.T) {
@@ -88,12 +103,14 @@ func TestWithContextAddsTraceID(t *testing.T) {
 	loggerWithTrace := logger.With("trace_id", span.SpanContext().TraceID().String())
 	loggerWithTrace.InfoContext(ctx, "test message")
 
-	var logOutput map[string]interface{}
+	var logOutput struct {
+		TraceID string `json:"trace_id"`
+	}
 	err := json.Unmarshal(buf.Bytes(), &logOutput)
 	require.NoError(t, err)
 
 	traceID := span.SpanContext().TraceID().String()
-	assert.Equal(t, traceID, logOutput["trace_id"])
+	assert.Equal(t, traceID, logOutput.TraceID)
 }
 
 func TestGet(t *testing.T) {

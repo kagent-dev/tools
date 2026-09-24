@@ -74,7 +74,7 @@
 - apiGroups: ["*"]
   resources: ["*"]
   verbs: ["*"]
-{{- if not .Values.rbac.namespaces }}
+{{- if not (include "kagent-tools.rbacNamespaces" . | fromJsonArray) }}
 - nonResourceURLs: ["*"]
   verbs: ["*"]
 {{- end }}
@@ -83,8 +83,9 @@
 
 {{- if and (not .Values.useDefaultServiceAccount) .Values.rbac.create }}
 {{- include "kagent-tools.rbac.validate" . -}}
-{{- if .Values.rbac.namespaces }}
-{{- range $namespace := (.Values.rbac.namespaces | uniq | sortAlpha) }}
+{{- $rbacNamespaces := include "kagent-tools.rbacNamespaces" . | fromJsonArray }}
+{{- if $rbacNamespaces }}
+{{- range $namespace := $rbacNamespaces }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
