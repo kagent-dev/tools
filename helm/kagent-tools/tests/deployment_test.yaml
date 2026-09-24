@@ -173,3 +173,24 @@ tests:
           value:
             app.kubernetes.io/name: RELEASE-NAME
             app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: should not have deployment annotations by default
+    template: deployment.yaml
+    asserts:
+      - isNull:
+          path: metadata.annotations
+
+  - it: should render custom deployment annotations
+    template: deployment.yaml
+    set:
+      deploymentAnnotations:
+        keel.sh/policy: "force"
+        example.com/annotation: "test-value"
+    asserts:
+      - equal:
+          path: metadata.annotations["keel.sh/policy"]
+          value: "force"
+      - equal:
+          path: metadata.annotations["example.com/annotation"]
+          value: "test-value"
+

@@ -1,0 +1,59 @@
+suite: test pod disruption budget
+templates:
+  - pdb.yaml
+tests:
+  - it: should not render pdb by default
+    template: pdb.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render pdb when enabled with minAvailable
+    template: pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME
+      - equal:
+          path: spec.minAvailable
+          value: 1
+      - isNull:
+          path: spec.maxUnavailable
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: RELEASE-NAME
+            app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: should render pdb with maxUnavailable and annotations/labels
+    template: pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: "50%"
+        unhealthyPodEvictionPolicy: IfHealthyBudget
+        labels:
+          custom-label: pdb-label
+        annotations:
+          custom-annotation: pdb-annotation
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.maxUnavailable
+          value: "50%"
+      - equal:
+          path: spec.unhealthyPodEvictionPolicy
+          value: IfHealthyBudget
+      - equal:
+          path: metadata.labels["custom-label"]
+          value: pdb-label
+      - equal:
+          path: metadata.annotations["custom-annotation"]
+          value: pdb-annotation
