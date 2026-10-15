@@ -6,16 +6,18 @@ import (
 	"errors"
 	"testing"
 
+	helpersv1 "github.com/kubescape/k8s-interface/instanceidhandler/v1/helpers"
 	"github.com/kubescape/storage/pkg/apis/softwarecomposition/v1beta1"
 	kubescapefake "github.com/kubescape/storage/pkg/generated/clientset/versioned/fake"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	kubefake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 // Helper function to extract text content from MCP result
@@ -47,7 +49,7 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kubescape-operator-123",
 				Namespace: "kubescape",
-				Labels:    map[string]string{"app.kubernetes.io/name": "kubescape-operator"},
+				Labels:    map[string]string{"app.kubernetes.io/name": "kubescape-operator", "app": "operator"},
 			},
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		},
@@ -56,27 +58,10 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "storage-123",
 				Namespace: "kubescape",
-				Labels:    map[string]string{"app.kubernetes.io/name": "storage"},
+				Labels:    map[string]string{"app.kubernetes.io/name": "kubescape-operator", "app": "storage"},
 			},
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		},
-	)
-
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset(
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: vulnerabilityManifestsCRD},
-		},
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: workloadConfigurationScansCRD},
-		},
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: applicationProfilesCRD},
-		},
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: networkNeighborhoodsCRD},
-		},
-		// NOTE: SBOM CRD check is disabled (SBOM tools are too large for LLM context)
 	)
 
 	spdxClient := kubescapefake.NewClientset(
@@ -107,7 +92,7 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 		// NOTE: SBOM data check is disabled (SBOM tools are too large for LLM context)
 	)
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
@@ -139,11 +124,9 @@ func TestHandleCheckHealth_AllComponentsHealthy(t *testing.T) {
 func TestHandleCheckHealth_NamespaceNotFound(t *testing.T) {
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset() // No namespace
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewClientset()
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
@@ -164,11 +147,9 @@ func TestHandleCheckHealth_OperatorPodsNotRunning(t *testing.T) {
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 		// No operator pods
 	)
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewClientset()
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
@@ -192,16 +173,14 @@ func TestHandleCheckHealth_OperatorPodsUnhealthy(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kubescape-operator-123",
 				Namespace: "kubescape",
-				Labels:    map[string]string{"app.kubernetes.io/name": "kubescape-operator"},
+				Labels:    map[string]string{"app.kubernetes.io/name": "kubescape-operator", "app": "operator"},
 			},
 			Status: corev1.PodStatus{Phase: corev1.PodPending}, // Not running
 		},
 	)
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewClientset()
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
@@ -216,16 +195,19 @@ func TestHandleCheckHealth_OperatorPodsUnhealthy(t *testing.T) {
 	assert.Contains(t, health.Checks["operator_pods"].Message, "0/1 pods running")
 }
 
-func TestHandleCheckHealth_VulnerabilityCRDMissing(t *testing.T) {
+// One resource being unreachable must fail only that resource's checks -- a
+// partially degraded storage API should still report what does work.
+func TestHandleCheckHealth_VulnerabilityAPIUnavailable(t *testing.T) {
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 	)
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset() // No CRDs
 	spdxClient := kubescapefake.NewClientset()
+	spdxClient.PrependReactor("list", "vulnerabilitymanifests", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, k8serrors.NewServiceUnavailable("no response from storage service")
+	})
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
@@ -237,7 +219,9 @@ func TestHandleCheckHealth_VulnerabilityCRDMissing(t *testing.T) {
 
 	assert.False(t, health.Healthy)
 	assert.Equal(t, "error", health.Checks["vulnerability_crd"].Status)
-	assert.Contains(t, health.Checks["vulnerability_crd"].Message, "not installed")
+	assert.Contains(t, health.Checks["vulnerability_crd"].Message, "not available")
+	// The configuration API is still reachable, so it must still report ok.
+	assert.Equal(t, "ok", health.Checks["configuration_crd"].Status)
 }
 
 func TestHandleCheckHealth_NoScanData(t *testing.T) {
@@ -245,18 +229,9 @@ func TestHandleCheckHealth_NoScanData(t *testing.T) {
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 	)
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset(
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: vulnerabilityManifestsCRD},
-		},
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: workloadConfigurationScansCRD},
-		},
-	)
 	spdxClient := kubescapefake.NewClientset() // No vulnerability manifests
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
@@ -271,24 +246,21 @@ func TestHandleCheckHealth_NoScanData(t *testing.T) {
 	assert.Contains(t, health.Checks["vulnerability_scan_data"].Message, "No vulnerability manifests found")
 }
 
-func TestHandleCheckHealth_RuntimeObservabilityCRDsMissing(t *testing.T) {
+// Runtime observability is optional: its resources being unreachable warns and
+// recommends enabling the capability, but does not fail the health check.
+func TestHandleCheckHealth_RuntimeObservabilityAPIUnavailable(t *testing.T) {
 	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
 	)
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset(
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: vulnerabilityManifestsCRD},
-		},
-		&apiextensionsv1.CustomResourceDefinition{
-			ObjectMeta: metav1.ObjectMeta{Name: workloadConfigurationScansCRD},
-		},
-		// No runtime observability CRDs (applicationprofiles, networkneighborhoods)
-	)
 	spdxClient := kubescapefake.NewClientset()
+	for _, resource := range []string{"applicationprofiles", "networkneighborhoods"} {
+		spdxClient.PrependReactor("list", resource, func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, k8serrors.NewServiceUnavailable("no response from storage service")
+		})
+	}
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
 	require.NoError(t, err)
@@ -298,11 +270,10 @@ func TestHandleCheckHealth_RuntimeObservabilityCRDsMissing(t *testing.T) {
 	err = json.Unmarshal([]byte(getResultText(result)), &health)
 	require.NoError(t, err)
 
-	// Warning for missing runtime observability CRDs
 	assert.Equal(t, "warning", health.Checks["application_profiles_crd"].Status)
-	assert.Contains(t, health.Checks["application_profiles_crd"].Message, "not installed")
+	assert.Contains(t, health.Checks["application_profiles_crd"].Message, "not available")
 	assert.Equal(t, "warning", health.Checks["network_neighborhoods_crd"].Status)
-	assert.Contains(t, health.Checks["network_neighborhoods_crd"].Message, "not installed")
+	assert.Contains(t, health.Checks["network_neighborhoods_crd"].Message, "not available")
 
 	// Should have recommendation to enable runtime observability
 	foundRuntimeRecommendation := false
@@ -334,11 +305,9 @@ func TestHandleCheckHealth_CustomNamespace(t *testing.T) {
 	k8sClient := kubefake.NewSimpleClientset(
 		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "custom-ns"}},
 	)
-	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
-	apiExtClient := apiextensionsfake.NewSimpleClientset()
 	spdxClient := kubescapefake.NewClientset()
 
-	tool := NewKubescapeToolWithClients(k8sClient, apiExtClient, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{
 		Namespace: "custom-ns",
@@ -390,7 +359,7 @@ func TestHandleListVulnerabilityManifests_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
 	require.NoError(t, err)
@@ -415,7 +384,7 @@ func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{
 		Namespace: "default",
@@ -432,7 +401,7 @@ func TestHandleListVulnerabilityManifests_FilterByNamespace(t *testing.T) {
 
 func TestHandleListVulnerabilityManifests_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
 	require.NoError(t, err)
@@ -487,7 +456,7 @@ func TestHandleListVulnerabilitiesInManifest_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), listVulnerabilitiesInManifestInput{
 		ManifestName: "test-manifest",
@@ -507,7 +476,7 @@ func TestHandleListVulnerabilitiesInManifest_Success(t *testing.T) {
 
 func TestHandleListVulnerabilitiesInManifest_MissingManifestName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), listVulnerabilitiesInManifestInput{})
 	require.NoError(t, err)
@@ -518,7 +487,7 @@ func TestHandleListVulnerabilitiesInManifest_MissingManifestName(t *testing.T) {
 
 func TestHandleListVulnerabilitiesInManifest_ManifestNotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListVulnerabilitiesInManifest(context.Background(), listVulnerabilitiesInManifestInput{
 		ManifestName: "nonexistent",
@@ -557,7 +526,7 @@ func TestHandleGetVulnerabilityDetails_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	// The handler returns the matches as its typed Out and leaves the tool result
 	// for the SDK to synthesise. For an array Out the SDK serialises the value
@@ -576,7 +545,7 @@ func TestHandleGetVulnerabilityDetails_Success(t *testing.T) {
 
 func TestHandleGetVulnerabilityDetails_MissingManifestName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
 		CveID: "CVE-2021-1234",
@@ -589,7 +558,7 @@ func TestHandleGetVulnerabilityDetails_MissingManifestName(t *testing.T) {
 
 func TestHandleGetVulnerabilityDetails_MissingCveId(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
 		ManifestName: "test-manifest",
@@ -615,7 +584,7 @@ func TestHandleGetVulnerabilityDetails_CveNotFound(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
 		ManifestName: "test-manifest",
@@ -643,7 +612,7 @@ func TestHandleListConfigurationScans_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListConfigurationScans(context.Background(), listConfigurationScansInput{})
 	require.NoError(t, err)
@@ -667,7 +636,7 @@ func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListConfigurationScans(context.Background(), listConfigurationScansInput{
 		Namespace: "default",
@@ -684,7 +653,7 @@ func TestHandleListConfigurationScans_FilterByNamespace(t *testing.T) {
 
 func TestHandleListConfigurationScans_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListConfigurationScans(context.Background(), listConfigurationScansInput{})
 	require.NoError(t, err)
@@ -707,7 +676,7 @@ func TestHandleGetConfigurationScan_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetConfigurationScan(context.Background(), getConfigurationScanInput{
 		ManifestName: "test-scan",
@@ -719,7 +688,7 @@ func TestHandleGetConfigurationScan_Success(t *testing.T) {
 
 func TestHandleGetConfigurationScan_MissingManifestName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetConfigurationScan(context.Background(), getConfigurationScanInput{})
 	require.NoError(t, err)
@@ -730,7 +699,7 @@ func TestHandleGetConfigurationScan_MissingManifestName(t *testing.T) {
 
 func TestHandleGetConfigurationScan_NotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetConfigurationScan(context.Background(), getConfigurationScanInput{
 		ManifestName: "nonexistent",
@@ -763,7 +732,7 @@ func TestTruncateString(t *testing.T) {
 
 func TestNilArgumentsHandling(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	// Empty input should use defaults
 	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
@@ -804,7 +773,7 @@ func TestHandleListApplicationProfiles_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListApplicationProfiles(context.Background(), listApplicationProfilesInput{})
 	require.NoError(t, err)
@@ -830,7 +799,7 @@ func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListApplicationProfiles(context.Background(), listApplicationProfilesInput{
 		Namespace: "default",
@@ -847,7 +816,7 @@ func TestHandleListApplicationProfiles_FilterByNamespace(t *testing.T) {
 
 func TestHandleListApplicationProfiles_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListApplicationProfiles(context.Background(), listApplicationProfilesInput{})
 	require.NoError(t, err)
@@ -894,7 +863,7 @@ func TestHandleGetApplicationProfile_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
 		Namespace: "default",
@@ -915,7 +884,7 @@ func TestHandleGetApplicationProfile_Success(t *testing.T) {
 
 func TestHandleGetApplicationProfile_MissingName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
 		Namespace: "default",
@@ -928,7 +897,7 @@ func TestHandleGetApplicationProfile_MissingName(t *testing.T) {
 
 func TestHandleGetApplicationProfile_MissingNamespace(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
 		Name: "test-profile",
@@ -941,7 +910,7 @@ func TestHandleGetApplicationProfile_MissingNamespace(t *testing.T) {
 
 func TestHandleGetApplicationProfile_NotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetApplicationProfile(context.Background(), getApplicationProfileInput{
 		Namespace: "default",
@@ -983,7 +952,7 @@ func TestHandleListNetworkNeighborhoods_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListNetworkNeighborhoods(context.Background(), listNetworkNeighborhoodsInput{})
 	require.NoError(t, err)
@@ -1009,7 +978,7 @@ func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListNetworkNeighborhoods(context.Background(), listNetworkNeighborhoodsInput{
 		Namespace: "default",
@@ -1026,7 +995,7 @@ func TestHandleListNetworkNeighborhoods_FilterByNamespace(t *testing.T) {
 
 func TestHandleListNetworkNeighborhoods_EmptyResults(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListNetworkNeighborhoods(context.Background(), listNetworkNeighborhoodsInput{})
 	require.NoError(t, err)
@@ -1071,7 +1040,7 @@ func TestHandleGetNetworkNeighborhood_Success(t *testing.T) {
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
 		Namespace: "default",
@@ -1092,7 +1061,7 @@ func TestHandleGetNetworkNeighborhood_Success(t *testing.T) {
 
 func TestHandleGetNetworkNeighborhood_MissingName(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
 		Namespace: "default",
@@ -1105,7 +1074,7 @@ func TestHandleGetNetworkNeighborhood_MissingName(t *testing.T) {
 
 func TestHandleGetNetworkNeighborhood_MissingNamespace(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
 		Name: "test-nn",
@@ -1118,7 +1087,7 @@ func TestHandleGetNetworkNeighborhood_MissingNamespace(t *testing.T) {
 
 func TestHandleGetNetworkNeighborhood_NotFound(t *testing.T) {
 	spdxClient := kubescapefake.NewClientset()
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleGetNetworkNeighborhood(context.Background(), getNetworkNeighborhoodInput{
 		Namespace: "default",
@@ -1165,7 +1134,7 @@ func TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount(t *testing.T) 
 		},
 	)
 
-	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+	tool := NewKubescapeToolWithClients(nil, spdxClient.SpdxV1beta1())
 
 	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{})
 	require.NoError(t, err)
@@ -1179,4 +1148,238 @@ func TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount(t *testing.T) 
 
 	// The useful metadata is still there.
 	assert.Contains(t, getResultText(result), "nginx:1.14.0")
+}
+
+// ---------------------------------------------------------------------------
+// PR-1 regression tests (P1: aggregated-API availability, P2: pod selectors,
+// P3: client-side level filter)
+// ---------------------------------------------------------------------------
+
+// realWorldKubescapePods returns pods labelled the way the kubescape-operator
+// Helm chart actually labels them: every pod carries the chart-wide
+// app.kubernetes.io/name=kubescape-operator label, and per-component identity
+// lives in the plain `app` label.
+func realWorldKubescapePods() []runtime.Object {
+	pod := func(name, app string, phase corev1.PodPhase) *corev1.Pod {
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "kubescape",
+				Labels: map[string]string{
+					"app.kubernetes.io/name": "kubescape-operator",
+					"app":                    app,
+				},
+			},
+			Status: corev1.PodStatus{Phase: phase},
+		}
+	}
+	return []runtime.Object{
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kubescape"}},
+		pod("operator-5d854fdc8f-j75sb", "operator", corev1.PodRunning),
+		pod("storage-5ff6f76c7f-ngb2d", "storage", corev1.PodRunning),
+		pod("node-agent-7vfq2", "node-agent", corev1.PodRunning),
+		pod("kubevuln-c6bb59f9c-v5xlq", "kubevuln", corev1.PodRunning),
+	}
+}
+
+func allSpdxResources() []runtime.Object {
+	return []runtime.Object{
+		&v1beta1.VulnerabilityManifest{ObjectMeta: metav1.ObjectMeta{Name: "vm", Namespace: "kubescape"}},
+		&v1beta1.WorkloadConfigurationScan{ObjectMeta: metav1.ObjectMeta{Name: "cs", Namespace: "kubescape"}},
+		&v1beta1.ApplicationProfile{ObjectMeta: metav1.ObjectMeta{Name: "ap", Namespace: "kubescape"}},
+		&v1beta1.NetworkNeighborhood{ObjectMeta: metav1.ObjectMeta{Name: "nn", Namespace: "kubescape"}},
+	}
+}
+
+func healthOf(t *testing.T, tool *KubescapeTool) HealthCheckResult {
+	t.Helper()
+	result, _, err := tool.HandleCheckHealth(context.Background(), checkHealthInput{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	var health HealthCheckResult
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &health))
+	return health
+}
+
+// P1: a working standalone install has NO CRDs for the spdx group -- the
+// resources are served by an aggregated API server. Health must report healthy.
+func TestHandleCheckHealth_HealthyWithAggregatedAPIAndNoCRDs(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
+	k8sClient := kubefake.NewSimpleClientset(realWorldKubescapePods()...)
+	spdxClient := kubescapefake.NewClientset(allSpdxResources()...)
+
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
+
+	health := healthOf(t, tool)
+
+	assert.True(t, health.Healthy, "healthy should be true on a working install with no CRDs; recommendations=%v", health.Recommendations)
+	assert.Equal(t, "ok", health.Checks["vulnerability_crd"].Status)
+	assert.Equal(t, "ok", health.Checks["configuration_crd"].Status)
+	assert.Equal(t, "ok", health.Checks["application_profiles_crd"].Status)
+	assert.Equal(t, "ok", health.Checks["network_neighborhoods_crd"].Status)
+	assert.Equal(t, "Kubescape is fully operational", health.Summary)
+}
+
+// P1: when the aggregated API is down, the storage-backed checks must fail and
+// say so in the product's own vocabulary -- not "CRD not installed".
+func TestHandleCheckHealth_AggregatedAPIUnavailable(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
+	k8sClient := kubefake.NewSimpleClientset(realWorldKubescapePods()...)
+	spdxClient := kubescapefake.NewClientset()
+	spdxClient.PrependReactor("list", "*", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, k8serrors.NewServiceUnavailable("no response from storage service")
+	})
+
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
+
+	health := healthOf(t, tool)
+
+	assert.False(t, health.Healthy)
+	assert.Equal(t, "error", health.Checks["vulnerability_crd"].Status)
+	assert.Equal(t, "error", health.Checks["configuration_crd"].Status)
+	// runtime observability stays a warning, as before
+	assert.Equal(t, "warning", health.Checks["application_profiles_crd"].Status)
+	assert.Equal(t, "warning", health.Checks["network_neighborhoods_crd"].Status)
+	assert.NotContains(t, health.Checks["vulnerability_crd"].Message, "CRD")
+	assert.Contains(t, health.Checks["vulnerability_crd"].Message, "not available")
+}
+
+// P2: operator_pods must count the operator Deployment, not every pod the chart
+// created.
+func TestHandleCheckHealth_OperatorPodsCountsOnlyOperator(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
+	k8sClient := kubefake.NewSimpleClientset(realWorldKubescapePods()...)
+	spdxClient := kubescapefake.NewClientset(allSpdxResources()...)
+
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
+
+	health := healthOf(t, tool)
+
+	assert.Equal(t, "ok", health.Checks["operator_pods"].Status)
+	assert.Equal(t, "1/1 pods running", health.Checks["operator_pods"].Message)
+}
+
+// P2: the storage pod is found via app=storage, not app.kubernetes.io/name=storage.
+func TestHandleCheckHealth_StoragePodFound(t *testing.T) {
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
+	k8sClient := kubefake.NewSimpleClientset(realWorldKubescapePods()...)
+	spdxClient := kubescapefake.NewClientset(allSpdxResources()...)
+
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
+
+	health := healthOf(t, tool)
+
+	assert.Equal(t, "ok", health.Checks["storage_pods"].Status)
+	assert.Equal(t, "1/1 pods running", health.Checks["storage_pods"].Message)
+}
+
+// P2: nothing works without storage, so its absence is an error, not a warning.
+func TestHandleCheckHealth_StoragePodMissingIsError(t *testing.T) {
+	objs := []runtime.Object{}
+	for _, o := range realWorldKubescapePods() {
+		if pod, ok := o.(*corev1.Pod); ok && pod.Labels["app"] == "storage" {
+			continue
+		}
+		objs = append(objs, o)
+	}
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
+	k8sClient := kubefake.NewSimpleClientset(objs...)
+	spdxClient := kubescapefake.NewClientset(allSpdxResources()...)
+
+	tool := NewKubescapeToolWithClients(k8sClient, spdxClient.SpdxV1beta1())
+
+	health := healthOf(t, tool)
+
+	assert.False(t, health.Healthy)
+	assert.Equal(t, "error", health.Checks["storage_pods"].Status)
+	assert.Contains(t, health.Checks["storage_pods"].Message, "No storage pods found")
+}
+
+// P3: the advertised `level` filter must actually filter. The storage API
+// ignores labelSelector, so filtering has to happen client-side.
+func TestHandleListVulnerabilityManifests_LevelFilter(t *testing.T) {
+	imageLevel := &v1beta1.VulnerabilityManifest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "docker.io-library-nginx-1.14.0-e34030",
+			Namespace: "kubescape",
+			Labels:    map[string]string{"kubescape.io/context": "non-filtered"},
+		},
+	}
+	workloadLevel := &v1beta1.VulnerabilityManifest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "replicaset-chatty-client-nginx-1234",
+			Namespace: "kubescape",
+			Labels:    map[string]string{"kubescape.io/context": "filtered"},
+			Annotations: map[string]string{
+				helpersv1.WlidMetadataKey: "wlid://cluster-test/namespace-default/deployment-chatty-client",
+			},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		in        listVulnerabilityManifestsInput
+		wantNames []string
+	}{
+		{"no level returns both", listVulnerabilityManifestsInput{}, []string{imageLevel.Name, workloadLevel.Name}},
+		{"level=both returns both", listVulnerabilityManifestsInput{Level: "both"}, []string{imageLevel.Name, workloadLevel.Name}},
+		{"level=image returns image-level only", listVulnerabilityManifestsInput{Level: "image"}, []string{imageLevel.Name}},
+		{"level=workload returns workload-level only", listVulnerabilityManifestsInput{Level: "workload"}, []string{workloadLevel.Name}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spdxClient := kubescapefake.NewClientset(imageLevel, workloadLevel)
+
+			// Storage servers before v0.0.305 IGNORE labelSelector on list --
+			// they return every object no matter what is asked for -- and the
+			// kubescape-operator chart still pins v0.0.298. The fake clientset
+			// honours selectors, which would let a server-side filter pass this
+			// test while returning unfiltered results against the storage
+			// version actually deployed. This reactor reproduces that server's
+			// behaviour, and records what the provider asked for.
+			var sentSelector string
+			spdxClient.PrependReactor("list", "vulnerabilitymanifests", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				sentSelector = action.(k8stesting.ListAction).GetListRestrictions().Labels.String()
+				return true, &v1beta1.VulnerabilityManifestList{
+					Items: []v1beta1.VulnerabilityManifest{*imageLevel, *workloadLevel},
+				}, nil
+			})
+
+			//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
+			tool := NewKubescapeToolWithClients(kubefake.NewSimpleClientset(), spdxClient.SpdxV1beta1())
+
+			result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), tt.in)
+			require.NoError(t, err)
+
+			assert.Empty(t, sentSelector, "must not rely on a server-side label selector: the storage API ignores it")
+
+			var payload struct {
+				Manifests []struct {
+					ManifestName string `json:"manifest_name"`
+				} `json:"vulnerability_manifests"`
+				TotalCount int `json:"total_count"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &payload))
+
+			got := []string{}
+			for _, m := range payload.Manifests {
+				got = append(got, m.ManifestName)
+			}
+			assert.ElementsMatch(t, tt.wantNames, got)
+			assert.Equal(t, len(tt.wantNames), payload.TotalCount)
+		})
+	}
+}
+
+// P3: an unrecognised level is a caller error, not a silent "both".
+func TestHandleListVulnerabilityManifests_InvalidLevel(t *testing.T) {
+	spdxClient := kubescapefake.NewClientset()
+	//nolint:staticcheck // NewSimpleClientset is deprecated but NewClientset requires generated apply configs
+	tool := NewKubescapeToolWithClients(kubefake.NewSimpleClientset(), spdxClient.SpdxV1beta1())
+
+	result, _, err := tool.HandleListVulnerabilityManifests(context.Background(), listVulnerabilityManifestsInput{Level: "bogus"})
+	require.NoError(t, err)
+	assert.Contains(t, getResultText(result), "level")
+	assert.True(t, result.IsError)
 }
