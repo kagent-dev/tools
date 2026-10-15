@@ -261,6 +261,8 @@ func readOnlyToolCases() []toolCase {
 		// kubescape (read-only) - the operator may be absent; a tool error is a
 		// legitimate outcome and is recorded, not failed.
 		{name: "kubescape_check_health"},
+		{name: "kubescape_vulnerability_overview"},
+		{name: "kubescape_list_vulnerable_workloads"},
 		{name: "kubescape_list_vulnerability_manifests"},
 		{name: "kubescape_list_configuration_scans"},
 		{name: "kubescape_list_application_profiles"},
