@@ -45,6 +45,12 @@ helm upgrade -i -n kagent --create-namespace kagent-tools oci://ghcr.io/kagent-d
 helm ls -A
 ```
 
+- **kagent 1.x skills bundle (OCI image)**
+
+The same image is a kagent Agent Plugin: mount it in an `AgentTemplate` with
+`source.oci` (digest-pinned) and `path: opt/kagent-tools` to get the MCP tools, all CLIs and
+operational skills in one bundle. See [Using kagent-tools as a kagent 1.x skills bundle](docs/kagent-skills.md).
+
 ## Quickstart Guide
 
 For a quickstart guide on how to run KAgent tools using AgentGateway, please refer to the [Quickstart Guide](docs/quickstart.md).

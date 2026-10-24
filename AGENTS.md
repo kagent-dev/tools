@@ -64,6 +64,7 @@ tools/
 │   └── version/                 # Version info
 ├── test/
 │   └── e2e/                     # End-to-end tests (Kind cluster)
+├── plugin/                      # kagent Agent Plugin sources (plugin.json, mcp.json, kubeconfig, skills/)
 ├── scripts/                     # Build and setup scripts
 │   └── kind/                    # Kind cluster configuration
 ├── helm/                        # Helm chart for deployment
@@ -358,6 +359,14 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
 9. Write unit tests with mock shell executor (80% coverage minimum).
 10. Add E2E tests if the tool interacts with a cluster.
 11. Run `make fmt && make lint && make test` before submitting.
+
+### Plugin bundle (kagent 1.x skills)
+
+The image doubles as a kagent Agent Plugin (see [docs/kagent-skills.md](docs/kagent-skills.md)).
+New tool providers should add or extend a skill in `plugin/skills/<name>/SKILL.md` and keep
+`cmd/plugin_bundle_test.go` passing; it checks manifests, `mcp.json`, skill frontmatter, and that
+every tool a skill names is registered. Run `make plugin-verify` after changing the `Dockerfile`
+or `plugin/`.
 
 ---
 

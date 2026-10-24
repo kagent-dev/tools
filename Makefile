@@ -161,6 +161,10 @@ buildx-create:
 docker-build: fmt buildx-create
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -t $(TOOLS_IMG) -f Dockerfile ./
 
+.PHONY: plugin-verify
+plugin-verify: docker-build ## Verify the image is a valid kagent Agent Plugin (layout, limits, stdio)
+	./scripts/verify-plugin-image.sh $(TOOLS_IMG)
+
 .PHONY: docker-build  # build tools image for amd64 and arm64
 docker-build-all: fmt buildx-create
 docker-build-all: DOCKER_BUILD_ARGS = --progress=plain --builder $(BUILDX_BUILDER_NAME) --platform linux/amd64,linux/arm64 --output type=tar,dest=/dev/null

@@ -55,6 +55,35 @@ jobs:
         run: |
           make test
 
+  plugin-verify:
+    env:
+      VERSION: v0.0.1-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: v0.23.0
+          use: 'true'
+      - name: Verify kagent Agent Plugin image
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDX_BUILDER_NAME: kagent-builder-v0.23.0
+          DOCKER_BUILD_ARGS: >-
+            --cache-from=type=gha
+            --load
+            --platform=linux/amd64
+          DOCKER_REPO: "${{ github.repository_owner }}/tools"
+          DOCKER_BUILDER: "docker buildx"
+        run: make plugin-verify
+
   go-e2e-tests:
     runs-on: ubuntu-latest
     steps:
