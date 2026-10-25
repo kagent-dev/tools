@@ -284,7 +284,7 @@ func parseHeaders(headers string) map[string]string {
 // consoleWriter keeps the fallback span exporter off stdout when stdout
 // carries the MCP stdio protocol.
 func consoleWriter() *os.File {
-	if os.Getenv("KAGENT_USE_STDERR") == "true" {
+	if logger.UseStderr() {
 		return os.Stderr
 	}
 	return os.Stdout

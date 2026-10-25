@@ -125,3 +125,10 @@ func TestInit(t *testing.T) {
 func TestSync(t *testing.T) {
 	assert.NotPanics(t, Sync)
 }
+
+func TestUseStderr(t *testing.T) {
+	t.Setenv(UseStderrEnv, "true")
+	require.True(t, UseStderr())
+	t.Setenv(UseStderrEnv, "false")
+	require.False(t, UseStderr())
+}

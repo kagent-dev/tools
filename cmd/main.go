@@ -123,13 +123,9 @@ func run(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 	tools, readOnly = effectiveConfig.Tools, effectiveConfig.ReadOnly
-	if effectiveConfig.Kubeconfig != "" {
-		// Only k8s and kubescape receive the path explicitly; exporting it makes
-		// helm, istioctl, cilium and argo target the same cluster.
-		_ = os.Setenv("KUBECONFIG", effectiveConfig.Kubeconfig)
-	}
-	if stdio {
-		_ = os.Setenv("KAGENT_USE_STDERR", "true")
+	if err := applyServerEnvironment(effectiveConfig, stdio, os.Setenv); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	logger.Init(stdio)

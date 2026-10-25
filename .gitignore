@@ -14,3 +14,7 @@ bin/
 /helm/kagent-tools/Chart.yaml
 /reports/tools-cve.csv
 .dagger/
+
+# Plugin MCP config is a release artifact; keep it tracked even when a
+# global gitignore excludes mcp.json files.
+!plugin/mcp.json

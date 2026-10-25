@@ -8,7 +8,16 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// UseStderrEnv names the environment variable that routes console output to
+// stderr, keeping stdout free for the MCP stdio protocol.
+const UseStderrEnv = "KAGENT_USE_STDERR"
+
 var globalLogger *slog.Logger
+
+// UseStderr reports whether console output must go to stderr.
+func UseStderr() bool {
+	return os.Getenv(UseStderrEnv) == "true"
+}
 
 // Init initializes the global logger
 // If useStderr is true, logs will be written to stderr (for stdio mode)
@@ -36,8 +45,7 @@ func Init(useStderr bool) {
 // InitWithEnv initializes the logger using environment variables
 // This is a convenience function that defaults to stdout unless KAGENT_USE_STDERR is set
 func InitWithEnv() {
-	useStderr := os.Getenv("KAGENT_USE_STDERR") == "true"
-	Init(useStderr)
+	Init(UseStderr())
 }
 
 func Get() *slog.Logger {

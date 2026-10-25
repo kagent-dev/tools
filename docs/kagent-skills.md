@@ -186,7 +186,6 @@ spec:
   tools:
     - mcp:
         server:
-          apiGroup: api.kagent.dev
           kind: RemoteMCPServer
           name: kagent-tools
   plugins:

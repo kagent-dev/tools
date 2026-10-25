@@ -23,8 +23,12 @@ type packageStats struct {
 // walkPluginPackage mirrors kagent's validatePackage checks for one plugin root.
 func walkPluginPackage(t *testing.T, root string) packageStats {
 	t.Helper()
+	// Resolve the root itself so in-root symlinks compare equal on hosts where
+	// the temp dir is behind a symlink (macOS /var -> /private/var).
+	root, err := filepath.EvalSymlinks(root)
+	require.NoError(t, err)
 	var stats packageStats
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		require.NoError(t, err)
 		stats.Entries++
 		info, err := entry.Info()
@@ -45,6 +49,10 @@ func walkPluginPackage(t *testing.T, root string) packageStats {
 	return stats
 }
 
+// bundledBinaries lists the executables under /opt/kagent-tools/bin; the MCP
+// server comes first, the CLIs it wraps follow and also get /usr/bin links.
+var bundledBinaries = []string{"kagent-tools", "kubectl", "helm", "istioctl", "kubectl-argo-rollouts", "cilium"}
+
 func TestPluginImageLayout(t *testing.T) {
 	imageRoot := os.Getenv("KAGENT_TOOLS_IMAGE_ROOT")
 	if imageRoot == "" {
@@ -52,7 +60,7 @@ func TestPluginImageLayout(t *testing.T) {
 	}
 
 	fullRoot := filepath.Join(imageRoot, "opt", "kagent-tools")
-	for _, binary := range []string{"kagent-tools", "kubectl", "helm", "istioctl", "kubectl-argo-rollouts", "cilium"} {
+	for _, binary := range bundledBinaries {
 		info, err := os.Stat(filepath.Join(fullRoot, "bin", binary))
 		require.NoError(t, err, binary)
 		require.NotZero(t, info.Mode().Perm()&0o111, "%s must be executable", binary)
@@ -77,7 +85,13 @@ func TestPluginImageLayout(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(fullSkills), len(onlySkills))
 
-	target, err := os.Readlink(filepath.Join(imageRoot, "tool-server"))
-	require.NoError(t, err)
-	require.Equal(t, "/opt/kagent-tools/bin/kagent-tools", target)
+	legacyLinks := map[string]string{"tool-server": "/opt/kagent-tools/bin/kagent-tools"}
+	for _, binary := range bundledBinaries[1:] {
+		legacyLinks[filepath.Join("usr", "bin", binary)] = "/opt/kagent-tools/bin/" + binary
+	}
+	for link, expectedTarget := range legacyLinks {
+		target, err := os.Readlink(filepath.Join(imageRoot, link))
+		require.NoError(t, err, link)
+		require.Equal(t, expectedTarget, target, link)
+	}
 }

@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/kagent-dev/tools/internal/logger"
 )
 
 const (
 	envTools             = "KAGENT_TOOLS_TOOLS"
 	envReadOnly          = "KAGENT_TOOLS_READ_ONLY"
 	envDefaultKubeconfig = "KAGENT_TOOLS_DEFAULT_KUBECONFIG"
+	envKubeconfig        = "KUBECONFIG"
 )
 
 // serverFlags captures CLI flag values and whether they were set explicitly.
@@ -50,7 +53,7 @@ func resolveServerConfig(flags serverFlags, lookupEnv func(string) (string, bool
 		}
 	}
 	if resolved.Kubeconfig == "" {
-		if value, ok := lookupEnv("KUBECONFIG"); ok && value != "" {
+		if value, ok := lookupEnv(envKubeconfig); ok && value != "" {
 			return resolved, nil
 		}
 		if value, ok := lookupEnv(envDefaultKubeconfig); ok {
@@ -58,6 +61,25 @@ func resolveServerConfig(flags serverFlags, lookupEnv func(string) (string, bool
 		}
 	}
 	return resolved, nil
+}
+
+// applyServerEnvironment exports process environment derived from the
+// effective configuration. Only k8s and kubescape receive the kubeconfig path
+// explicitly; exporting KUBECONFIG makes helm, istioctl, cilium and argo target
+// the same cluster. In stdio mode stdout carries the MCP protocol, so console
+// output is routed to stderr.
+func applyServerEnvironment(config serverConfig, stdioMode bool, setEnv func(key, value string) error) error {
+	if config.Kubeconfig != "" {
+		if err := setEnv(envKubeconfig, config.Kubeconfig); err != nil {
+			return fmt.Errorf("export %s: %w", envKubeconfig, err)
+		}
+	}
+	if stdioMode {
+		if err := setEnv(logger.UseStderrEnv, "true"); err != nil {
+			return fmt.Errorf("export %s: %w", logger.UseStderrEnv, err)
+		}
+	}
+	return nil
 }
 
 func splitToolList(value string) []string {

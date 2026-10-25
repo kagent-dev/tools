@@ -16,6 +16,11 @@ docker export "$container" | tar -x -C "$workdir"
 
 KAGENT_TOOLS_IMAGE_ROOT="$workdir" go test ./cmd -run TestPluginImageLayout -count=1 -v
 
+echo "--- legacy entrypoints"
+docker run --rm --entrypoint /tool-server "$image" --version
+docker run --rm --entrypoint /bin/kubectl "$image" version --client
+docker run --rm --entrypoint /bin/helm "$image" version --short
+
 echo "--- stdio smoke test"
 # Keep stdin open briefly: the server exits on EOF before answering.
 response="$({ printf '%s\n' \

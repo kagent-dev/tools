@@ -53,19 +53,20 @@ var (
 	toolReference     = regexp.MustCompile("`((?:k8s|helm|istio|argo|cilium|kubescape|prometheus|datetime)_[a-z_]+)`")
 )
 
-func decodeStrict(t *testing.T, raw []byte, target any) {
+func decodeStrict[Document pluginManifest | mcpDocument | mcpStdioServer](t *testing.T, raw []byte) Document {
 	t.Helper()
+	var document Document
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	require.NoError(t, decoder.Decode(target))
+	require.NoError(t, decoder.Decode(&document))
+	return document
 }
 
 func TestPluginManifestsAreValid(t *testing.T) {
 	for _, file := range []string{"plugin.json.tmpl", "skills-plugin.json.tmpl"} {
 		raw, err := os.ReadFile(filepath.Join(pluginSourceDir, file))
 		require.NoError(t, err)
-		var manifest pluginManifest
-		decodeStrict(t, raw, &manifest)
+		manifest := decodeStrict[pluginManifest](t, raw)
 		require.Equal(t, "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", manifest.Schema, file)
 		require.Regexp(t, pluginNamePattern, manifest.Name, file)
 		require.LessOrEqual(t, len(manifest.Name), 64, file)
@@ -76,13 +77,11 @@ func TestPluginManifestsAreValid(t *testing.T) {
 func TestPluginMCPConfigIsValid(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(pluginSourceDir, "mcp.json"))
 	require.NoError(t, err)
-	var document mcpDocument
-	decodeStrict(t, raw, &document)
+	document := decodeStrict[mcpDocument](t, raw)
 	require.Equal(t, "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", document.Schema)
 	require.Contains(t, document.Servers, "kagent-tools")
 
-	var server mcpStdioServer
-	decodeStrict(t, document.Servers["kagent-tools"], &server)
+	server := decodeStrict[mcpStdioServer](t, document.Servers["kagent-tools"])
 	require.Equal(t, "stdio", server.Type)
 	require.Equal(t, "./bin/kagent-tools", server.Command)
 	require.Contains(t, server.Args, "--stdio")
