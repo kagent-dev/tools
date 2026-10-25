@@ -3,7 +3,7 @@
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
-      "TOOLS_GO_VERSION": "1.25",
+      "TOOLS_GO_VERSION": "1.27",
       "TOOLS_ISTIO_VERSION": "1.28.3",
       "TOOLS_ARGO_ROLLOUTS_VERSION": "1.8.3",
       "TOOLS_KUBECTL_VERSION": "1.35.0",

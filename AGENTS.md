@@ -74,7 +74,7 @@ tools/
 │   └── tag.yaml                 # Release tagging
 ├── Makefile                     # Build orchestration
 ├── Dockerfile                   # Multi-stage build (multi-arch)
-├── go.mod                       # Go 1.27.0
+├── go.mod                       # Go 1.27.3
 ├── DEVELOPMENT.md               # Development setup and standards
 └── CONTRIBUTION.md              # Contribution process
 ```

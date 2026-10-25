@@ -1,6 +1,6 @@
 module github.com/kagent-dev/tools
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/google/jsonschema-go v0.4.3

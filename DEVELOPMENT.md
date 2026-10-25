@@ -6,7 +6,7 @@ This document provides comprehensive development guidelines for the KAgent Tools
 
 ### Required Tools
 
-- **Go 1.24+** - Primary development language
+- **Go 1.27+** - Primary development language
 - **Docker** - For containerization and testing
 - **Make** - Build automation
 - **Git** - Version control
