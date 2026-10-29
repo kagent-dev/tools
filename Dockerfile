@@ -107,6 +107,16 @@ RUN set -eu; \
     done; \
     chown -R 65532:65532 /out/opt
 
+# The tools-skills image holds only the skills root, so an Agent that mounts it
+# does not pull the CLIs. The last stage is the default build target, so keep
+# this stage above it.
+FROM scratch AS skills
+ARG VERSION
+COPY --from=plugin /out/opt/kagent-tools-skills /opt/kagent-tools-skills
+LABEL org.opencontainers.image.source=https://github.com/kagent-dev/tools
+LABEL org.opencontainers.image.description="kagent Agent Plugin with the kagent-tools skills only"
+LABEL org.opencontainers.image.version="$VERSION"
+
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Verifies that a built kagent-tools image is a valid kagent Agent Plugin.
+# Verifies that a built kagent-tools image is a valid kagent Agent Plugin. Given a
+# second image, it also checks that the skills-only image holds the same skills root.
 set -euo pipefail
 
-image="${1:?usage: $0 <image>}"
+image="${1:?usage: $0 <image> [<skills-image>]}"
+skills_image="${2:-}"
 workdir="$(mktemp -d)"
 container=""
 cleanup() {
@@ -11,10 +13,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
-container="$(docker create "$image")"
-docker export "$container" | tar -x -C "$workdir"
+export_image() {
+  # The skills image has no command. docker create requires one but never runs it.
+  container="$(docker create "$1" /unused)"
+  mkdir -p "$2"
+  docker export "$container" | tar -x -C "$2"
+  docker rm "$container" >/dev/null
+  container=""
+}
 
-KAGENT_TOOLS_IMAGE_ROOT="$workdir" go test ./cmd -run TestPluginImageLayout -count=1 -v
+export_image "$image" "$workdir/tools"
+export KAGENT_TOOLS_IMAGE_ROOT="$workdir/tools"
+tests=TestPluginImageLayout
+if [[ -n "$skills_image" ]]; then
+  export_image "$skills_image" "$workdir/skills"
+  export KAGENT_TOOLS_SKILLS_IMAGE_ROOT="$workdir/skills"
+  tests="$tests|TestSkillsImageMatchesToolsImage"
+fi
+go test ./cmd -run "^($tests)\$" -count=1 -v
 
 echo "--- legacy entrypoints"
 docker run --rm --entrypoint /tool-server "$image" --version
@@ -35,4 +51,4 @@ done
 if grep -qv '^{"jsonrpc"' <<<"$response"; then
   echo "non JSON-RPC output on stdout:"; grep -v '^{"jsonrpc"' <<<"$response" | head -5; exit 1
 fi
-echo "plugin image OK: $image"
+echo "plugin image OK: $image${skills_image:+, skills image OK: $skills_image}"
