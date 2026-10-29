@@ -64,6 +64,7 @@ tools/
 │   └── version/                 # Version info
 ├── test/
 │   └── e2e/                     # End-to-end tests (Kind cluster)
+├── plugin/                      # kagent Agent Plugin sources (plugin.json, mcp.json, kubeconfig, skills/)
 ├── scripts/                     # Build and setup scripts
 │   └── kind/                    # Kind cluster configuration
 ├── helm/                        # Helm chart for deployment
@@ -73,7 +74,7 @@ tools/
 │   └── tag.yaml                 # Release tagging
 ├── Makefile                     # Build orchestration
 ├── Dockerfile                   # Multi-stage build (multi-arch)
-├── go.mod                       # Go 1.27.0
+├── go.mod                       # Go 1.27.3
 ├── DEVELOPMENT.md               # Development setup and standards
 └── CONTRIBUTION.md              # Contribution process
 ```
@@ -358,6 +359,18 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
 9. Write unit tests with mock shell executor (80% coverage minimum).
 10. Add E2E tests if the tool interacts with a cluster.
 11. Run `make fmt && make lint && make test` before submitting.
+
+### Plugin bundle (kagent 1.x skills)
+
+The image doubles as a kagent Agent Plugin (see [docs/kagent-skills.md](docs/kagent-skills.md)).
+New tool providers should add or extend a skill in `plugin/skills/<name>/SKILL.md` and keep
+`cmd/plugin_bundle_test.go` passing; it checks manifests, `mcp.json`, skill frontmatter, that
+every tool a skill names is registered, and that every `` `argument: value` `` on a skill line is an
+input of a tool named on that line. `cmd/plugin_docs_test.go` checks the `AgentTemplate` examples
+in `docs/kagent-skills.md` against kagent's rules (`modelConfig`, at most 50 bound tools, and a
+`tools:` list that covers the selected skills). Skills must only name tools that work with the
+chart defaults (no tool that needs an unconfigured LLM key). Run `make plugin-verify` after
+changing the `Dockerfile` or `plugin/`.
 
 ---
 

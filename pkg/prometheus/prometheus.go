@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/kagent-dev/tools/internal/errors"
@@ -43,15 +44,29 @@ func prettyJSONBody(body []byte) string {
 	return indented.String()
 }
 
+const (
+	prometheusURLEnv      = "PROMETHEUS_URL"
+	fallbackPrometheusURL = "http://localhost:9090"
+)
+
+// defaultPrometheusURL is used when a tool call has no prometheus_url. The Helm
+// chart and kagent Harness env set PROMETHEUS_URL; localhost is the last resort.
+func defaultPrometheusURL() string {
+	if configuredURL := os.Getenv(prometheusURLEnv); configuredURL != "" {
+		return configuredURL
+	}
+	return fallbackPrometheusURL
+}
+
 type prometheusQueryInput struct {
 	Query         string `json:"query" jsonschema:"PromQL query to execute"`
-	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: PROMETHEUS_URL, else http://localhost:9090)"`
 }
 
 func handlePrometheusQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusQueryInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
-		prometheusURL = "http://localhost:9090"
+		prometheusURL = defaultPrometheusURL()
 	}
 	query := in.Query
 
@@ -123,13 +138,13 @@ type prometheusRangeQueryInput struct {
 	Start         string `json:"start" jsonschema:"Start time (Unix timestamp or relative time)"`
 	End           string `json:"end" jsonschema:"End time (Unix timestamp or relative time)"`
 	Step          string `json:"step" jsonschema:"Query resolution step (default: 15s)"`
-	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: PROMETHEUS_URL, else http://localhost:9090)"`
 }
 
 func handlePrometheusRangeQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusRangeQueryInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
-		prometheusURL = "http://localhost:9090"
+		prometheusURL = defaultPrometheusURL()
 	}
 	query := in.Query
 	start := in.Start
@@ -214,13 +229,13 @@ func handlePrometheusRangeQueryTool(ctx context.Context, request *sdkmcp.CallToo
 }
 
 type prometheusLabelsInput struct {
-	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: PROMETHEUS_URL, else http://localhost:9090)"`
 }
 
 func handlePrometheusLabelsQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusLabelsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
-		prometheusURL = "http://localhost:9090"
+		prometheusURL = defaultPrometheusURL()
 	}
 
 	// Validate prometheus URL
@@ -272,13 +287,13 @@ func handlePrometheusLabelsQueryTool(ctx context.Context, request *sdkmcp.CallTo
 }
 
 type prometheusTargetsInput struct {
-	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: http://localhost:9090)"`
+	PrometheusURL string `json:"prometheus_url" jsonschema:"Prometheus server URL (default: PROMETHEUS_URL, else http://localhost:9090)"`
 }
 
 func handlePrometheusTargetsQueryTool(ctx context.Context, request *sdkmcp.CallToolRequest, in prometheusTargetsInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	prometheusURL := in.PrometheusURL
 	if prometheusURL == "" {
-		prometheusURL = "http://localhost:9090"
+		prometheusURL = defaultPrometheusURL()
 	}
 
 	// Validate prometheus URL

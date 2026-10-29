@@ -111,6 +111,23 @@ func run(cmd *cobra.Command, args []string) {
 		metricsPort = port
 	}
 
+	effectiveConfig, err := resolveServerConfig(serverFlags{
+		Tools:       tools,
+		ToolsSet:    cmd.Flags().Changed("tools"),
+		ReadOnly:    readOnly,
+		ReadOnlySet: cmd.Flags().Changed("read-only"),
+		Kubeconfig:  *kubeconfig,
+	}, os.LookupEnv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	tools, readOnly = effectiveConfig.Tools, effectiveConfig.ReadOnly
+	if err := applyServerEnvironment(effectiveConfig, stdio, os.Setenv); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
 	logger.Init(stdio)
 	defer logger.Sync()
 
@@ -121,7 +138,7 @@ func run(cmd *cobra.Command, args []string) {
 	// Initialize OpenTelemetry tracing
 	cfg := telemetry.LoadOtelCfg()
 
-	err := telemetry.SetupOTelSDK(ctx)
+	err = telemetry.SetupOTelSDK(ctx)
 	if err != nil {
 		logger.Get().Error("Failed to setup OpenTelemetry SDK", "error", err)
 		os.Exit(1)
@@ -155,7 +172,7 @@ func run(cmd *cobra.Command, args []string) {
 	// labels are recorded as each provider registers its tools.
 	mcpSrv.AddReceivingMiddleware(mcpserver.ToolMiddleware())
 
-	registerMCP(mcpSrv, tools, *kubeconfig, readOnly)
+	registerMCP(mcpSrv, tools, effectiveConfig.Kubeconfig, readOnly)
 
 	// Create wait group for server goroutines
 	var wg sync.WaitGroup

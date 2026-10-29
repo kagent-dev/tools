@@ -80,30 +80,58 @@ COPY pkg pkg
 RUN --mount=type=cache,target=/root/go/pkg/mod,rw      \
     --mount=type=cache,target=/root/.cache/go-build,rw \
     echo "Building tool-server for $TARGETARCH on $BUILDARCH" && \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -ldflags "$LDFLAGS" -o tool-server cmd/main.go
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -trimpath -ldflags "-s -w $LDFLAGS" -o tool-server ./cmd
 
-# Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
+### STAGE 3: assemble kagent Agent Plugin roots
+# Only the small files and links are assembled here, on their own base so CLI
+# downloads do not invalidate this stage. Binaries are copied in the final stage.
+ARG BASE_IMAGE_REGISTRY=cgr.dev
+FROM $BASE_IMAGE_REGISTRY/chainguard/wolfi-base:latest AS plugin
+ARG VERSION=dev
+COPY plugin /src/plugin
+RUN set -eu; \
+    root=/out/opt/kagent-tools; skills_root=/out/opt/kagent-tools-skills; \
+    plugin_version="${VERSION#v}"; \
+    mkdir -p "$root/bin" "$root/config" "$skills_root" /out/usr/bin; \
+    sed "s/__VERSION__/${plugin_version}/" /src/plugin/plugin.json.tmpl > "$root/plugin.json"; \
+    sed "s/__VERSION__/${plugin_version}/" /src/plugin/skills-plugin.json.tmpl > "$skills_root/plugin.json"; \
+    install -m 0644 /src/plugin/mcp.json "$root/mcp.json"; \
+    install -m 0644 /src/plugin/config/kubeconfig "$root/config/kubeconfig"; \
+    cp -R /src/plugin/skills "$root/skills"; \
+    cp -R /src/plugin/skills "$skills_root/skills"; \
+    find /out/opt -type d -exec chmod 0755 {} +; \
+    find /out/opt -type f ! -path '*/bin/*' -exec chmod 0644 {} +; \
+    ln -s /opt/kagent-tools/bin/kagent-tools /out/tool-server; \
+    for binary in kubectl helm istioctl kubectl-argo-rollouts cilium; do \
+      ln -s "/opt/kagent-tools/bin/$binary" "/out/usr/bin/$binary"; \
+    done; \
+    chown -R 65532:65532 /out/opt
+
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 USER 65532:65532
-ENV PATH=$PATH:/bin
+ENV PATH=/opt/kagent-tools/bin:$PATH:/bin
 
-# Copy the tools
-COPY --from=tools --chown=65532:65532 /downloads/kubectl               /bin/kubectl
-COPY --from=tools --chown=65532:65532 /downloads/istioctl              /bin/istioctl
-COPY --from=tools --chown=65532:65532 /downloads/helm                  /bin/helm
-COPY --from=tools --chown=65532:65532 /downloads/kubectl-argo-rollouts /bin/kubectl-argo-rollouts
-COPY --from=tools --chown=65532:65532 /downloads/cilium                /bin/cilium
-# Copy the tool-server binary
-COPY --from=builder --chown=65532:65532 /workspace/tool-server           /tool-server
+# /opt/kagent-tools        -> kagent Agent Plugin root (CLIs + stdio MCP server + skills)
+# /opt/kagent-tools-skills -> skills-only Agent Plugin root
+# /tool-server, /bin/*     -> backward-compatible symlinks (distroless /bin -> usr/bin)
+# Three content layers, ordered from least to most frequently changed:
+#   1. all CLIs (~500 MiB, change only on a version bump)
+#   2. plugin manifests, skills and links (a few KiB)
+#   3. the Go server (changes on every commit, ~70 MiB)
+# so a Go or skill change re-ships only the small layers.
+COPY --from=tools --chown=65532:65532 --chmod=0755 \
+    /downloads/kubectl /downloads/helm /downloads/istioctl /downloads/kubectl-argo-rollouts /downloads/cilium \
+    /opt/kagent-tools/bin/
+COPY --from=plugin /out/ /
+COPY --from=builder --chown=65532:65532 --chmod=0755 /workspace/tool-server /opt/kagent-tools/bin/kagent-tools
 
 ARG VERSION
 
 LABEL org.opencontainers.image.source=https://github.com/kagent-dev/tools
-LABEL org.opencontainers.image.description="Kagent MCP tools server"
+LABEL org.opencontainers.image.description="Kagent MCP tools server and kagent Agent Plugin (skills bundle)"
 LABEL org.opencontainers.image.authors="Kagent Creators 🤖"
 LABEL org.opencontainers.image.version="$VERSION"
 
-ENTRYPOINT ["/tool-server"]
+ENTRYPOINT ["/opt/kagent-tools/bin/kagent-tools"]

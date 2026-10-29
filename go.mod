@@ -1,6 +1,6 @@
 module github.com/kagent-dev/tools
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/google/jsonschema-go v0.4.3
@@ -26,6 +26,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.37.0
 	k8s.io/apimachinery v0.37.0
 	k8s.io/client-go v0.37.0
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -198,5 +199,4 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )

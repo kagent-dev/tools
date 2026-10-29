@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "kagent-tools": {
+      "type": "stdio",
+      "command": "./bin/kagent-tools",
+      "args": ["--stdio"],
+      "env": {
+        "PATH": "${PLUGIN_ROOT}/bin:/usr/local/bin:/usr/bin:/bin",
+        "KAGENT_TOOLS_DEFAULT_KUBECONFIG": "${PLUGIN_ROOT}/config/kubeconfig",
+        "KAGENT_USE_STDERR": "true",
+        "HOME": "${PLUGIN_DATA}",
+        "XDG_CACHE_HOME": "${PLUGIN_DATA}/cache",
+        "XDG_CONFIG_HOME": "${PLUGIN_DATA}/config",
+        "XDG_DATA_HOME": "${PLUGIN_DATA}/data"
+      }
+    }
+  }
+}

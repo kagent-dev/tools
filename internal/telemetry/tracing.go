@@ -144,7 +144,7 @@ func createExporter(ctx context.Context, cfg *Telemetry) (sdktrace.SpanExporter,
 	}
 
 	if cfg.Endpoint == "" {
-		return stdouttrace.New(stdouttrace.WithPrettyPrint())
+		return stdouttrace.New(stdouttrace.WithWriter(consoleWriter()), stdouttrace.WithPrettyPrint())
 	}
 
 	// Determine protocol
@@ -279,4 +279,13 @@ func parseHeaders(headers string) map[string]string {
 		}
 	}
 	return headerMap
+}
+
+// consoleWriter keeps the fallback span exporter off stdout when stdout
+// carries the MCP stdio protocol.
+func consoleWriter() *os.File {
+	if logger.UseStderr() {
+		return os.Stderr
+	}
+	return os.Stdout
 }

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Verifies that a built kagent-tools image is a valid kagent Agent Plugin.
+set -euo pipefail
+
+image="${1:?usage: $0 <image>}"
+workdir="$(mktemp -d)"
+container=""
+cleanup() {
+  [[ -n "$container" ]] && docker rm -f "$container" >/dev/null 2>&1 || true
+  rm -rf "$workdir"
+}
+trap cleanup EXIT
+
+container="$(docker create "$image")"
+docker export "$container" | tar -x -C "$workdir"
+
+KAGENT_TOOLS_IMAGE_ROOT="$workdir" go test ./cmd -run TestPluginImageLayout -count=1 -v
+
+echo "--- legacy entrypoints"
+docker run --rm --entrypoint /tool-server "$image" --version
+docker run --rm --entrypoint /bin/kubectl "$image" version --client
+docker run --rm --entrypoint /bin/helm "$image" version --short
+
+echo "--- stdio smoke test"
+# Keep stdin open briefly: the server exits on EOF before answering.
+response="$({ printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'; sleep 5; } \
+  | docker run -i --rm --entrypoint /opt/kagent-tools/bin/kagent-tools "$image" --stdio 2>/dev/null)"
+
+for tool in k8s_get_resources helm_list_releases istio_proxy_status argo_rollouts_list cilium_status_and_version; do
+  grep -q "\"name\":\"$tool\"" <<<"$response" || { echo "missing tool $tool in stdio tools/list"; exit 1; }
+done
+if grep -qv '^{"jsonrpc"' <<<"$response"; then
+  echo "non JSON-RPC output on stdout:"; grep -v '^{"jsonrpc"' <<<"$response" | head -5; exit 1
+fi
+echo "plugin image OK: $image"
