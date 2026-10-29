@@ -14,7 +14,7 @@ Work from symptoms to cause. Gather facts before proposing changes.
 ## 2. Classify
 | Symptom | Next step |
 |---|---|
-| `CrashLoopBackOff`, `Error` | `k8s_get_pod_logs` (also with `previous: true` if supported) for the crashing container |
+| `CrashLoopBackOff`, `Error` | `k8s_get_pod_logs` for the crashing container, and with `previous: true` for the run that crashed |
 | `OOMKilled` | Compare limits in `k8s_get_resource_yaml` with usage. Recommend new limits |
 | `Pending` | Describe the pod: insufficient CPU/memory, taints, node selectors, or unbound PVCs |
 | `ImagePullBackOff` | Check the image name/tag and `imagePullSecrets` in `k8s_get_resource_yaml` |

@@ -83,17 +83,16 @@ RUN --mount=type=cache,target=/root/go/pkg/mod,rw      \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -trimpath -ldflags "-s -w $LDFLAGS" -o tool-server ./cmd
 
 ### STAGE 3: assemble kagent Agent Plugin roots
-FROM tools AS plugin
+# Only the small files and links are assembled here, on their own base so CLI
+# downloads do not invalidate this stage. Binaries are copied in the final stage.
+ARG BASE_IMAGE_REGISTRY=cgr.dev
+FROM $BASE_IMAGE_REGISTRY/chainguard/wolfi-base:latest AS plugin
 ARG VERSION=dev
 COPY plugin /src/plugin
-COPY --from=builder /workspace/tool-server /downloads/kagent-tools
 RUN set -eu; \
     root=/out/opt/kagent-tools; skills_root=/out/opt/kagent-tools-skills; \
     plugin_version="${VERSION#v}"; \
     mkdir -p "$root/bin" "$root/config" "$skills_root" /out/usr/bin; \
-    for binary in kagent-tools kubectl helm istioctl kubectl-argo-rollouts cilium; do \
-      install -m 0755 "/downloads/$binary" "$root/bin/$binary"; \
-    done; \
     sed "s/__VERSION__/${plugin_version}/" /src/plugin/plugin.json.tmpl > "$root/plugin.json"; \
     sed "s/__VERSION__/${plugin_version}/" /src/plugin/skills-plugin.json.tmpl > "$skills_root/plugin.json"; \
     install -m 0644 /src/plugin/mcp.json "$root/mcp.json"; \
@@ -117,7 +116,16 @@ ENV PATH=/opt/kagent-tools/bin:$PATH:/bin
 # /opt/kagent-tools        -> kagent Agent Plugin root (CLIs + stdio MCP server + skills)
 # /opt/kagent-tools-skills -> skills-only Agent Plugin root
 # /tool-server, /bin/*     -> backward-compatible symlinks (distroless /bin -> usr/bin)
+# Three content layers, ordered from least to most frequently changed:
+#   1. all CLIs (~500 MiB, change only on a version bump)
+#   2. plugin manifests, skills and links (a few KiB)
+#   3. the Go server (changes on every commit, ~70 MiB)
+# so a Go or skill change re-ships only the small layers.
+COPY --from=tools --chown=65532:65532 --chmod=0755 \
+    /downloads/kubectl /downloads/helm /downloads/istioctl /downloads/kubectl-argo-rollouts /downloads/cilium \
+    /opt/kagent-tools/bin/
 COPY --from=plugin /out/ /
+COPY --from=builder --chown=65532:65532 --chmod=0755 /workspace/tool-server /opt/kagent-tools/bin/kagent-tools
 
 ARG VERSION
 

@@ -51,7 +51,19 @@ var (
 	pluginNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
 	skillNamePattern  = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	toolReference     = regexp.MustCompile("`((?:k8s|helm|istio|argo|cilium|kubescape|prometheus|datetime)_[a-z_]+)`")
+	argumentReference = regexp.MustCompile("`([a-z][a-z_]*): [^`]+`")
 )
+
+// llmBackedTools need an LLM API key that neither the Helm chart nor the plugin configures,
+// so skills must not depend on them.
+var llmBackedTools = map[string]bool{
+	"k8s_generate_resource":  true,
+	"prometheus_promql_tool": true,
+}
+
+type toolInputSchema struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+}
 
 func decodeStrict[Document pluginManifest | mcpDocument | mcpStdioServer](t *testing.T, raw []byte) Document {
 	t.Helper()
@@ -94,7 +106,8 @@ func TestPluginMCPConfigIsValid(t *testing.T) {
 	require.FileExists(t, filepath.Join(pluginSourceDir, "config", "kubeconfig"))
 }
 
-func registeredToolNames(t *testing.T) map[string]bool {
+// registeredTools returns the input properties of every tool the server registers, keyed by tool name.
+func registeredTools(t *testing.T) map[string]toolInputSchema {
 	t.Helper()
 	ctx := context.Background()
 	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "plugin", Version: "test"}, nil)
@@ -105,26 +118,42 @@ func registeredToolNames(t *testing.T) map[string]bool {
 	session, err := client.Connect(ctx, clientTransport, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = session.Close() })
-	names := map[string]bool{}
+	tools := map[string]toolInputSchema{}
 	for tool, err := range session.Tools(ctx, nil) {
 		require.NoError(t, err)
-		names[tool.Name] = true
+		rawSchema, err := json.Marshal(tool.InputSchema)
+		require.NoError(t, err)
+		var schema toolInputSchema
+		require.NoError(t, json.Unmarshal(rawSchema, &schema), tool.Name)
+		tools[tool.Name] = schema
 	}
-	return names
+	return tools
+}
+
+func readSkill(t *testing.T, skillName string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(pluginSourceDir, "skills", skillName, "SKILL.md"))
+	require.NoError(t, err, skillName)
+	return string(raw)
+}
+
+func referencedTools(content string) []string {
+	var tools []string
+	for _, reference := range toolReference.FindAllStringSubmatch(content, -1) {
+		tools = append(tools, reference[1])
+	}
+	return tools
 }
 
 func TestPluginSkillsAreValid(t *testing.T) {
 	skillDirs, err := os.ReadDir(filepath.Join(pluginSourceDir, "skills"))
 	require.NoError(t, err)
 	require.NotEmpty(t, skillDirs)
-	knownTools := registeredToolNames(t)
+	knownTools := registeredTools(t)
 
 	for _, skillDir := range skillDirs {
 		require.True(t, skillDir.IsDir(), skillDir.Name())
-		raw, err := os.ReadFile(filepath.Join(pluginSourceDir, "skills", skillDir.Name(), "SKILL.md"))
-		require.NoError(t, err, skillDir.Name())
-
-		content := string(raw)
+		content := readSkill(t, skillDir.Name())
 		require.True(t, strings.HasPrefix(content, "---\n"), "%s: missing frontmatter", skillDir.Name())
 		frontmatterEnd := strings.Index(content[4:], "\n---\n")
 		require.Positive(t, frontmatterEnd, "%s: unterminated frontmatter", skillDir.Name())
@@ -137,10 +166,36 @@ func TestPluginSkillsAreValid(t *testing.T) {
 		require.NotEmpty(t, frontmatter.Description)
 		require.LessOrEqual(t, len(frontmatter.Description), 1024)
 
-		references := toolReference.FindAllStringSubmatch(content, -1)
+		references := referencedTools(content)
 		require.NotEmpty(t, references, "%s: skill must reference at least one MCP tool", skillDir.Name())
-		for _, reference := range references {
-			require.Truef(t, knownTools[reference[1]], "%s references unknown tool %q", skillDir.Name(), reference[1])
+		for _, toolName := range references {
+			require.Containsf(t, knownTools, toolName, "%s references unknown tool %q", skillDir.Name(), toolName)
+			require.Falsef(t, llmBackedTools[toolName], "%s references %q, which needs an unconfigured LLM key", skillDir.Name(), toolName)
+		}
+		requireArgumentsExist(t, skillDir.Name(), content, knownTools)
+	}
+}
+
+// requireArgumentsExist checks that every `argument: value` a skill line names is an input
+// property of a tool referenced on the same line, so playbooks cannot drift from tool schemas.
+func requireArgumentsExist(t *testing.T, skillName, content string, knownTools map[string]toolInputSchema) {
+	t.Helper()
+	for lineNumber, line := range strings.Split(content, "\n") {
+		arguments := argumentReference.FindAllStringSubmatch(line, -1)
+		if len(arguments) == 0 {
+			continue
+		}
+		lineTools := referencedTools(line)
+		require.NotEmptyf(t, lineTools, "%s:%d names arguments without a tool on the same line", skillName, lineNumber+1)
+		for _, argument := range arguments {
+			found := false
+			for _, toolName := range lineTools {
+				if _, ok := knownTools[toolName].Properties[argument[1]]; ok {
+					found = true
+					break
+				}
+			}
+			require.Truef(t, found, "%s:%d: no tool in %v accepts argument %q", skillName, lineNumber+1, lineTools, argument[1])
 		}
 	}
 }

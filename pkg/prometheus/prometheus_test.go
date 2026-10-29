@@ -9,6 +9,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegisterTools(t *testing.T) {
@@ -556,5 +557,72 @@ func TestPrometheusURLEncoding(t *testing.T) {
 		// Test passes if no error occurs with special characters
 		content := getResultText(result)
 		assert.Contains(t, content, "success")
+	})
+}
+
+// recordingRoundTripper records the request URL and returns an empty success.
+type recordingRoundTripper struct {
+	requestURL string
+}
+
+func (recorder *recordingRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	recorder.requestURL = request.URL.String()
+	return createMockResponse(200, `{"status":"success","data":[]}`), nil
+}
+
+func TestPrometheusURLDefault(t *testing.T) {
+	const configuredURL = "http://prometheus.monitoring:9090"
+	testCases := []struct {
+		name        string
+		callTool    func(ctx context.Context) error
+		expectedURL string
+	}{
+		{
+			name: "query",
+			callTool: func(ctx context.Context) error {
+				_, _, err := handlePrometheusQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusQueryInput{Query: "up"})
+				return err
+			},
+			expectedURL: configuredURL + "/api/v1/query",
+		},
+		{
+			name: "range query",
+			callTool: func(ctx context.Context) error {
+				_, _, err := handlePrometheusRangeQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusRangeQueryInput{Query: "up"})
+				return err
+			},
+			expectedURL: configuredURL + "/api/v1/query_range",
+		},
+		{
+			name: "labels",
+			callTool: func(ctx context.Context) error {
+				_, _, err := handlePrometheusLabelsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusLabelsInput{})
+				return err
+			},
+			expectedURL: configuredURL + "/api/v1/labels",
+		},
+		{
+			name: "targets",
+			callTool: func(ctx context.Context) error {
+				_, _, err := handlePrometheusTargetsQueryTool(ctx, &sdkmcp.CallToolRequest{}, prometheusTargetsInput{})
+				return err
+			},
+			expectedURL: configuredURL + "/api/v1/targets",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name+" uses PROMETHEUS_URL when the call has no prometheus_url", func(t *testing.T) {
+			t.Setenv(prometheusURLEnv, configuredURL)
+			recorder := &recordingRoundTripper{}
+			ctx := contextWithMockClient(&http.Client{Transport: recorder})
+
+			require.NoError(t, testCase.callTool(ctx))
+			assert.True(t, strings.HasPrefix(recorder.requestURL, testCase.expectedURL), recorder.requestURL)
+		})
+	}
+
+	t.Run("localhost when PROMETHEUS_URL is unset", func(t *testing.T) {
+		t.Setenv(prometheusURLEnv, "")
+		assert.Equal(t, fallbackPrometheusURL, defaultPrometheusURL())
 	})
 }

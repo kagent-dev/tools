@@ -146,7 +146,7 @@ func handlePauseRollout(ctx context.Context, request *sdkmcp.CallToolRequest, in
 
 type setRolloutImageInput struct {
 	RolloutName    string `json:"rollout_name" jsonschema:"The name of the rollout to set the image for"`
-	ContainerImage string `json:"container_image" jsonschema:"The container image to set for the rollout"`
+	ContainerImage string `json:"container_image" jsonschema:"Container and image as <container>=<image>, for example app=nginx:1.27 (passed to kubectl argo rollouts set image)"`
 	Namespace      string `json:"namespace" jsonschema:"The namespace of the rollout"`
 }
 

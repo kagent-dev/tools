@@ -13,7 +13,6 @@ description: Answer questions about cluster and application metrics (error rates
 ## 3. Query
 - Current value: `prometheus_query_tool`. Example: `sum(rate(http_requests_total{namespace="shop",code=~"5.."}[5m])) by (service)`.
 - Trend: `prometheus_query_range_tool` with a range and step (for example, 1h with a 60s step).
-- Draft complex PromQL with `prometheus_promql_tool`, then run it.
 
 ## 4. Interpret
 Use RED for services (rate, errors, duration) and USE for resources (utilisation, saturation, errors). Always state the query you ran and the time window. Correlate spikes with `k8s_get_events` and rollouts.

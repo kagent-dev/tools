@@ -10,12 +10,14 @@ description: Debug Istio service-mesh traffic (503s, mTLS failures, routing not 
 3. `istio_analyze_cluster_configuration` for the namespace. Fix reported errors first.
 
 ## 2. Follow one request
-1. Identify the source pod and destination service.
+1. Identify the source pod and destination service with `k8s_get_resources`.
 2. `istio_proxy_config` on the source pod for `routes`, `clusters`, and `endpoints`. Confirm the destination host and subset exist and endpoints are `HEALTHY`.
 3. For ambient mode, use `istio_ztunnel_config`, `istio_list_waypoints`, and `istio_waypoint_status` to confirm the waypoint is attached and programmed.
 4. Read the VirtualService, DestinationRule, and AuthorizationPolicy objects with `k8s_get_resource_yaml`.
 
 ## 3. Common causes
+Read the response flag from the source pod's `istio-proxy` access log with `k8s_get_pod_logs` (`container: istio-proxy`).
+
 | Symptom | Likely cause |
 |---|---|
 | 503 `UF`/`URX` | No healthy endpoints, or a DestinationRule subset with no matching pod labels |

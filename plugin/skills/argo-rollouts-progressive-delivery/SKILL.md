@@ -10,7 +10,7 @@ description: Operate Argo Rollouts canary and blue-green releases (status, promo
 3. If a Rollout is `Degraded`, describe it with `k8s_describe_resource` (`resource_type: rollout`) and check AnalysisRun results with `k8s_get_resources` (`resource_type: analysisrun`).
 
 ## Act (mutating; confirm with the user first)
-- Start a release: `argo_set_rollout_image` with the container name and the full image reference.
+- Start a release: `argo_set_rollout_image` with `rollout_name` and `container_image: <container>=<image>`, for example `app=registry.example.com/app:1.4.2`. Read the container name from `k8s_get_resource_yaml` first.
 - Hold: `argo_pause_rollout`.
 - Advance one step or fully promote: `argo_promote_rollout`. State which applies before running it.
 - Gateway API traffic routing: `argo_verify_gateway_plugin` before the first release.

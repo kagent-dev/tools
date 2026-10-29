@@ -12,7 +12,7 @@ description: Review cluster security posture with Kubescape results (configurati
 2. `kubescape_get_configuration_scan` for a workload. Group failed controls by severity and give the YAML fix for each.
 
 ## 3. Vulnerabilities
-1. `kubescape_list_vulnerability_manifests` / `kubescape_list_vulnerabilities`, filtered to Critical and High first.
+1. `kubescape_list_vulnerability_manifests` to find the manifest of each image or workload, then `kubescape_list_vulnerabilities` with its `manifest_name`. The tools do not filter by severity; report Critical and High first.
 2. `kubescape_get_vulnerability_details` for a CVE: affected package, fixed version, and which workloads use the image.
 
 ## 4. Runtime behaviour

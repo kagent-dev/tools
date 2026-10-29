@@ -1,8 +1,9 @@
 # Using kagent-tools as a kagent 1.x skills bundle
 
 The kagent-tools image is also a kagent 1.x **Agent Plugin**: an agent can mount it read-only
-as an OCI image volume and get the MCP tools server, all bundled CLIs, and a set of operational
-skills, with no separate deployment.
+as an OCI image volume to get a set of operational skills. Today, mount the skills-only root and
+bind the tools through a `RemoteMCPServer`. The full root, which also ships the MCP server and all
+CLIs in one bundle, needs a future kagent release (see [Requirements](#requirements)).
 
 ## What you get
 
@@ -10,8 +11,8 @@ The image contains two plugin roots. Select **one** of them per agent.
 
 | Root (`source.path`) | Contents |
 |---|---|
-| `opt/kagent-tools` | `plugin.json`, `mcp.json` (stdio MCP server), `bin/` (`kagent-tools`, `kubectl`, `helm`, `istioctl`, `kubectl-argo-rollouts`, `cilium`), `config/kubeconfig`, `skills/` |
-| `opt/kagent-tools-skills` | `plugin.json` and `skills/` only (use with a `RemoteMCPServer`) |
+| `opt/kagent-tools-skills` | `plugin.json` and `skills/` only (use with a `RemoteMCPServer`). Works on current kagent 1.x. |
+| `opt/kagent-tools` | `plugin.json`, `mcp.json` (stdio MCP server), `bin/` (`kagent-tools`, `kubectl`, `helm`, `istioctl`, `kubectl-argo-rollouts`, `cilium`), `config/kubeconfig`, `skills/`. Needs a future kagent release. |
 
 Skills (identical in both roots):
 
@@ -31,10 +32,12 @@ Skills are playbooks that call the MCP tools by name (`k8s_get_resources`, `helm
 
 ## Requirements
 
-- kagent 1.x (`api.kagent.dev/v1alpha3`) with the **Go ADK (`kagent`) harness**. Only that
-  harness starts plugin `mcp.json` servers; Codex and Claude harnesses get the skills only.
+- kagent 1.x (`api.kagent.dev/v1alpha3`) and a `ModelConfig` (the examples use
+  `default-model-config`).
+- For the full root: the **Go ADK (`kagent`) harness**. Only that harness starts plugin
+  `mcp.json` servers; Codex and Claude harnesses get the skills only.
 - For the full root (`opt/kagent-tools`): a kagent release that does not apply the 100 MiB
-  package-size limit to platform-mounted OCI packages. The full root is ~550–650 MiB because it
+  package-size limit to platform-mounted OCI packages. The full root is about 550 MiB because it
   contains the CLIs. Older kagent releases must use [skills-only mode](#skills-only-mode).
 - The image pinned by digest. Print it with:
 
@@ -42,7 +45,71 @@ Skills are playbooks that call the MCP tools by name (`k8s_get_resources`, `helm
   docker buildx imagetools inspect ghcr.io/kagent-dev/kagent/tools:<tag>
   ```
 
-## Cluster access
+## Skills-only mode
+
+This works on current kagent 1.x releases and with every harness. Deploy the server with the Helm
+chart as usual, reference it as a `RemoteMCPServer`, and mount the skills-only root:
+
+```yaml
+apiVersion: api.kagent.dev/v1alpha3
+kind: RemoteMCPServer
+metadata:
+  name: kagent-tools
+  namespace: kagent
+spec:
+  description: kagent-tools MCP server
+  url: http://kagent-tools.kagent:8084/mcp
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: AgentTemplate
+metadata:
+  name: k8s-operator
+  namespace: kagent
+spec:
+  systemPrompt: Use the kagent-tools skills and tools to operate the cluster.
+  modelConfig:
+    name: default-model-config
+  tools:
+    - mcp:
+        server:
+          kind: RemoteMCPServer
+          name: kagent-tools
+        # Only the tools the selected skills use. kagent accepts at most 50 per binding,
+        # and OpenAI and Azure OpenAI reject more than 128 tools per request.
+        tools:
+          - k8s_get_resources
+          - k8s_describe_resource
+          - k8s_get_resource_yaml
+          - k8s_get_events
+          - k8s_get_pod_logs
+          - k8s_check_service_connectivity
+          - k8s_apply_manifest
+          - k8s_patch_resource
+          - k8s_delete_resource
+          - k8s_rollout
+          - k8s_scale
+  plugins:
+    - source:
+        oci: ghcr.io/kagent-dev/kagent/tools@sha256:<digest>
+        path: opt/kagent-tools-skills
+      skills:
+        - k8s-troubleshooting
+```
+
+The server's `PROMETHEUS_URL` and other settings come from the Helm values; the
+[Harness env](#tuning-via-harness-env) table applies only to the bundled server.
+
+> **Never select both roots in one agent.** They contain the same skill names, and kagent
+> rejects duplicate skills.
+
+## Full root (needs a future kagent release)
+
+The sections below apply only to `opt/kagent-tools`. It is about 550 MiB, over kagent's
+100 MiB package limit, so current kagent releases reject it with
+`artifact exceeds 104857600 bytes`. Until a kagent release lifts that limit for
+platform-mounted OCI packages, use [skills-only mode](#skills-only-mode).
+
+### Cluster access
 
 Inside the agent, the bundled server uses `config/kubeconfig`. It points at
 `https://kubernetes.default.svc`, trusts the kagent egress CA
@@ -97,7 +164,7 @@ spec:
           key: token
 ```
 
-## Agent
+### Agent
 
 ```yaml
 apiVersion: api.kagent.dev/v1alpha3
@@ -107,6 +174,8 @@ metadata:
   namespace: kagent
 spec:
   systemPrompt: Use the kagent-tools skills and tools to operate the cluster.
+  modelConfig:
+    name: default-model-config
   plugins:
     - source:
         oci: ghcr.io/kagent-dev/kagent/tools@sha256:<digest>
@@ -134,7 +203,7 @@ kagent starts `bin/kagent-tools --stdio` from the plugin root and exposes all it
 model. The selected skills are copied to `/skills/<name>` and offered through `list_skills` /
 `load_skill`.
 
-## Tuning via Harness env
+### Tuning via Harness env
 
 The server reads these variables when the matching flag is not set. Set them in the Harness
 `spec.env`; `mcp.json` deliberately leaves them unset so the Harness value applies.
@@ -159,45 +228,6 @@ spec:
 Kubeconfig precedence is `--kubeconfig` > `KUBECONFIG` > `KAGENT_TOOLS_DEFAULT_KUBECONFIG` (set
 by `mcp.json` to the bundled kubeconfig) > in-cluster config. The resolved path is exported as
 `KUBECONFIG` so every CLI (helm, istioctl, cilium, argo) targets the same cluster.
-
-## Skills-only mode
-
-Use this on kagent releases that still enforce the 100 MiB limit on mounted packages, or with
-harnesses that do not start plugin MCP servers. Deploy the server with the Helm chart as usual,
-then reference it as a `RemoteMCPServer` and select the skills-only root:
-
-```yaml
-apiVersion: api.kagent.dev/v1alpha3
-kind: RemoteMCPServer
-metadata:
-  name: kagent-tools
-  namespace: kagent
-spec:
-  description: kagent-tools MCP server
-  url: http://kagent-tools.kagent:8084/mcp
----
-apiVersion: api.kagent.dev/v1alpha3
-kind: AgentTemplate
-metadata:
-  name: k8s-operator
-  namespace: kagent
-spec:
-  systemPrompt: Use the kagent-tools skills and tools to operate the cluster.
-  tools:
-    - mcp:
-        server:
-          kind: RemoteMCPServer
-          name: kagent-tools
-  plugins:
-    - source:
-        oci: ghcr.io/kagent-dev/kagent/tools@sha256:<digest>
-        path: opt/kagent-tools-skills
-      skills:
-        - k8s-troubleshooting
-```
-
-> **Never select both roots in one agent.** They contain the same skill names, and kagent
-> rejects duplicate skills.
 
 ## Troubleshooting
 
