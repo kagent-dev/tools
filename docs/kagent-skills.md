@@ -8,12 +8,12 @@ full root also ships the MCP server and all CLIs in one bundle. It needs a futur
 
 ## What you get
 
-Two images carry plugin roots. Select **one** root per agent.
+Two images carry plugin roots, starting with v0.4.0. Select **one** root per agent.
 
 | Image | Root (`source.path`) | Contents |
 |---|---|---|
-| `ghcr.io/kagent-dev/kagent/tools-skills` (v0.4.0 and later) | `opt/kagent-tools-skills` | `plugin.json` and `skills/` only (use with a `RemoteMCPServer`). A few KiB. Works on current kagent 1.x. |
-| `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools-skills` | The same skills-only root, inside the full tools image. Mounting this root pulls the whole 195 MiB image, so prefer `tools-skills`. |
+| `ghcr.io/kagent-dev/kagent/tools-skills` | `opt/kagent-tools-skills` | `plugin.json` and `skills/` only (use with a `RemoteMCPServer`). A few KiB. Works on current kagent 1.x. |
+| `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools-skills` | The same skills-only root, inside the full tools image. Mounting this root pulls the whole tools image, so prefer `tools-skills`. |
 | `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools` | `plugin.json`, `mcp.json` (stdio MCP server), `bin/` (`kagent-tools`, `kubectl`, `helm`, `istioctl`, `kubectl-argo-rollouts`, `cilium`), `config/kubeconfig`, `skills/`. Needs a future kagent release. |
 
 Skills (identical in every root):
