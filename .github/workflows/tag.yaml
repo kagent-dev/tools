@@ -51,6 +51,7 @@ jobs:
         fi
         make docker-build
         make helm-publish
+        make docker-build-skills
   release:
     # Only run release after images and helm chart are pushed
     # In the future we can take the chart from the helm action,

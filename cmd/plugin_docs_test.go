@@ -86,7 +86,12 @@ func TestSkillsGuideAgentTemplatesAreValid(t *testing.T) {
 		}
 
 		for _, plugin := range template.Spec.Plugins {
-			require.Contains(t, plugin.Source.OCI, "@sha256:", "example %d: pin the image by digest", index)
+			image := map[string]string{
+				skillsOnlyRoot:     "ghcr.io/kagent-dev/kagent/tools-skills@sha256:",
+				"opt/kagent-tools": "ghcr.io/kagent-dev/kagent/tools@sha256:",
+			}[plugin.Source.Path]
+			require.NotEmptyf(t, image, "example %d: unknown plugin root %q", index, plugin.Source.Path)
+			require.Truef(t, strings.HasPrefix(plugin.Source.OCI, image), "example %d: %s must come from %s<digest>", index, plugin.Source.Path, image)
 			if plugin.Source.Path != skillsOnlyRoot || len(boundTools) == 0 {
 				continue
 			}

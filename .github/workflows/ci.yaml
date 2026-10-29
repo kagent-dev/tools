@@ -35,7 +35,7 @@ jobs:
             --output=type=tar,dest=/dev/null
           DOCKER_REPO: "${{ github.repository_owner }}/tools"
           DOCKER_BUILDER: "docker buildx"
-        run: make docker-build
+        run: make docker-build docker-build-skills
         working-directory: ./
 
   go-unit-tests:

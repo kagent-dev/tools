@@ -2,8 +2,10 @@ package main
 
 import (
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -94,4 +96,61 @@ func TestPluginImageLayout(t *testing.T) {
 		require.NoError(t, err, link)
 		require.Equal(t, expectedTarget, target, link)
 	}
+}
+
+// TestSkillsImageMatchesToolsImage checks that the skills-only image ships
+// the tools image's opt/kagent-tools-skills and nothing else.
+func TestSkillsImageMatchesToolsImage(t *testing.T) {
+	toolsRoot := os.Getenv("KAGENT_TOOLS_IMAGE_ROOT")
+	skillsImageRoot := os.Getenv("KAGENT_TOOLS_SKILLS_IMAGE_ROOT")
+	if toolsRoot == "" || skillsImageRoot == "" {
+		t.Skip("set KAGENT_TOOLS_IMAGE_ROOT and KAGENT_TOOLS_SKILLS_IMAGE_ROOT to exported image filesystems (scripts/verify-plugin-image.sh)")
+	}
+
+	// docker export adds .dockerenv, dev, etc, proc and sys to every container.
+	top, err := os.ReadDir(skillsImageRoot)
+	require.NoError(t, err)
+	for _, entry := range top {
+		require.Contains(t, []string{".dockerenv", "dev", "etc", "proc", "sys", "opt"}, entry.Name())
+	}
+	opt, err := os.ReadDir(filepath.Join(skillsImageRoot, "opt"))
+	require.NoError(t, err)
+	require.Len(t, opt, 1)
+	require.Equal(t, "kagent-tools-skills", opt[0].Name())
+
+	want := snapshotTree(t, filepath.Join(toolsRoot, "opt", "kagent-tools-skills"))
+	got := snapshotTree(t, filepath.Join(skillsImageRoot, "opt", "kagent-tools-skills"))
+	require.NotEmpty(t, want)
+	require.Equal(t, slices.Sorted(maps.Keys(want)), slices.Sorted(maps.Keys(got)))
+	for path, entry := range want {
+		require.Equal(t, entry, got[path], path)
+	}
+}
+
+// snapshotTree maps each path under root to its mode and, for files and
+// symlinks, content or target.
+func snapshotTree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	tree := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		require.NoError(t, err)
+		rel, err := filepath.Rel(root, path)
+		require.NoError(t, err)
+		info, err := entry.Info()
+		require.NoError(t, err)
+		tree[rel] = info.Mode().String()
+		switch {
+		case info.Mode().IsRegular():
+			content, err := os.ReadFile(path)
+			require.NoError(t, err)
+			tree[rel] += "\n" + string(content)
+		case info.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(path)
+			require.NoError(t, err)
+			tree[rel] += " -> " + target
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	return tree
 }
