@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Verifies that a built kagent-tools image is a valid kagent Agent Plugin and,
-# when given, that the skills-only image holds the same skills root.
+# Verifies that a built kagent-tools image is a valid kagent Agent Plugin. Given a
+# second image, it also checks that the skills-only image holds the same skills root.
 set -euo pipefail
 
 image="${1:?usage: $0 <image> [<skills-image>]}"
@@ -14,7 +14,7 @@ cleanup() {
 trap cleanup EXIT
 
 export_image() {
-  # The skills image has no entrypoint; docker create needs a command but never runs it.
+  # The skills image has no command. docker create requires one but never runs it.
   container="$(docker create "$1" /unused)"
   mkdir -p "$2"
   docker export "$container" | tar -x -C "$2"

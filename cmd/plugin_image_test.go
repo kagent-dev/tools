@@ -107,11 +107,11 @@ func TestSkillsImageMatchesToolsImage(t *testing.T) {
 		t.Skip("set KAGENT_TOOLS_IMAGE_ROOT and KAGENT_TOOLS_SKILLS_IMAGE_ROOT to exported image filesystems (scripts/verify-plugin-image.sh)")
 	}
 
-	// docker export adds .dockerenv, dev, etc, proc and sys to every container.
+	// docker export adds .dockerenv, dev, etc, proc, and sys to every container.
 	top, err := os.ReadDir(skillsImageRoot)
 	require.NoError(t, err)
 	for _, entry := range top {
-		require.Contains(t, []string{".dockerenv", "dev", "etc", "proc", "sys", "opt"}, entry.Name())
+		require.Contains(t, []string{".dockerenv", "dev", "etc", "proc", "sys", "opt"}, entry.Name(), "unexpected top-level entry in the skills image")
 	}
 	opt, err := os.ReadDir(filepath.Join(skillsImageRoot, "opt"))
 	require.NoError(t, err)
@@ -127,8 +127,8 @@ func TestSkillsImageMatchesToolsImage(t *testing.T) {
 	}
 }
 
-// snapshotTree maps each path under root to its mode and, for files and
-// symlinks, content or target.
+// snapshotTree maps each path under root to its mode, plus the content of a
+// file or the target of a symlink.
 func snapshotTree(t *testing.T, root string) map[string]string {
 	t.Helper()
 	tree := map[string]string{}

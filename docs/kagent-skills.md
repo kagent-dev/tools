@@ -1,10 +1,10 @@
 # Using kagent-tools as a kagent 1.x skills bundle
 
-kagent-tools ships its skills as a kagent 1.x **Agent Plugin**: an agent mounts an image
-read-only as an OCI image volume to get a set of operational skills. Today, mount the
-skills-only image, `ghcr.io/kagent-dev/kagent/tools-skills`, and bind the tools through a
-`RemoteMCPServer`. The full root, which also ships the MCP server and all CLIs in one bundle,
-needs a future kagent release (see [Requirements](#requirements)).
+kagent-tools ships its operational skills as a kagent 1.x **Agent Plugin**. An agent mounts the
+plugin image read-only, as an OCI image volume. Today, mount the skills-only image,
+`ghcr.io/kagent-dev/kagent/tools-skills`, and bind the tools through a `RemoteMCPServer`. The
+full root also ships the MCP server and all CLIs in one bundle. It needs a future kagent release
+(see [Requirements](#requirements)).
 
 ## What you get
 
@@ -13,7 +13,7 @@ Two images carry plugin roots. Select **one** root per agent.
 | Image | Root (`source.path`) | Contents |
 |---|---|---|
 | `ghcr.io/kagent-dev/kagent/tools-skills` (v0.4.0 and later) | `opt/kagent-tools-skills` | `plugin.json` and `skills/` only (use with a `RemoteMCPServer`). A few KiB. Works on current kagent 1.x. |
-| `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools-skills` | The same skills-only root, inside the full tools image. Prefer the `tools-skills` image: mounting this root still pulls about 195 MiB. |
+| `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools-skills` | The same skills-only root, inside the full tools image. Mounting this root pulls the whole 195 MiB image, so prefer `tools-skills`. |
 | `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools` | `plugin.json`, `mcp.json` (stdio MCP server), `bin/` (`kagent-tools`, `kubectl`, `helm`, `istioctl`, `kubectl-argo-rollouts`, `cilium`), `config/kubeconfig`, `skills/`. Needs a future kagent release. |
 
 Skills (identical in every root):
@@ -249,7 +249,7 @@ by `mcp.json` to the bundled kubeconfig) > in-cluster config. The resolved path 
 make plugin-verify
 ```
 
-This builds the tools and tools-skills images, exports their filesystems, checks both roots
-against kagent's package rules (file types, symlinks, entry count, skills-only size), checks that
-the tools-skills image holds the same skills root as the tools image, and runs an MCP
-`initialize` + `tools/list` over stdio to confirm stdout carries only JSON-RPC.
+This builds the tools and tools-skills images and exports their filesystems. It checks both roots
+against kagent's package rules (file types, symlinks, entry count, skills-only size). It checks
+that the tools-skills image holds the same skills root as the tools image. Last, it runs an MCP
+`initialize` and `tools/list` over stdio to confirm that stdout carries only JSON-RPC.

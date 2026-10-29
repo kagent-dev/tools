@@ -107,8 +107,9 @@ RUN set -eu; \
     done; \
     chown -R 65532:65532 /out/opt
 
-# Skills-only image (tools-skills): the skills root alone, so an Agent that
-# mounts it does not pull the CLIs. The last stage stays the default target.
+# The tools-skills image holds only the skills root, so an Agent that mounts it
+# does not pull the CLIs. The last stage is the default build target, so keep
+# this stage above it.
 FROM scratch AS skills
 ARG VERSION
 COPY --from=plugin /out/opt/kagent-tools-skills /opt/kagent-tools-skills
