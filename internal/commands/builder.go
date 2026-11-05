@@ -427,6 +427,13 @@ func (cb *CommandBuilder) executeCommand(ctx context.Context, command string, ar
 	executor := cmd.GetShellExecutor(ctx)
 	output, err := executor.Exec(ctx, command, args...)
 	if err != nil {
+		// Keep what the command printed, such as kubectl's "Error from server
+		// (Forbidden): ...". The exit status alone does not say why the command
+		// failed, and the error creators below pick their suggestions from it.
+		if commandOutput := strings.TrimSpace(string(output)); commandOutput != "" {
+			err = fmt.Errorf("%w: %s", err, commandOutput)
+		}
+
 		// Create appropriate error based on command type
 		var toolError *errors.ToolError
 		switch command {
