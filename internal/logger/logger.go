@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel/trace"
 )
@@ -12,6 +13,10 @@ import (
 // stderr, keeping stdout free for the MCP stdio protocol.
 const UseStderrEnv = "KAGENT_USE_STDERR"
 
+// LogLevelEnv names the environment variable that sets the minimum log level
+// (debug, info, warn or error). Unset or invalid values fall back to info.
+const LogLevelEnv = "LOG_LEVEL"
+
 var globalLogger *slog.Logger
 
 // UseStderr reports whether console output must go to stderr.
@@ -19,12 +24,26 @@ func UseStderr() bool {
 	return os.Getenv(UseStderrEnv) == "true"
 }
 
+// levelFromEnv returns the level named by LOG_LEVEL, or info when it is unset
+// or not a valid slog level.
+func levelFromEnv() slog.Level {
+	value := strings.TrimSpace(os.Getenv(LogLevelEnv))
+	if value == "" {
+		return slog.LevelInfo
+	}
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(value)); err != nil {
+		return slog.LevelInfo
+	}
+	return level
+}
+
 // Init initializes the global logger
 // If useStderr is true, logs will be written to stderr (for stdio mode)
 // If useStderr is false, logs will be written to stdout (for HTTP mode)
 func Init(useStderr bool) {
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: levelFromEnv(),
 	}
 
 	// Choose output destination based on mode

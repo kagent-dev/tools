@@ -132,3 +132,30 @@ func TestUseStderr(t *testing.T) {
 	t.Setenv(UseStderrEnv, "false")
 	require.False(t, UseStderr())
 }
+
+func TestInitHonorsLogLevel(t *testing.T) {
+	cases := []struct {
+		value     string
+		wantDebug bool
+		wantInfo  bool
+		wantWarn  bool
+	}{
+		{value: "", wantDebug: false, wantInfo: true, wantWarn: true},
+		{value: "debug", wantDebug: true, wantInfo: true, wantWarn: true},
+		{value: "DEBUG", wantDebug: true, wantInfo: true, wantWarn: true},
+		{value: "info", wantDebug: false, wantInfo: true, wantWarn: true},
+		{value: "warn", wantDebug: false, wantInfo: false, wantWarn: true},
+		{value: "error", wantDebug: false, wantInfo: false, wantWarn: false},
+		{value: "verbose", wantDebug: false, wantInfo: true, wantWarn: true},
+	}
+	for _, tc := range cases {
+		t.Run("LOG_LEVEL="+tc.value, func(t *testing.T) {
+			t.Setenv("LOG_LEVEL", tc.value)
+			Init(true)
+			ctx := context.Background()
+			assert.Equal(t, tc.wantDebug, Get().Enabled(ctx, slog.LevelDebug), "debug")
+			assert.Equal(t, tc.wantInfo, Get().Enabled(ctx, slog.LevelInfo), "info")
+			assert.Equal(t, tc.wantWarn, Get().Enabled(ctx, slog.LevelWarn), "warn")
+		})
+	}
+}
