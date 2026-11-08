@@ -47,10 +47,11 @@ helm ls -A
 
 - **kagent 1.x skills bundle (OCI image)**
 
-The same image is a kagent Agent Plugin: mount it in an `AgentTemplate` with `source.oci`
-(digest-pinned) and `path: opt/kagent-tools-skills` to get the operational skills, and bind the
-tools through a `RemoteMCPServer`. The full root, `opt/kagent-tools` (MCP tools, all CLIs and
-skills in one bundle), is over kagent's 100 MiB package limit and needs a future kagent release.
+The operational skills ship as a kagent Agent Plugin image, `ghcr.io/kagent-dev/kagent/tools-skills`.
+To use them, mount the image in an `AgentTemplate` with a digest-pinned `source.oci` and
+`path: opt/kagent-tools-skills`, and bind the tools through a `RemoteMCPServer`. The full root,
+`opt/kagent-tools` in `ghcr.io/kagent-dev/kagent/tools`, bundles the MCP tools, all CLIs, and the
+skills. It is over kagent's 100 MiB package limit and needs a future kagent release.
 See [Using kagent-tools as a kagent 1.x skills bundle](docs/kagent-skills.md).
 
 ## Quickstart Guide

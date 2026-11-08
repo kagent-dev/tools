@@ -121,6 +121,8 @@ retag: docker-build helm-version
 TOOLS_IMAGE_NAME ?= tools
 TOOLS_IMAGE_TAG ?= $(VERSION)
 TOOLS_IMG ?= $(DOCKER_REGISTRY)/$(DOCKER_REPO)/$(TOOLS_IMAGE_NAME):$(TOOLS_IMAGE_TAG)
+SKILLS_IMAGE_NAME ?= tools-skills
+SKILLS_IMG ?= $(DOCKER_REGISTRY)/$(DOCKER_REPO)/$(SKILLS_IMAGE_NAME):$(TOOLS_IMAGE_TAG)
 
 RETAGGED_DOCKER_REGISTRY = cr.kagent.dev
 RETAGGED_TOOLS_IMG = $(RETAGGED_DOCKER_REGISTRY)/$(DOCKER_REPO)/$(TOOLS_IMAGE_NAME):$(TOOLS_IMAGE_TAG)
@@ -161,9 +163,13 @@ buildx-create:
 docker-build: fmt buildx-create
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -t $(TOOLS_IMG) -f Dockerfile ./
 
+.PHONY: docker-build-skills  # build the skills-only image
+docker-build-skills: buildx-create
+	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) --build-arg VERSION=$(VERSION) --target skills -t $(SKILLS_IMG) -f Dockerfile ./
+
 .PHONY: plugin-verify
-plugin-verify: docker-build ## Verify the image is a valid kagent Agent Plugin (layout, limits, stdio)
-	./scripts/verify-plugin-image.sh $(TOOLS_IMG)
+plugin-verify: docker-build docker-build-skills ## Verify the images are valid kagent Agent Plugins (layout, limits, stdio)
+	./scripts/verify-plugin-image.sh $(TOOLS_IMG) $(SKILLS_IMG)
 
 .PHONY: docker-build  # build tools image for amd64 and arm64
 docker-build-all: fmt buildx-create

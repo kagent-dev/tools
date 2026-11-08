@@ -1,20 +1,22 @@
 # Using kagent-tools as a kagent 1.x skills bundle
 
-The kagent-tools image is also a kagent 1.x **Agent Plugin**: an agent can mount it read-only
-as an OCI image volume to get a set of operational skills. Today, mount the skills-only root and
-bind the tools through a `RemoteMCPServer`. The full root, which also ships the MCP server and all
-CLIs in one bundle, needs a future kagent release (see [Requirements](#requirements)).
+kagent-tools ships its operational skills as a kagent 1.x **Agent Plugin**. An agent mounts the
+plugin image read-only, as an OCI image volume. Today, mount the skills-only image,
+`ghcr.io/kagent-dev/kagent/tools-skills`, and bind the tools through a `RemoteMCPServer`. The
+full root also ships the MCP server and all CLIs in one bundle. It needs a future kagent release
+(see [Requirements](#requirements)).
 
 ## What you get
 
-The image contains two plugin roots. Select **one** of them per agent.
+Two images carry plugin roots, starting with v0.4.0. Select **one** root per agent.
 
-| Root (`source.path`) | Contents |
-|---|---|
-| `opt/kagent-tools-skills` | `plugin.json` and `skills/` only (use with a `RemoteMCPServer`). Works on current kagent 1.x. |
-| `opt/kagent-tools` | `plugin.json`, `mcp.json` (stdio MCP server), `bin/` (`kagent-tools`, `kubectl`, `helm`, `istioctl`, `kubectl-argo-rollouts`, `cilium`), `config/kubeconfig`, `skills/`. Needs a future kagent release. |
+| Image | Root (`source.path`) | Contents |
+|---|---|---|
+| `ghcr.io/kagent-dev/kagent/tools-skills` | `opt/kagent-tools-skills` | `plugin.json` and `skills/` only (use with a `RemoteMCPServer`). A few KiB. Works on current kagent 1.x. |
+| `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools-skills` | The same skills-only root, inside the full tools image. Mounting this root pulls the whole tools image, so prefer `tools-skills`. |
+| `ghcr.io/kagent-dev/kagent/tools` | `opt/kagent-tools` | `plugin.json`, `mcp.json` (stdio MCP server), `bin/` (`kagent-tools`, `kubectl`, `helm`, `istioctl`, `kubectl-argo-rollouts`, `cilium`), `config/kubeconfig`, `skills/`. Needs a future kagent release. |
 
-Skills (identical in both roots):
+Skills (identical in every root):
 
 | Skill | Use it for |
 |---|---|
@@ -39,16 +41,17 @@ Skills are playbooks that call the MCP tools by name (`k8s_get_resources`, `helm
 - For the full root (`opt/kagent-tools`): a kagent release that does not apply the 100 MiB
   package-size limit to platform-mounted OCI packages. The full root is about 550 MiB because it
   contains the CLIs. Older kagent releases must use [skills-only mode](#skills-only-mode).
-- The image pinned by digest. Print it with:
+- Each image pinned by digest. Print the digest with:
 
   ```bash
+  docker buildx imagetools inspect ghcr.io/kagent-dev/kagent/tools-skills:<tag>
   docker buildx imagetools inspect ghcr.io/kagent-dev/kagent/tools:<tag>
   ```
 
 ## Skills-only mode
 
 This works on current kagent 1.x releases and with every harness. Deploy the server with the Helm
-chart as usual, reference it as a `RemoteMCPServer`, and mount the skills-only root:
+chart as usual, reference it as a `RemoteMCPServer`, and mount the skills-only image:
 
 ```yaml
 apiVersion: api.kagent.dev/v1alpha3
@@ -90,7 +93,7 @@ spec:
           - k8s_scale
   plugins:
     - source:
-        oci: ghcr.io/kagent-dev/kagent/tools@sha256:<digest>
+        oci: ghcr.io/kagent-dev/kagent/tools-skills@sha256:<digest>
         path: opt/kagent-tools-skills
       skills:
         - k8s-troubleshooting
@@ -246,6 +249,7 @@ by `mcp.json` to the bundled kubeconfig) > in-cluster config. The resolved path 
 make plugin-verify
 ```
 
-This builds the image, exports its filesystem, checks both roots against kagent's package rules
-(file types, symlinks, entry count, skills-only size), and runs an MCP `initialize` +
-`tools/list` over stdio to confirm stdout carries only JSON-RPC.
+This builds the tools and tools-skills images and exports their filesystems. It checks both roots
+against kagent's package rules (file types, symlinks, entry count, skills-only size). It checks
+that the tools-skills image holds the same skills root as the tools image. Last, it runs an MCP
+`initialize` and `tools/list` over stdio to confirm that stdout carries only JSON-RPC.
