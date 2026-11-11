@@ -24,6 +24,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NewToolResultText returns a successful text result.
@@ -139,8 +141,34 @@ func providerOf(tool string) string {
 	return ""
 }
 
+// toolSpanParent returns the context to start a tool-call span from.
+//
+// Over HTTP the SDK runs handlers on the session's context, which carries the
+// trace context of the request that opened the session, not of this tools/call.
+// The parent is therefore taken from this request's header, where
+// telemetry.HTTPMiddleware has written the HTTP server span's context. Any span
+// already in ctx is dropped first, so a request without trace context starts a
+// new trace instead of joining the session's first one. Without a header (stdio,
+// in-memory transports) ctx is used as is.
+func toolSpanParent(ctx context.Context, req sdk.Request) context.Context {
+	if req == nil {
+		return ctx
+	}
+	extra := req.GetExtra()
+	if extra == nil || extra.Header == nil {
+		return ctx
+	}
+	ctx = trace.ContextWithSpanContext(ctx, trace.SpanContext{})
+	return otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(extra.Header))
+}
+
 // ToolMiddleware instruments every tools/call with an OTel span and Prometheus
 // invocation counters. Register once via server.AddReceivingMiddleware.
+//
+// The span is named "tools/call <tool name>" and carries the MCP semantic
+// convention attributes mcp.method.name and gen_ai.tool.name next to the
+// existing mcp.tool.* attributes. Request headers, tool arguments and tool
+// results are deliberately not recorded: headers can carry credentials.
 func ToolMiddleware() sdk.Middleware {
 	return func(next sdk.MethodHandler) sdk.MethodHandler {
 		return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
@@ -155,9 +183,11 @@ func ToolMiddleware() sdk.Middleware {
 			provider := providerOf(toolName)
 
 			tracer := otel.Tracer("kagent-tools/mcp")
-			ctx, span := tracer.Start(ctx, "mcp.tool."+toolName)
+			ctx, span := tracer.Start(toolSpanParent(ctx, req), method+" "+toolName)
 			defer span.End()
 			span.SetAttributes(
+				attribute.String("mcp.method.name", method),
+				attribute.String("gen_ai.tool.name", toolName),
 				attribute.String("mcp.tool.name", toolName),
 				attribute.String("mcp.tool.provider", provider),
 			)
