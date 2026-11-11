@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,8 @@ import (
 // inference or resolution fails (for example a third-party k8s type with a
 // custom JSON marshaller), so a panic here means the server would not start.
 func TestEveryToolHasValidOutputSchema(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "schema", Version: "test"}, nil)
 
@@ -41,10 +43,29 @@ func TestEveryToolHasValidOutputSchema(t *testing.T) {
 		require.NotNilf(t, tool.OutputSchema,
 			"tool %q has no output schema; its handler still returns Out=any", tool.Name)
 
-		// The advertised schema must survive a JSON round-trip (it is sent on the
-		// wire as part of tools/list).
-		_, err := json.Marshal(tool.OutputSchema)
-		require.NoErrorf(t, err, "tool %q output schema is not JSON-serializable", tool.Name)
+		// Clients implementing the MCP 2025-06-18 Tool definition require
+		// object roots. A single array output rejects the whole tools/list
+		// response even when the SDK can infer and serialize that schema.
+		t.Run(tool.Name, func(t *testing.T) {
+			inputSchema, err := json.Marshal(tool.InputSchema)
+			require.NoError(t, err)
+			outputSchema, err := json.Marshal(tool.OutputSchema)
+			require.NoError(t, err)
+			for _, schema := range []struct {
+				name  string
+				value []byte
+			}{
+				{name: "inputSchema", value: inputSchema},
+				{name: "outputSchema", value: outputSchema},
+			} {
+				var root struct {
+					Type string `json:"type"`
+				}
+				require.NoErrorf(t, json.Unmarshal(schema.value, &root),
+					"%s must have a single object root: %s", schema.name, schema.value)
+				require.Equal(t, "object", root.Type, schema.name)
+			}
+		})
 		checked++
 	}
 	require.NotEmpty(t, checked, "expected the server to advertise tools")
