@@ -3,17 +3,15 @@ templates:
   - pdb.yaml
 tests:
   - it: should not render pdb by default
-    template: pdb.yaml
     asserts:
       - hasDocuments:
           count: 0
 
-  - it: should render pdb when enabled with minAvailable
-    template: pdb.yaml
+  - it: should render default maxUnavailable of 1 when enabled with multiple replicas
     set:
+      replicaCount: 2
       podDisruptionBudget:
         enabled: true
-        minAvailable: 1
     asserts:
       - isKind:
           of: PodDisruptionBudget
@@ -21,49 +19,58 @@ tests:
           path: metadata.name
           value: RELEASE-NAME
       - equal:
-          path: spec.minAvailable
-          value: 1
-      - isNull:
           path: spec.maxUnavailable
+          value: 1
+      - notExists:
+          path: spec.minAvailable
+      - notExists:
+          path: spec.unhealthyPodEvictionPolicy
       - equal:
           path: spec.selector.matchLabels
           value:
             app.kubernetes.io/name: RELEASE-NAME
             app.kubernetes.io/instance: RELEASE-NAME
 
-  - it: should render pdb with maxUnavailable and annotations/labels
-    template: pdb.yaml
+  - it: should not render pdb with a single replica
     set:
+      replicaCount: 1
       podDisruptionBudget:
         enabled: true
-        maxUnavailable: "50%"
-        unhealthyPodEvictionPolicy: IfHealthyBudget
-        labels:
-          custom-label: pdb-label
-        annotations:
-          custom-annotation: pdb-annotation
     asserts:
-      - isKind:
-          of: PodDisruptionBudget
+      - hasDocuments:
+          count: 0
+
+  - it: should still validate pdb settings with a single replica
+    set:
+      replicaCount: 1
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+    asserts:
+      - failedTemplate:
+          errorMessage: "podDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive. Set exactly one (to use minAvailable, set podDisruptionBudget.maxUnavailable=null)."
+
+  - it: should render minAvailable when maxUnavailable is nulled
+    set:
+      replicaCount: 3
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: "50%"
+        maxUnavailable: null
+    asserts:
       - equal:
-          path: spec.maxUnavailable
+          path: spec.minAvailable
           value: "50%"
-      - equal:
-          path: spec.unhealthyPodEvictionPolicy
-          value: IfHealthyBudget
-      - equal:
-          path: metadata.labels["custom-label"]
-          value: pdb-label
-      - equal:
-          path: metadata.annotations["custom-annotation"]
-          value: pdb-annotation
+      - notExists:
+          path: spec.maxUnavailable
 
   - it: should render minAvailable of zero
-    template: pdb.yaml
     set:
+      replicaCount: 2
       podDisruptionBudget:
         enabled: true
         minAvailable: 0
+        maxUnavailable: null
     asserts:
       - equal:
           path: spec.minAvailable
@@ -72,8 +79,8 @@ tests:
           path: spec.maxUnavailable
 
   - it: should render maxUnavailable of zero
-    template: pdb.yaml
     set:
+      replicaCount: 2
       podDisruptionBudget:
         enabled: true
         maxUnavailable: 0
@@ -84,22 +91,61 @@ tests:
       - notExists:
           path: spec.minAvailable
 
-  - it: should fail when both minAvailable and maxUnavailable are set
-    template: pdb.yaml
+  - it: should treat empty string budgets as unset
     set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: ""
+        maxUnavailable: "25%"
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: "25%"
+      - notExists:
+          path: spec.minAvailable
+
+  - it: should render eviction policy, labels and annotations
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        unhealthyPodEvictionPolicy: AlwaysAllow
+        labels:
+          custom-label: pdb-label
+        annotations:
+          custom-annotation: pdb-annotation
+    asserts:
+      - equal:
+          path: spec.unhealthyPodEvictionPolicy
+          value: AlwaysAllow
+      - equal:
+          path: metadata.labels["custom-label"]
+          value: pdb-label
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: RELEASE-NAME
+      - equal:
+          path: metadata.annotations["custom-annotation"]
+          value: pdb-annotation
+
+  - it: should fail when both minAvailable and maxUnavailable are set
+    set:
+      replicaCount: 2
       podDisruptionBudget:
         enabled: true
         minAvailable: 1
         maxUnavailable: 1
     asserts:
       - failedTemplate:
-          errorMessage: "podDisruptionBudget: set only one of minAvailable or maxUnavailable"
+          errorMessage: "podDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive. Set exactly one (to use minAvailable, set podDisruptionBudget.maxUnavailable=null)."
 
   - it: should fail when neither minAvailable nor maxUnavailable is set
-    template: pdb.yaml
     set:
+      replicaCount: 2
       podDisruptionBudget:
         enabled: true
+        maxUnavailable: null
     asserts:
       - failedTemplate:
-          errorMessage: "podDisruptionBudget: one of minAvailable or maxUnavailable is required when enabled"
+          errorMessage: "podDisruptionBudget is enabled but neither minAvailable nor maxUnavailable is set. Set exactly one."

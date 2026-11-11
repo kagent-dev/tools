@@ -1,39 +1,31 @@
-{{- with .Values.podDisruptionBudget }}
-{{- if .enabled }}
-{{- $hasMinAvailable := and (hasKey . "minAvailable") (ne .minAvailable nil) }}
-{{- $hasMaxUnavailable := and (hasKey . "maxUnavailable") (ne .maxUnavailable nil) }}
-{{- if and $hasMinAvailable $hasMaxUnavailable }}
-{{- fail "podDisruptionBudget: set only one of minAvailable or maxUnavailable" }}
-{{- end }}
-{{- if not (or $hasMinAvailable $hasMaxUnavailable) }}
-{{- fail "podDisruptionBudget: one of minAvailable or maxUnavailable is required when enabled" }}
-{{- end }}
+{{- include "kagent-tools.pdb.validate" . }}
+{{- if include "kagent-tools.pdb.shouldRender" . }}
+{{- $pdb := .Values.podDisruptionBudget }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "kagent-tools.fullname" $ }}
-  namespace: {{ include "kagent-tools.namespace" $ }}
+  name: {{ include "kagent-tools.fullname" . }}
+  namespace: {{ include "kagent-tools.namespace" . }}
   labels:
-    {{- include "kagent-tools.labels" $ | nindent 4 }}
-    {{- with .labels }}
+    {{- include "kagent-tools.labels" . | nindent 4 }}
+    {{- with $pdb.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- with .annotations }}
+  {{- with $pdb.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if $hasMinAvailable }}
-  minAvailable: {{ .minAvailable }}
+  {{- if include "kagent-tools.pdb.isSet" $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
   {{- end }}
-  {{- if $hasMaxUnavailable }}
-  maxUnavailable: {{ .maxUnavailable }}
-  {{- end }}
-  {{- with .unhealthyPodEvictionPolicy }}
+  {{- with $pdb.unhealthyPodEvictionPolicy }}
   unhealthyPodEvictionPolicy: {{ . }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "kagent-tools.selectorLabels" $ | nindent 6 }}
-{{- end }}
+      {{- /* Same helper as the Deployment's spec.selector, so the budget cannot drift from its pods. */}}
+      {{- include "kagent-tools.selectorLabels" . | nindent 6 }}
 {{- end }}

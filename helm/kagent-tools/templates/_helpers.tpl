@@ -121,6 +121,45 @@ over it would brick an install the value was never about.
 {{- end -}}
 
 {{/*
+Prints "1" when a PDB budget value is set. null and "" mean unset; 0 and
+percentage strings are valid budgets and must be kept.
+*/}}
+{{- define "kagent-tools.pdb.isSet" -}}
+{{- if not (kindIs "invalid" .) -}}
+{{- if ne (toString .) "" -}}1{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Kubernetes rejects a PodDisruptionBudget that sets both minAvailable and
+maxUnavailable, and one that sets neither is meaningless, so both fail at
+template time. Runs whenever the PDB is enabled, even if the replica guard
+skips rendering, so misconfiguration surfaces before replicas are scaled up.
+*/}}
+{{- define "kagent-tools.pdb.validate" -}}
+{{- $pdb := .Values.podDisruptionBudget | default dict -}}
+{{- if $pdb.enabled -}}
+{{- $hasMinAvailable := include "kagent-tools.pdb.isSet" $pdb.minAvailable -}}
+{{- $hasMaxUnavailable := include "kagent-tools.pdb.isSet" $pdb.maxUnavailable -}}
+{{- if and $hasMinAvailable $hasMaxUnavailable -}}
+{{- fail "podDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive. Set exactly one (to use minAvailable, set podDisruptionBudget.maxUnavailable=null)." -}}
+{{- end -}}
+{{- if not (or $hasMinAvailable $hasMaxUnavailable) -}}
+{{- fail "podDisruptionBudget is enabled but neither minAvailable nor maxUnavailable is set. Set exactly one." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+A PodDisruptionBudget is only rendered for more than one replica: with a single
+replica it either protects nothing or blocks node drains entirely.
+*/}}
+{{- define "kagent-tools.pdb.shouldRender" -}}
+{{- $pdb := .Values.podDisruptionBudget | default dict -}}
+{{- if and $pdb.enabled (gt (int .Values.replicaCount) 1) -}}1{{- end -}}
+{{- end -}}
+
+{{/*
 Pull secrets for the pod: the chart's own list merged (union) with
 global.imagePullSecrets. Renders nothing when both are empty.
 */}}
