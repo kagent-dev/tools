@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -20,22 +21,50 @@ const (
 	SpanIDKey      contextKey = "span_id"
 )
 
-// HTTPMiddleware wraps an HTTP handler to propagate OpenTelemetry trace context
-// from incoming HTTP headers and to stash a few request headers plus the trace
-// and span IDs in the request context.
+// HTTPMiddleware wraps the MCP HTTP handler with a server span per request and
+// propagates the request's trace context to the tool-call spans.
 //
-// Note that the migrated tool handlers no longer read these context values: the
-// official SDK delivers headers on the request itself (see mcp.Header, which
-// reads req.Extra.Header), so ExtractHTTPHeaders and ExtractTraceInfo currently
-// have no non-test callers. They are kept because the values remain useful for
-// debugging and for callers that still pass the request context through.
+// The server span is started by otelhttp as a child of the incoming W3C
+// traceparent. The standalone SSE stream (GET) is not traced: it stays open for
+// the whole session, so its span would last for hours and parent nothing.
+//
+// The MCP SDK does not run tool handlers on the HTTP request's context: a
+// stateful session's handlers run on the context of the request that opened the
+// session (initialize). What does reach the handlers, per request, is the
+// request's header (CallToolRequest.Extra.Header). So the middleware writes the
+// server span's context into the traceparent header of a copy of the request,
+// and the tool-call span (see internal/mcp.ToolMiddleware) takes its parent from
+// there. No header value is recorded on any span.
+//
+// It also stashes a few request headers plus the trace and span IDs in the
+// request context. The migrated tool handlers no longer read these context
+// values: the official SDK delivers headers on the request itself (see
+// mcp.Header, which reads req.Extra.Header), so ExtractHTTPHeaders and
+// ExtractTraceInfo currently have no non-test callers. They are kept because the
+// values remain useful for debugging and for callers that still pass the
+// request context through.
 func HTTPMiddleware(next http.Handler) http.Handler {
+	return otelhttp.NewHandler(contextMiddleware(next), "mcp",
+		otelhttp.WithFilter(func(r *http.Request) bool {
+			return r.Method != http.MethodGet
+		}),
+	)
+}
+
+// contextMiddleware propagates the active trace context to the request header
+// and the request context. See HTTPMiddleware.
+func contextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-
-		// Extract OpenTelemetry context from HTTP headers
 		propagator := otel.GetTextMapPropagator()
-		ctx = propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
+
+		// otelhttp has already extracted the incoming trace context and started
+		// the server span. Extract here only for requests it did not trace, and
+		// never on top of an active span, which would replace the server span
+		// with its remote parent.
+		if !trace.SpanContextFromContext(ctx).IsValid() {
+			ctx = propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
+		}
 
 		// Store relevant HTTP headers in context for tool handlers
 		headers := make(map[string]string)
@@ -60,8 +89,14 @@ func HTTPMiddleware(next http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, SpanIDKey, span.SpanContext().SpanID().String())
 		}
 
+		// Clone deep-copies the header, so the caller's request is not modified.
+		r = r.Clone(ctx)
+		if span.SpanContext().IsValid() {
+			propagator.Inject(ctx, propagation.HeaderCarrier(r.Header))
+		}
+
 		// Call next handler with enhanced context
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r)
 	})
 }
 

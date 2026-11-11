@@ -193,7 +193,7 @@ func run(cmd *cobra.Command, args []string) {
 			runStdioServer(ctx, mcpSrv)
 		}()
 	} else {
-		sseServer := newStreamableHTTPHandler(mcpSrv, sessionIdleTTL)
+		mcpHandler := newMCPHTTPHandler(mcpSrv, sessionIdleTTL)
 
 		// Create a mux to handle different routes
 		mux := http.NewServeMux()
@@ -242,9 +242,7 @@ func run(cmd *cobra.Command, args []string) {
 		metrics.KagentToolsMCPServerInfo.WithLabelValues(Name, Version, GitCommit, BuildDate, serverMode).Set(1)
 
 		// Handle all other routes with the MCP server wrapped in telemetry middleware
-		mux.Handle("/", telemetry.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			sseServer.ServeHTTP(w, r)
-		})))
+		mux.Handle("/", mcpHandler)
 
 		httpServer = &http.Server{
 			Addr:    fmt.Sprintf(":%d", port),
@@ -312,6 +310,13 @@ func run(cmd *cobra.Command, args []string) {
 func writeResponse(w http.ResponseWriter, data []byte) error {
 	_, err := w.Write(data)
 	return err
+}
+
+// newMCPHTTPHandler builds the MCP HTTP handler: the streamable HTTP transport
+// wrapped in the telemetry middleware, which starts a server span per request
+// and hands its trace context to the tool-call spans.
+func newMCPHTTPHandler(mcpSrv *sdkmcp.Server, idleTTL time.Duration) http.Handler {
+	return telemetry.HTTPMiddleware(newStreamableHTTPHandler(mcpSrv, idleTTL))
 }
 
 // newStreamableHTTPHandler builds the stateful streamable HTTP transport.
