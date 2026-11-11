@@ -57,3 +57,49 @@ tests:
       - equal:
           path: metadata.annotations["custom-annotation"]
           value: pdb-annotation
+
+  - it: should render minAvailable of zero
+    template: pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 0
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 0
+      - notExists:
+          path: spec.maxUnavailable
+
+  - it: should render maxUnavailable of zero
+    template: pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 0
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 0
+      - notExists:
+          path: spec.minAvailable
+
+  - it: should fail when both minAvailable and maxUnavailable are set
+    template: pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+        maxUnavailable: 1
+    asserts:
+      - failedTemplate:
+          errorMessage: "podDisruptionBudget: set only one of minAvailable or maxUnavailable"
+
+  - it: should fail when neither minAvailable nor maxUnavailable is set
+    template: pdb.yaml
+    set:
+      podDisruptionBudget:
+        enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "podDisruptionBudget: one of minAvailable or maxUnavailable is required when enabled"

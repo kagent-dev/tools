@@ -95,6 +95,8 @@ securityContext: {}
   # runAsUser: 1000
 
 # PodDisruptionBudget configuration
+# Set exactly one of minAvailable or maxUnavailable when enabled.
+# With replicaCount: 1, minAvailable: 1 (or maxUnavailable: 0) blocks node drains.
 podDisruptionBudget:
   enabled: false
   # minAvailable: 1
