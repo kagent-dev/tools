@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/kagent-dev/tools/internal/redact"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -95,9 +96,13 @@ func StartSpan(ctx context.Context, operationName string, attrs ...attribute.Key
 	return ctx, span
 }
 
+// RecordError records err on span and marks the span failed. The recorded
+// exception message and the status description are redacted (redact.String),
+// so a credential that ends up in an error message does not reach the trace
+// backend.
 func RecordError(span trace.Span, err error, message string) {
-	span.RecordError(err)
-	span.SetStatus(codes.Error, message)
+	span.RecordError(redact.Error(err))
+	span.SetStatus(codes.Error, redact.String(message))
 }
 
 func RecordSuccess(span trace.Span, message string) {
