@@ -821,7 +821,7 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, request *sdkmcp.CallToolRequest, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, getVulnerabilityDetailsOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("get_vulnerability_details", k.initError)
-		return kubescapeErrResult(toolErr), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
+		return kubescapeErrResult(toolErr), getVulnerabilityDetailsOutput{}, nil
 	}
 
 	namespace := in.Namespace
@@ -832,10 +832,10 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 	cveID := in.CveID
 
 	if manifestName == "" {
-		return mcp.NewToolResultError("manifest_name parameter is required"), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
+		return mcp.NewToolResultError("manifest_name parameter is required"), getVulnerabilityDetailsOutput{}, nil
 	}
 	if cveID == "" {
-		return mcp.NewToolResultError("cve_id parameter is required"), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
+		return mcp.NewToolResultError("cve_id parameter is required"), getVulnerabilityDetailsOutput{}, nil
 	}
 
 	manifest, err := k.spdxClient.VulnerabilityManifests(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -843,7 +843,7 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 		toolErr := errors.NewKubescapeError("get_vulnerability_manifest", err).
 			WithContext("namespace", namespace).
 			WithContext("manifest_name", manifestName)
-		return kubescapeErrResult(toolErr), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
+		return kubescapeErrResult(toolErr), getVulnerabilityDetailsOutput{}, nil
 	}
 
 	// Find matching CVE entries
@@ -855,14 +855,14 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 	}
 
 	if len(matches) == 0 {
-		return mcp.NewToolResultError(fmt.Sprintf("CVE %s not found in manifest %s", cveID, manifestName)), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
+		return mcp.NewToolResultError(fmt.Sprintf("CVE %s not found in manifest %s", cveID, manifestName)), getVulnerabilityDetailsOutput{}, nil
 	}
 
 	// Preserve the array-shaped text response for existing consumers, while
 	// exposing an object-shaped structured result and output schema.
 	content, err := json.Marshal(matches)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), getVulnerabilityDetailsOutput{}, nil
 	}
 	return mcp.NewToolResultText(string(content)), getVulnerabilityDetailsOutput{Matches: matches}, nil
 }
