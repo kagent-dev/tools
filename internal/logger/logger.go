@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kagent-dev/tools/internal/redact"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -86,21 +87,10 @@ func WithContext(ctx context.Context) *slog.Logger {
 	return logger
 }
 
-// RedactArgsForLog returns a copy of args with sensitive values redacted for logging.
-// Any value immediately following "--token" is replaced with "<REDACTED>" so tokens are not logged.
+// RedactArgsForLog returns a copy of args with credential values redacted for
+// logging. See redact.Args for the flags and assignments that are covered.
 func RedactArgsForLog(args []string) []string {
-	if len(args) == 0 {
-		return nil
-	}
-	out := make([]string, len(args))
-	copy(out, args)
-	for i := 0; i < len(out)-1; i++ {
-		if out[i] == "--token" {
-			out[i+1] = "<REDACTED>"
-			i++ // skip the redacted value
-		}
-	}
-	return out
+	return redact.Args(args)
 }
 
 func LogExecCommand(ctx context.Context, logger *slog.Logger, command string, args []string, caller string) {
@@ -117,7 +107,7 @@ func LogExecCommandResult(ctx context.Context, logger *slog.Logger, command stri
 		logger.Error("command execution failed",
 			"command", command,
 			"args", redacted,
-			"error", err.Error(),
+			"error", redact.String(err.Error()),
 			"duration_seconds", duration,
 			"caller", caller,
 		)

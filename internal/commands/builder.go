@@ -10,6 +10,7 @@ import (
 	"github.com/kagent-dev/tools/internal/cmd"
 	"github.com/kagent-dev/tools/internal/errors"
 	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/kagent-dev/tools/internal/redact"
 	"github.com/kagent-dev/tools/internal/security"
 	"github.com/kagent-dev/tools/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
@@ -121,7 +122,11 @@ func (cb *CommandBuilder) WithKubeconfig(kubeconfig string) *CommandBuilder {
 	return cb
 }
 
-// WithToken sets the authentication token for kubectl commands
+// WithToken sets a bearer token to authenticate the command with. The token is
+// never put on the command line: Execute writes it to a per-call kubeconfig
+// (see newTokenKubeconfig) that replaces the configured one for that call and
+// is removed when the call returns. The command must accept --kubeconfig
+// (kubectl, helm, istioctl and cilium do).
 func (cb *CommandBuilder) WithToken(token string) *CommandBuilder {
 	if token != "" {
 		cb.token = token
@@ -227,12 +232,30 @@ func (cb *CommandBuilder) WithCacheKey(key string) *CommandBuilder {
 	return cb
 }
 
-// Build constructs the final command arguments
+// Build constructs the final command arguments. A token set with WithToken is
+// not part of them; Execute supplies it through a per-call kubeconfig.
 func (cb *CommandBuilder) Build() (string, []string, error) {
+	return cb.command, cb.buildArgs(cb.kubeconfig), nil
+}
+
+// buildArgs constructs the command arguments with the given kubeconfig path
+// (none when empty). The builder's flags are placed before the first "--"
+// argument: everything after it is passed to a remote or child command (for
+// example `kubectl exec pod -- cmd`), so a flag there would neither take
+// effect nor stay inside this process.
+func (cb *CommandBuilder) buildArgs(kubeconfig string) []string {
+	head, tail := cb.args, []string(nil)
+	for i, a := range cb.args {
+		if a == "--" {
+			head, tail = cb.args[:i], cb.args[i:]
+			break
+		}
+	}
+
 	args := make([]string, 0, len(cb.args)+20)
 
 	// Add main arguments
-	args = append(args, cb.args...)
+	args = append(args, head...)
 
 	// Add namespace if specified
 	if cb.namespace != "" {
@@ -245,13 +268,8 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 	}
 
 	// Add kubeconfig if specified
-	if cb.kubeconfig != "" {
-		args = append(args, "--kubeconfig", cb.kubeconfig)
-	}
-
-	// Add token if specified
-	if cb.token != "" {
-		args = append(args, "--token", cb.token)
+	if kubeconfig != "" {
+		args = append(args, "--kubeconfig", kubeconfig)
 	}
 
 	// Add output format
@@ -299,7 +317,7 @@ func (cb *CommandBuilder) Build() (string, []string, error) {
 		args = append(args, "--validate=false")
 	}
 
-	return cb.command, args, nil
+	return append(args, tail...)
 }
 
 // Execute runs the command
@@ -370,6 +388,12 @@ func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, 
 	if cacheKey == "" {
 		cacheKey = cache.CacheKey(append([]string{command}, args...)...)
 	}
+	if cb.token != "" {
+		// Results are per identity, also for a custom key. The key is logged
+		// and put on spans, so it carries a keyed fingerprint of the token,
+		// not the token.
+		cacheKey = cache.CacheKey(cacheKey, "token-fingerprint="+tokenFingerprint(cb.token))
+	}
 
 	log.Info("executing cached command",
 		"command", command,
@@ -422,22 +446,40 @@ func (cb *CommandBuilder) executeWithCache(ctx context.Context, command string, 
 	return result, nil
 }
 
-// executeCommand executes the actual command
+// executeCommand executes the actual command. With a token, args (built for
+// the configured kubeconfig) are rebuilt to point at a per-call kubeconfig that
+// carries the token; it is removed when executeCommand returns, whether the
+// command succeeded, failed or was cancelled.
 func (cb *CommandBuilder) executeCommand(ctx context.Context, command string, args []string) (string, error) {
+	// Errors describe the command as built for the configured kubeconfig; the
+	// per-call kubeconfig's path is meaningless once it has been removed.
+	displayArgs := args
+	if cb.token != "" {
+		kc, err := newTokenKubeconfig(cb.kubeconfig, cb.context, cb.token)
+		if err != nil {
+			return "", errors.NewCommandError(command, err)
+		}
+		defer kc.cleanup()
+		args = cb.buildArgs(kc.path)
+	}
+
 	executor := cmd.GetShellExecutor(ctx)
 	output, err := executor.Exec(ctx, command, args...)
 	if err != nil {
+		// The operation is shown to the MCP client and recorded on spans, so
+		// any credential in the arguments is redacted.
+		operation := strings.Join(redact.Args(displayArgs), " ")
 		// Create appropriate error based on command type
 		var toolError *errors.ToolError
 		switch command {
 		case "kubectl":
-			toolError = errors.NewKubernetesError(strings.Join(args, " "), err)
+			toolError = errors.NewKubernetesError(operation, err)
 		case "helm":
-			toolError = errors.NewHelmError(strings.Join(args, " "), err)
+			toolError = errors.NewHelmError(operation, err)
 		case "istioctl":
-			toolError = errors.NewIstioError(strings.Join(args, " "), err)
+			toolError = errors.NewIstioError(operation, err)
 		case "cilium":
-			toolError = errors.NewCiliumError(strings.Join(args, " "), err)
+			toolError = errors.NewCiliumError(operation, err)
 		default:
 			toolError = errors.NewCommandError(command, err)
 		}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kagent-dev/tools/internal/metrics"
+	"github.com/kagent-dev/tools/internal/redact"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -183,11 +184,14 @@ func ToolMiddleware() sdk.Middleware {
 				// and the traces disagree and the span stays neither Ok nor
 				// Error.
 				switch {
+				// Error text is redacted before it is put on the span: it can
+				// quote a command line, and the trace backend must never
+				// receive a credential.
 				case err != nil:
-					span.RecordError(err)
-					span.SetStatus(codes.Error, err.Error())
+					span.RecordError(redact.Error(err))
+					span.SetStatus(codes.Error, redact.String(err.Error()))
 				case toolErrMessage != "":
-					span.SetStatus(codes.Error, toolErrMessage)
+					span.SetStatus(codes.Error, redact.String(toolErrMessage))
 				default:
 					span.SetStatus(codes.Error, "tool returned IsError")
 				}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -270,5 +271,56 @@ func TestToolMiddleware_MarksSpanOkOnSuccess(t *testing.T) {
 	}
 	if got := spans[0].Status.Code; got != codes.Ok {
 		t.Errorf("span status: expected Ok, got %v", got)
+	}
+}
+
+// TestToolMiddleware_RedactsCredentialsOnSpan guards the trace backend: a tool
+// error that quotes a credential (a command line with --token, a bearer
+// header) must not put it in the span status or the recorded exception.
+func TestToolMiddleware_RedactsCredentialsOnSpan(t *testing.T) {
+	const secret = "eyJhbGciOiJSUzI1NiJ9.span-secret.sig"
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prev)
+		_ = tp.Shutdown(context.Background())
+	})
+
+	cases := map[string]sdk.MethodHandler{
+		"tool-level error": func(_ context.Context, _ string, _ sdk.Request) (sdk.Result, error) {
+			return NewToolResultError("[Kubernetes] get pods --token " + secret + " failed: exit status 1"), nil
+		},
+		"go error": func(_ context.Context, _ string, _ sdk.Request) (sdk.Result, error) {
+			return nil, fmt.Errorf("upstream said: Authorization: Bearer %s rejected", secret)
+		},
+	}
+	for name, next := range cases {
+		t.Run(name, func(t *testing.T) {
+			exp.Reset()
+			_, _ = invokeMiddleware("leaky_tool", "test", next)
+			spans := exp.GetSpans()
+			if len(spans) != 1 {
+				t.Fatalf("expected exactly 1 span, got %d", len(spans))
+			}
+			s := spans[0]
+			if s.Status.Code != codes.Error {
+				t.Errorf("span status: expected Error, got %v", s.Status.Code)
+			}
+			if strings.Contains(s.Status.Description, secret) {
+				t.Errorf("span status leaks the credential: %q", s.Status.Description)
+			}
+			if !strings.Contains(s.Status.Description, "<REDACTED>") {
+				t.Errorf("span status should show the redaction, got %q", s.Status.Description)
+			}
+			for _, ev := range s.Events {
+				for _, a := range ev.Attributes {
+					if strings.Contains(a.Value.Emit(), secret) {
+						t.Errorf("span event %s attribute %s leaks the credential", ev.Name, a.Key)
+					}
+				}
+			}
+		})
 	}
 }
