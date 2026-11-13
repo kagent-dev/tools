@@ -1,0 +1,151 @@
+suite: test pod disruption budget
+templates:
+  - pdb.yaml
+tests:
+  - it: should not render pdb by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render default maxUnavailable of 1 when enabled with multiple replicas
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - notExists:
+          path: spec.minAvailable
+      - notExists:
+          path: spec.unhealthyPodEvictionPolicy
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: RELEASE-NAME
+            app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: should not render pdb with a single replica
+    set:
+      replicaCount: 1
+      podDisruptionBudget:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should still validate pdb settings with a single replica
+    set:
+      replicaCount: 1
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+    asserts:
+      - failedTemplate:
+          errorMessage: "podDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive. Set exactly one (to use minAvailable, set podDisruptionBudget.maxUnavailable=null)."
+
+  - it: should render minAvailable when maxUnavailable is nulled
+    set:
+      replicaCount: 3
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: "50%"
+        maxUnavailable: null
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: "50%"
+      - notExists:
+          path: spec.maxUnavailable
+
+  - it: should render minAvailable of zero
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 0
+        maxUnavailable: null
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 0
+      - notExists:
+          path: spec.maxUnavailable
+
+  - it: should render maxUnavailable of zero
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 0
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 0
+      - notExists:
+          path: spec.minAvailable
+
+  - it: should treat empty string budgets as unset
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: ""
+        maxUnavailable: "25%"
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: "25%"
+      - notExists:
+          path: spec.minAvailable
+
+  - it: should render eviction policy, labels and annotations
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        unhealthyPodEvictionPolicy: AlwaysAllow
+        labels:
+          custom-label: pdb-label
+        annotations:
+          custom-annotation: pdb-annotation
+    asserts:
+      - equal:
+          path: spec.unhealthyPodEvictionPolicy
+          value: AlwaysAllow
+      - equal:
+          path: metadata.labels["custom-label"]
+          value: pdb-label
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: RELEASE-NAME
+      - equal:
+          path: metadata.annotations["custom-annotation"]
+          value: pdb-annotation
+
+  - it: should fail when both minAvailable and maxUnavailable are set
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+        maxUnavailable: 1
+    asserts:
+      - failedTemplate:
+          errorMessage: "podDisruptionBudget: minAvailable and maxUnavailable are mutually exclusive. Set exactly one (to use minAvailable, set podDisruptionBudget.maxUnavailable=null)."
+
+  - it: should fail when neither minAvailable nor maxUnavailable is set
+    set:
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: null
+    asserts:
+      - failedTemplate:
+          errorMessage: "podDisruptionBudget is enabled but neither minAvailable nor maxUnavailable is set. Set exactly one."
