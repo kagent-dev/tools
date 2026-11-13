@@ -173,3 +173,58 @@ tests:
           value:
             app.kubernetes.io/name: RELEASE-NAME
             app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: should disable the OpenTelemetry SDK when tracing is off
+    template: deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SDK_DISABLED
+            value: "true"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://host.docker.internal:4317
+          any: true
+
+  - it: should export traces to the configured endpoint when tracing is on
+    template: deployment.yaml
+    set:
+      otel:
+        tracing:
+          enabled: true
+          exporter:
+            otlp:
+              endpoint: http://otel-collector.observability:4317
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SDK_DISABLED
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://otel-collector.observability:4317
+
+  - it: should only set env vars the server reads
+    template: deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TRACING_ENABLED
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PROMETHEUS_PASSWORD
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GRAFANA_API_KEY
+          any: true

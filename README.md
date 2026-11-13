@@ -226,7 +226,6 @@ Tools respect existing authentication and configuration:
 - Kubernetes tools use the default kubeconfig or `KUBECONFIG` environment variable
 - Helm tools use Helm's default configuration
 - Prometheus tools accept custom Prometheus server URLs
-- Grafana tools support API key and basic authentication
 
 ### Command Execution
 The tools use a common `runCommand` function that:
@@ -263,8 +262,6 @@ This Go implementation provides feature parity with the original Python tools wh
 Tools can be configured through environment variables:
 - `KUBECONFIG`: Kubernetes configuration file path
 - `PROMETHEUS_URL`: Default Prometheus server URL
-- `GRAFANA_URL`: Default Grafana server URL
-- `GRAFANA_API_KEY`: Default Grafana API key
 
 ## Observability
 
