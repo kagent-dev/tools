@@ -148,3 +148,15 @@ otel:
         endpoint: http://host.docker.internal:4317
         timeout: 15
         insecure: true
+
+# Additional volumes and volumeMounts on the tools container. Useful for mounting a
+# kubeconfig (e.g. to point kubectl at an authenticating proxy for per-user RBAC),
+# extra CAs, etc. Standard Kubernetes volume / volumeMount objects.
+extraVolumes: []
+# - name: my-kubeconfig
+#   configMap:
+#     name: my-kubeconfig
+extraVolumeMounts: []
+# - name: my-kubeconfig
+#   mountPath: /etc/kubeconfig
+#   readOnly: true

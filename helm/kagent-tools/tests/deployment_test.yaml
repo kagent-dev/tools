@@ -173,3 +173,42 @@ tests:
           value:
             app.kubernetes.io/name: RELEASE-NAME
             app.kubernetes.io/instance: RELEASE-NAME
+
+  - it: should only mount the tmp volume by default
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.volumes
+          count: 1
+      - lengthEqual:
+          path: spec.template.spec.containers[0].volumeMounts
+          count: 1
+
+  - it: should append extraVolumes and extraVolumeMounts after tmp
+    set:
+      extraVolumes:
+        - name: kubeconfig
+          configMap:
+            name: tools-kubeconfig
+      extraVolumeMounts:
+        - name: kubeconfig
+          mountPath: /etc/kubeconfig
+          readOnly: true
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.volumes[1]
+          value:
+            name: kubeconfig
+            configMap:
+              name: tools-kubeconfig
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].name
+          value: tmp
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1]
+          value:
+            name: kubeconfig
+            mountPath: /etc/kubeconfig
+            readOnly: true
