@@ -93,17 +93,26 @@ func handleHelmListReleases(ctx context.Context, request *sdkmcp.CallToolRequest
 	return mcp.TextResult(result)
 }
 
+// defaultUpgradeTimeout is the --timeout passed to helm upgrade when the
+// caller does not set one
+const defaultUpgradeTimeout = 30 * time.Second
+
 func runHelmCommand(ctx context.Context, args []string) (string, error) {
+	return runHelmCommandWithTimeout(ctx, args, defaultUpgradeTimeout)
+}
+
+// runHelmCommandWithTimeout runs helm, passing upgradeTimeout as --timeout to
+// upgrade commands.
+func runHelmCommandWithTimeout(ctx context.Context, args []string, upgradeTimeout time.Duration) (string, error) {
 	kubeconfigPath := utils.GetKubeconfig()
 
-	// Add timeout for helm upgrade commands
 	cmdBuilder := commands.NewCommandBuilder("helm").
 		WithArgs(args...).
 		WithKubeconfig(kubeconfigPath)
 
 	// Only add timeout for upgrade commands
 	if len(args) > 0 && args[0] == "upgrade" {
-		cmdBuilder = cmdBuilder.WithTimeout(30 * time.Second)
+		cmdBuilder = cmdBuilder.WithTimeout(upgradeTimeout)
 	}
 
 	result, err := cmdBuilder.Execute(ctx)
@@ -162,6 +171,7 @@ type helmUpgradeReleaseInput struct {
 	Install   bool   `json:"install" jsonschema:"Run an install if the release is not present"`
 	DryRun    bool   `json:"dry_run" jsonschema:"Simulate an upgrade"`
 	Wait      bool   `json:"wait" jsonschema:"Wait for the upgrade to complete"`
+	Timeout   string `json:"timeout,omitempty" jsonschema:"How long helm waits for the upgrade, its hooks and, with wait, the resources to become ready (Go duration, e.g. '5m'). Defaults to 30s"`
 }
 
 // Helm upgrade release
@@ -187,6 +197,15 @@ func handleHelmUpgradeRelease(ctx context.Context, request *sdkmcp.CallToolReque
 		if err := security.ValidateFilePath(in.Values); err != nil {
 			return mcp.TextError(fmt.Sprintf("Invalid values file path: %v", err))
 		}
+	}
+
+	timeout := defaultUpgradeTimeout
+	if in.Timeout != "" {
+		parsed, err := time.ParseDuration(in.Timeout)
+		if err != nil || parsed <= 0 {
+			return mcp.TextError(fmt.Sprintf("Invalid timeout %q: must be a positive duration such as 5m", in.Timeout))
+		}
+		timeout = parsed
 	}
 
 	args := []string{"upgrade", in.Name, in.Chart}
@@ -223,7 +242,7 @@ func handleHelmUpgradeRelease(ctx context.Context, request *sdkmcp.CallToolReque
 		args = append(args, "--wait")
 	}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommandWithTimeout(ctx, args, timeout)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("Helm upgrade command failed: %v", err))
 	}
