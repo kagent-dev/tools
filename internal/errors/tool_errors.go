@@ -6,6 +6,7 @@ import (
 	"time"
 
 	mcp "github.com/kagent-dev/tools/internal/mcp"
+	"github.com/kagent-dev/tools/internal/redact"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -23,12 +24,15 @@ type ToolError struct {
 	Context      map[string]string `json:"context,omitempty"`
 }
 
-// Error implements the error interface
+// Error implements the error interface. The message is redacted
+// (redact.String) because callers return it to MCP clients and record it on
+// spans; a credential in the operation or cause must not leave the process.
 func (e *ToolError) Error() string {
-	return fmt.Sprintf("[%s] %s failed: %v", e.Component, e.Operation, e.Cause)
+	return redact.String(fmt.Sprintf("[%s] %s failed: %v", e.Component, e.Operation, e.Cause))
 }
 
-// ToMCPResult converts the error to an MCP result with rich context
+// ToMCPResult converts the error to an MCP result with rich context. Like
+// Error, the text is redacted before it is returned.
 func (e *ToolError) ToMCPResult() *sdkmcp.CallToolResult {
 	var message strings.Builder
 
@@ -68,7 +72,7 @@ func (e *ToolError) ToMCPResult() *sdkmcp.CallToolResult {
 		}
 	}
 
-	return mcp.NewToolResultError(message.String())
+	return mcp.NewToolResultError(redact.String(message.String()))
 }
 
 // NewToolError creates a new structured tool error

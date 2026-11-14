@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kagent-dev/tools/internal/logger"
+	"github.com/kagent-dev/tools/internal/redact"
 )
 
 // ShellExecutor defines the interface for executing shell commands
@@ -36,8 +37,8 @@ func (e *DefaultShellExecutor) Exec(ctx context.Context, command string, args ..
 		log.Error("command execution failed",
 			"command", command,
 			"args", redactedArgs,
-			"error", err,
-			"output", string(output),
+			"error", redact.String(err.Error()),
+			"output", redact.String(string(output)),
 			"duration", duration.Seconds(),
 		)
 	} else {

@@ -4,13 +4,19 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
+	"github.com/kagent-dev/tools/internal/redact"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // UseStderrEnv names the environment variable that routes console output to
 // stderr, keeping stdout free for the MCP stdio protocol.
 const UseStderrEnv = "KAGENT_USE_STDERR"
+
+// LogLevelEnv names the environment variable that sets the minimum log level
+// (debug, info, warn or error). Unset or invalid values fall back to info.
+const LogLevelEnv = "LOG_LEVEL"
 
 var globalLogger *slog.Logger
 
@@ -19,12 +25,26 @@ func UseStderr() bool {
 	return os.Getenv(UseStderrEnv) == "true"
 }
 
+// levelFromEnv returns the level named by LOG_LEVEL, or info when it is unset
+// or not a valid slog level.
+func levelFromEnv() slog.Level {
+	value := strings.TrimSpace(os.Getenv(LogLevelEnv))
+	if value == "" {
+		return slog.LevelInfo
+	}
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(value)); err != nil {
+		return slog.LevelInfo
+	}
+	return level
+}
+
 // Init initializes the global logger
 // If useStderr is true, logs will be written to stderr (for stdio mode)
 // If useStderr is false, logs will be written to stdout (for HTTP mode)
 func Init(useStderr bool) {
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: levelFromEnv(),
 	}
 
 	// Choose output destination based on mode
@@ -67,21 +87,10 @@ func WithContext(ctx context.Context) *slog.Logger {
 	return logger
 }
 
-// RedactArgsForLog returns a copy of args with sensitive values redacted for logging.
-// Any value immediately following "--token" is replaced with "<REDACTED>" so tokens are not logged.
+// RedactArgsForLog returns a copy of args with credential values redacted for
+// logging. See redact.Args for the flags and assignments that are covered.
 func RedactArgsForLog(args []string) []string {
-	if len(args) == 0 {
-		return nil
-	}
-	out := make([]string, len(args))
-	copy(out, args)
-	for i := 0; i < len(out)-1; i++ {
-		if out[i] == "--token" {
-			out[i+1] = "<REDACTED>"
-			i++ // skip the redacted value
-		}
-	}
-	return out
+	return redact.Args(args)
 }
 
 func LogExecCommand(ctx context.Context, logger *slog.Logger, command string, args []string, caller string) {
@@ -98,7 +107,7 @@ func LogExecCommandResult(ctx context.Context, logger *slog.Logger, command stri
 		logger.Error("command execution failed",
 			"command", command,
 			"args", redacted,
-			"error", err.Error(),
+			"error", redact.String(err.Error()),
 			"duration_seconds", duration,
 			"caller", caller,
 		)

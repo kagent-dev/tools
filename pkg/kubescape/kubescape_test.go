@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
+
+	toolmcp "github.com/kagent-dev/tools/internal/mcp"
 
 	"github.com/kubescape/storage/pkg/apis/softwarecomposition/v1beta1"
 	kubescapefake "github.com/kubescape/storage/pkg/generated/clientset/versioned/fake"
@@ -559,19 +562,19 @@ func TestHandleGetVulnerabilityDetails_Success(t *testing.T) {
 
 	tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
 
-	// The handler returns the matches as its typed Out and leaves the tool result
-	// for the SDK to synthesise. For an array Out the SDK serialises the value
-	// into a TextContent block itself, so setting Content in the handler as well
-	// would emit the list twice.
-	result, matches, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
+	result, output, err := tool.HandleGetVulnerabilityDetails(context.Background(), getVulnerabilityDetailsInput{
 		ManifestName: "test-manifest",
 		CveID:        "CVE-2021-1234",
 	})
 	require.NoError(t, err)
-	assert.Nil(t, result, "handler should leave result to the SDK for an array Out")
+	require.NotNil(t, result)
+	require.False(t, result.IsError)
 
-	require.Len(t, matches, 1)
-	assert.Equal(t, "CVE-2021-1234", matches[0].Vulnerability.ID)
+	require.Len(t, output.Matches, 1)
+	assert.Equal(t, "CVE-2021-1234", output.Matches[0].Vulnerability.ID)
+	var textMatches []v1beta1.Match
+	require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &textMatches))
+	assert.Equal(t, output.Matches, textMatches)
 }
 
 func TestHandleGetVulnerabilityDetails_MissingManifestName(t *testing.T) {
@@ -1179,4 +1182,103 @@ func TestHandleListVulnerabilityManifests_OmitsVulnerabilityCount(t *testing.T) 
 
 	// The useful metadata is still there.
 	assert.Contains(t, getResultText(result), "nginx:1.14.0")
+}
+
+// TestGetVulnerabilityDetailsMCP exercises SDK schema inference and actual
+// tools/call serialization, rather than only calling the handler directly.
+func TestGetVulnerabilityDetailsMCP(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		input     getVulnerabilityDetailsInput
+		initError bool
+		wantError string
+	}{
+		{
+			name:  "success",
+			input: getVulnerabilityDetailsInput{ManifestName: "test-manifest", CveID: "CVE-2021-1234"},
+		},
+		{
+			name:      "missing manifest name",
+			input:     getVulnerabilityDetailsInput{CveID: "CVE-2021-1234"},
+			wantError: "manifest_name parameter is required",
+		},
+		{
+			name:      "missing CVE id",
+			input:     getVulnerabilityDetailsInput{ManifestName: "test-manifest"},
+			wantError: "cve_id parameter is required",
+		},
+		{
+			name:      "CVE not found",
+			input:     getVulnerabilityDetailsInput{ManifestName: "test-manifest", CveID: "CVE-2021-9999"},
+			wantError: "CVE CVE-2021-9999 not found",
+		},
+		{
+			name:      "manifest not found",
+			input:     getVulnerabilityDetailsInput{ManifestName: "missing-manifest", CveID: "CVE-2021-1234"},
+			wantError: "not found",
+		},
+		{
+			name:      "initialization error",
+			input:     getVulnerabilityDetailsInput{ManifestName: "test-manifest", CveID: "CVE-2021-1234"},
+			initError: true,
+			wantError: "test initialization failure",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			match := v1beta1.Match{
+				Vulnerability: v1beta1.Vulnerability{
+					VulnerabilityMetadata: v1beta1.VulnerabilityMetadata{ID: "CVE-2021-1234"},
+				},
+			}
+			spdxClient := kubescapefake.NewClientset(&v1beta1.VulnerabilityManifest{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-manifest", Namespace: defaultKubescapeNamespace},
+				Spec: v1beta1.VulnerabilityManifestSpec{
+					Payload: v1beta1.GrypeDocument{Matches: []v1beta1.Match{match}},
+				},
+			})
+			tool := NewKubescapeToolWithClients(nil, nil, spdxClient.SpdxV1beta1())
+			if testCase.initError {
+				tool = NewKubescapeToolWithError(errors.New("test initialization failure"))
+			}
+
+			server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "kubescape", Version: "test"}, nil)
+			toolmcp.AddTool(server, "kubescape", &sdkmcp.Tool{
+				Name: "kubescape_get_vulnerability_details",
+			}, tool.handleGetVulnerabilityDetails)
+			serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+			go func() { _ = server.Run(ctx, serverTransport) }()
+
+			client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test", Version: "test"}, nil)
+			session, err := client.Connect(ctx, clientTransport, nil)
+			require.NoError(t, err)
+			defer func() { _ = session.Close() }()
+
+			result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+				Name:      "kubescape_get_vulnerability_details",
+				Arguments: testCase.input,
+			})
+			require.NoError(t, err, "SDK must accept the typed response, including tool errors")
+			require.NotNil(t, result)
+			require.Len(t, result.Content, 1, "text content must not be duplicated")
+			if testCase.wantError != "" {
+				require.True(t, result.IsError)
+				require.Contains(t, getResultText(result), testCase.wantError)
+				return
+			}
+			require.False(t, result.IsError)
+
+			structured, err := json.Marshal(result.StructuredContent)
+			require.NoError(t, err)
+			var output getVulnerabilityDetailsOutput
+			require.NoError(t, json.Unmarshal(structured, &output))
+			require.Equal(t, []v1beta1.Match{match}, output.Matches)
+
+			var textMatches []v1beta1.Match
+			require.NoError(t, json.Unmarshal([]byte(getResultText(result)), &textMatches))
+			require.Equal(t, output.Matches, textMatches)
+		})
+	}
 }

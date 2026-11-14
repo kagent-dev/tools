@@ -191,6 +191,12 @@ type listVulnerabilityManifestsOutput struct {
 	TotalCount             int                            `json:"total_count"`
 }
 
+// getVulnerabilityDetailsOutput keeps the MCP output schema rooted at an
+// object, as required by clients implementing the MCP 2025-06-18 Tool schema.
+type getVulnerabilityDetailsOutput struct {
+	Matches []v1beta1.Match `json:"matches"`
+}
+
 type severitySummary struct {
 	Critical int `json:"Critical"`
 	High     int `json:"High"`
@@ -812,10 +818,10 @@ func (k *KubescapeTool) handleListVulnerabilitiesInManifest(ctx context.Context,
 }
 
 // handleGetVulnerabilityDetails gets detailed info about a specific CVE in a manifest
-func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, request *sdkmcp.CallToolRequest, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, []v1beta1.Match, error) {
+func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, request *sdkmcp.CallToolRequest, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, getVulnerabilityDetailsOutput, error) {
 	if k.initError != nil {
 		toolErr := errors.NewKubescapeError("get_vulnerability_details", k.initError)
-		return kubescapeErrResult(toolErr), nil, nil
+		return kubescapeErrResult(toolErr), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
 	}
 
 	namespace := in.Namespace
@@ -826,10 +832,10 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 	cveID := in.CveID
 
 	if manifestName == "" {
-		return mcp.NewToolResultError("manifest_name parameter is required"), nil, nil
+		return mcp.NewToolResultError("manifest_name parameter is required"), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
 	}
 	if cveID == "" {
-		return mcp.NewToolResultError("cve_id parameter is required"), nil, nil
+		return mcp.NewToolResultError("cve_id parameter is required"), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
 	}
 
 	manifest, err := k.spdxClient.VulnerabilityManifests(namespace).Get(ctx, manifestName, metav1.GetOptions{})
@@ -837,7 +843,7 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 		toolErr := errors.NewKubescapeError("get_vulnerability_manifest", err).
 			WithContext("namespace", namespace).
 			WithContext("manifest_name", manifestName)
-		return kubescapeErrResult(toolErr), nil, nil
+		return kubescapeErrResult(toolErr), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
 	}
 
 	// Find matching CVE entries
@@ -849,14 +855,16 @@ func (k *KubescapeTool) handleGetVulnerabilityDetails(ctx context.Context, reque
 	}
 
 	if len(matches) == 0 {
-		return mcp.NewToolResultError(fmt.Sprintf("CVE %s not found in manifest %s", cveID, manifestName)), nil, nil
+		return mcp.NewToolResultError(fmt.Sprintf("CVE %s not found in manifest %s", cveID, manifestName)), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
 	}
 
-	// Return the matches as the typed Out and leave Content unset. For an array
-	// (non-object) output the SDK serialises the value into a TextContent block
-	// itself; setting Content here as well would emit the same list twice for
-	// clients that read Content.
-	return nil, matches, nil
+	// Preserve the array-shaped text response for existing consumers, while
+	// exposing an object-shaped structured result and output schema.
+	content, err := json.Marshal(matches)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), getVulnerabilityDetailsOutput{Matches: []v1beta1.Match{}}, nil
+	}
+	return mcp.NewToolResultText(string(content)), getVulnerabilityDetailsOutput{Matches: matches}, nil
 }
 
 // handleListConfigurationScans lists configuration security scan results
@@ -1333,7 +1341,7 @@ type KubescapeToolInterface interface {
 	HandleCheckHealth(ctx context.Context, in checkHealthInput) (*sdkmcp.CallToolResult, HealthCheckResult, error)
 	HandleListVulnerabilityManifests(ctx context.Context, in listVulnerabilityManifestsInput) (*sdkmcp.CallToolResult, listVulnerabilityManifestsOutput, error)
 	HandleListVulnerabilitiesInManifest(ctx context.Context, in listVulnerabilitiesInManifestInput) (*sdkmcp.CallToolResult, listVulnerabilitiesInManifestOutput, error)
-	HandleGetVulnerabilityDetails(ctx context.Context, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, []v1beta1.Match, error)
+	HandleGetVulnerabilityDetails(ctx context.Context, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, getVulnerabilityDetailsOutput, error)
 	HandleListConfigurationScans(ctx context.Context, in listConfigurationScansInput) (*sdkmcp.CallToolResult, listConfigurationScansOutput, error)
 	HandleGetConfigurationScan(ctx context.Context, in getConfigurationScanInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error)
 	HandleListApplicationProfiles(ctx context.Context, in listApplicationProfilesInput) (*sdkmcp.CallToolResult, listApplicationProfilesOutput, error)
@@ -1358,7 +1366,7 @@ func (k *KubescapeTool) HandleListVulnerabilitiesInManifest(ctx context.Context,
 	return k.handleListVulnerabilitiesInManifest(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 
-func (k *KubescapeTool) HandleGetVulnerabilityDetails(ctx context.Context, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, []v1beta1.Match, error) {
+func (k *KubescapeTool) HandleGetVulnerabilityDetails(ctx context.Context, in getVulnerabilityDetailsInput) (*sdkmcp.CallToolResult, getVulnerabilityDetailsOutput, error) {
 	return k.handleGetVulnerabilityDetails(ctx, &sdkmcp.CallToolRequest{}, in)
 }
 

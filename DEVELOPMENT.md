@@ -300,7 +300,7 @@ The application respects these environment variables:
 - `PROMETHEUS_URL` - Prometheus server URL
 - `GRAFANA_URL` - Grafana server URL  
 - `GRAFANA_API_KEY` - Grafana API authentication key
-- `LOG_LEVEL` - Logging level (debug, info, warn, error)
+- `LOG_LEVEL` - Logging level (debug, info, warn, error); unset or invalid values fall back to info
 
 ### Configuration Files
 
