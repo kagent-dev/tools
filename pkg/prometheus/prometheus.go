@@ -350,8 +350,10 @@ func RegisterTools(s *sdkmcp.Server, readOnly bool) {
 		Description: "Get all Prometheus targets and their status",
 	}, handlePrometheusTargetsQueryTool)
 
-	mcp.AddTool(s, "prometheus", &sdkmcp.Tool{
-		Name:        "prometheus_promql_tool",
-		Description: "Generate a PromQL query",
-	}, handlePromql)
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		mcp.AddTool(s, "prometheus", &sdkmcp.Tool{
+			Name:        "prometheus_promql_tool",
+			Description: "Generate a PromQL query",
+		}, handlePromql)
+	}
 }

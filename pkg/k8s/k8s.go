@@ -920,10 +920,12 @@ func RegisterTools(s *sdkmcp.Server, llm llms.Model, kubeconfig string, readOnly
 		Description: "Wait for a condition on Kubernetes resources (kubectl wait). Blocks until the condition is met or the timeout elapses.",
 	}, k8sTool.handleKubectlWait)
 
-	mcp.AddTool(s, "k8s", &sdkmcp.Tool{
-		Name:        "k8s_generate_resource",
-		Description: fmt.Sprintf("Generate a Kubernetes resource YAML from a description. Supported resource_type values: %s", strings.Join(slices.Collect(resourceTypes), ", ")),
-	}, k8sTool.handleGenerateResource)
+	if llm != nil {
+		mcp.AddTool(s, "k8s", &sdkmcp.Tool{
+			Name:        "k8s_generate_resource",
+			Description: fmt.Sprintf("Generate a Kubernetes resource YAML from a description. Supported resource_type values: %s", strings.Join(slices.Collect(resourceTypes), ", ")),
+		}, k8sTool.handleGenerateResource)
+	}
 
 	// Write tools - only registered when write operations are enabled
 	if !readOnly {

@@ -70,3 +70,24 @@ func TestEveryToolHasValidOutputSchema(t *testing.T) {
 	}
 	require.NotEmpty(t, checked, "expected the server to advertise tools")
 }
+
+func TestRegisterMCPWithOptionalLLMConfiguration(t *testing.T) {
+	for _, apiKey := range []string{"", "test-key"} {
+		name := "without OpenAI key"
+		if apiKey != "" {
+			name = "with OpenAI key"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("OPENAI_API_KEY", apiKey)
+			tools := registeredTools(t)
+			require.Contains(t, tools, "k8s_get_resources")
+			require.Contains(t, tools, "prometheus_query_tool")
+			require.NotContains(t, tools, "k8s_generate_resource", "the CLI does not configure a Kubernetes LLM")
+			if apiKey == "" {
+				require.NotContains(t, tools, "prometheus_promql_tool")
+			} else {
+				require.Contains(t, tools, "prometheus_promql_tool")
+			}
+		})
+	}
+}

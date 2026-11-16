@@ -4,8 +4,11 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -13,14 +16,65 @@ import (
 )
 
 func TestRegisterTools(t *testing.T) {
-	t.Run("read-write", func(t *testing.T) {
-		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
-		RegisterTools(s, false)
-	})
-	t.Run("read-only", func(t *testing.T) {
-		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
-		RegisterTools(s, true)
-	})
+	for _, testCase := range []struct {
+		name   string
+		apiKey *string
+	}{
+		{name: "unset key"},
+		{name: "empty key", apiKey: new("")},
+		{name: "configured key", apiKey: new("test-key")},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("OPENAI_API_KEY", "")
+			if testCase.apiKey == nil {
+				require.NoError(t, os.Unsetenv("OPENAI_API_KEY"))
+			} else {
+				t.Setenv("OPENAI_API_KEY", *testCase.apiKey)
+			}
+			modelServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				assert.Equal(t, "/v1/chat/completions", request.URL.Path)
+				assert.Equal(t, "Bearer test-key", request.Header.Get("Authorization"))
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(writer, `{"choices":[{"message":{"role":"assistant","content":"up"},"finish_reason":"stop"}]}`)
+			}))
+			defer modelServer.Close()
+			t.Setenv("OPENAI_BASE_URL", modelServer.URL+"/v1")
+
+			for _, readOnly := range []bool{false, true} {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "test"}, nil)
+				RegisterTools(server, readOnly)
+				serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+				go func() { _ = server.Run(ctx, serverTransport) }()
+				client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test-client", Version: "test"}, nil)
+				session, err := client.Connect(ctx, clientTransport, nil)
+				require.NoError(t, err)
+				defer func() { _ = session.Close() }()
+				var toolNames []string
+				for tool, err := range session.Tools(ctx, nil) {
+					require.NoError(t, err)
+					toolNames = append(toolNames, tool.Name)
+				}
+				expectedTools := []string{"prometheus_query_tool", "prometheus_query_range_tool", "prometheus_label_names_tool", "prometheus_targets_tool"}
+				configured := testCase.apiKey != nil && *testCase.apiKey != ""
+				if configured {
+					expectedTools = append(expectedTools, "prometheus_promql_tool")
+				}
+				assert.ElementsMatch(t, expectedTools, toolNames)
+				result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+					Name: "prometheus_promql_tool", Arguments: promqlInput{QueryDescription: "target availability"},
+				})
+				if !configured {
+					require.Error(t, err, "unconfigured tool must not be callable")
+					continue
+				}
+				require.NoError(t, err)
+				require.False(t, result.IsError, getResultText(result))
+				assert.Equal(t, "up", getResultText(result))
+			}
+		})
+	}
 }
 
 func TestPrometheusInputValidation(t *testing.T) {

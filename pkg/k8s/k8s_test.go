@@ -3,7 +3,9 @@ package k8s
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/kagent-dev/tools/internal/cmd"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -13,14 +15,60 @@ import (
 )
 
 func TestRegisterTools(t *testing.T) {
-	t.Run("read-write", func(t *testing.T) {
-		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
-		RegisterTools(s, nil, "", false)
-	})
-	t.Run("read-only", func(t *testing.T) {
-		s := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
-		RegisterTools(s, nil, "/tmp/kubeconfig", true)
-	})
+	for _, testCase := range []struct {
+		name     string
+		readOnly bool
+		withLLM  bool
+	}{
+		{name: "read-write without LLM"},
+		{name: "read-only without LLM", readOnly: true},
+		{name: "read-write with LLM", withLLM: true},
+		{name: "read-only with LLM", readOnly: true, withLLM: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "test"}, nil)
+			model := newMockLLM(&llms.ContentResponse{
+				Choices: []*llms.ContentChoice{{Content: "generated resource"}},
+			}, nil)
+			var configuredModel llms.Model
+			if testCase.withLLM {
+				configuredModel = model
+			}
+			RegisterTools(server, configuredModel, "/tmp/kubeconfig", testCase.readOnly)
+			serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+			go func() { _ = server.Run(ctx, serverTransport) }()
+			client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test-client", Version: "test"}, nil)
+			session, err := client.Connect(ctx, clientTransport, nil)
+			require.NoError(t, err)
+			defer func() { _ = session.Close() }()
+
+			var toolNames []string
+			for tool, err := range session.Tools(ctx, nil) {
+				require.NoError(t, err)
+				toolNames = append(toolNames, tool.Name)
+			}
+			require.Contains(t, toolNames, "k8s_get_resources")
+			assert.Equal(t, !testCase.readOnly, slices.Contains(toolNames, "k8s_scale"))
+			assert.Equal(t, testCase.withLLM, slices.Contains(toolNames, "k8s_generate_resource"))
+			result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+				Name: "k8s_generate_resource",
+				Arguments: generateResourceInput{
+					ResourceType: "istio_auth_policy", ResourceDescription: "strict mTLS",
+				},
+			})
+			if !testCase.withLLM {
+				require.Error(t, err, "unconfigured tool must not be callable")
+				assert.Zero(t, model.called)
+				return
+			}
+			require.NoError(t, err)
+			require.False(t, result.IsError)
+			assert.Equal(t, "generated resource", getResultText(result))
+			assert.Equal(t, 1, model.called)
+		})
+	}
 }
 
 func TestNewK8sToolWithConfig(t *testing.T) {
