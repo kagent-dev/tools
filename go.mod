@@ -50,8 +50,8 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cilium/cilium v1.19.3 // indirect
-	github.com/cilium/ebpf v0.20.1-0.20260218191617-ee67e7f43dd9 // indirect
+	github.com/cilium/cilium v1.19.5 // indirect
+	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/cilium/hive v0.0.1 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containers/common v0.63.0 // indirect

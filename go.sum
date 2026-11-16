@@ -133,10 +133,10 @@ github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XL
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
-github.com/cilium/cilium v1.19.3 h1:foJrHPk45HwshOd8Qf/kptf9JxPfNySkIDKsetZa9+Y=
-github.com/cilium/cilium v1.19.3/go.mod h1:cd4P5LHAg4hyyZexrM4D055t5JwyudeAcZ/Jub9VxJY=
-github.com/cilium/ebpf v0.20.1-0.20260218191617-ee67e7f43dd9 h1:hQW7n5ePt/HDgeZLcyT3pFENyfa6vmaGU7M+tq2pa64=
-github.com/cilium/ebpf v0.20.1-0.20260218191617-ee67e7f43dd9/go.mod h1:EGj6HpG/oejvbTAsMWwlA4UbMU7WBAgILd+9OSvcDTc=
+github.com/cilium/cilium v1.19.5 h1:R4tqIO3wwjzr5TnPw5cSbUhdMIjMAoHhtjNvO/hIZ+Q=
+github.com/cilium/cilium v1.19.5/go.mod h1:E6p9yfdG9g4aDq1D5cvcY7eqzdbVxXy3wyaYETCwZ1U=
+github.com/cilium/ebpf v0.22.0 h1:v2ktp0roffpMOj2MMf3idtCQZOsAoC4BJbAJN+ke2bY=
+github.com/cilium/ebpf v0.22.0/go.mod h1:CDzZbe2hC5JjlDC+CY3KFCzlYwN4gbxppYM+Z10bQt4=
 github.com/cilium/hive v0.0.1 h1:NrHJ1DD74B77ib4UhujEQ0j4nCQmyKOic9qtwrreJRs=
 github.com/cilium/hive v0.0.1/go.mod h1:4/8FBMcTjVdkrNNWaB7t3QqaU4kZDJLJ1leKVP9GjEI=
 github.com/circonus-labs/circonus-gometrics v2.3.1+incompatible/go.mod h1:nmEj6Dob7S7YxXgwXpfOuvO54S+tGdZdw9fuRZt25Ag=
