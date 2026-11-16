@@ -35,7 +35,7 @@ func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *sdk
 	}
 
 	cmd := []string{"get", "pods", "-n", ns, "-l", label, "-o", "jsonpath={.items[*].status.phase}"}
-	output, err := runArgoRolloutCommand(ctx, cmd)
+	output, err := runArgoRolloutCommand(ctx, mcp.Header(request), cmd)
 	if err != nil {
 		return mcp.TextError("Error: " + err.Error())
 	}
@@ -71,8 +71,10 @@ func handleVerifyArgoRolloutsControllerInstall(ctx context.Context, request *sdk
 type verifyKubectlPluginInstallInput struct{}
 
 func handleVerifyKubectlPluginInstall(ctx context.Context, request *sdkmcp.CallToolRequest, in verifyKubectlPluginInstallInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
+	// Only reports the plugin's own version, so the caller's token is neither
+	// needed nor used.
 	args := []string{"argo", "rollouts", "version"}
-	output, err := runArgoRolloutCommand(ctx, args)
+	output, err := runArgoRolloutCommandWithToken(ctx, "", args)
 	if err != nil {
 		return mcp.TextResult("Kubectl Argo Rollouts plugin is not installed: " + err.Error())
 	}
@@ -84,11 +86,26 @@ func handleVerifyKubectlPluginInstall(ctx context.Context, request *sdkmcp.CallT
 	return mcp.TextResult(output)
 }
 
-func runArgoRolloutCommand(ctx context.Context, args []string) (string, error) {
+// runArgoRolloutCommand runs a kubectl (or kubectl argo rollouts) command that
+// talks to the cluster. With TOKEN_PASSTHROUGH it authenticates as the caller,
+// with the bearer token from headers, and is refused without one.
+func runArgoRolloutCommand(ctx context.Context, headers http.Header, args []string) (string, error) {
+	token, err := mcp.PassthroughToken(headers)
+	if err != nil {
+		return "", err
+	}
+	return runArgoRolloutCommandWithToken(ctx, token, args)
+}
+
+// runArgoRolloutCommandWithToken runs the command with the configured
+// kubeconfig or, when token is set, with a per-call kubeconfig that
+// authenticates with token.
+func runArgoRolloutCommandWithToken(ctx context.Context, token string, args []string) (string, error) {
 	kubeconfigPath := utils.GetKubeconfig()
 	return commands.NewCommandBuilder("kubectl").
 		WithArgs(args...).
 		WithKubeconfig(kubeconfigPath).
+		WithToken(token).
 		Execute(ctx)
 }
 
@@ -112,7 +129,7 @@ func handlePromoteRollout(ctx context.Context, request *sdkmcp.CallToolRequest, 
 		cmd = append(cmd, "--full")
 	}
 
-	output, err := runArgoRolloutCommand(ctx, cmd)
+	output, err := runArgoRolloutCommand(ctx, mcp.Header(request), cmd)
 	if err != nil {
 		return mcp.TextError("Error promoting rollout: " + err.Error())
 	}
@@ -136,7 +153,7 @@ func handlePauseRollout(ctx context.Context, request *sdkmcp.CallToolRequest, in
 	}
 	cmd = append(cmd, in.RolloutName)
 
-	output, err := runArgoRolloutCommand(ctx, cmd)
+	output, err := runArgoRolloutCommand(ctx, mcp.Header(request), cmd)
 	if err != nil {
 		return mcp.TextError("Error pausing rollout: " + err.Error())
 	}
@@ -163,7 +180,7 @@ func handleSetRolloutImage(ctx context.Context, request *sdkmcp.CallToolRequest,
 		cmd = append(cmd, "-n", in.Namespace)
 	}
 
-	output, err := runArgoRolloutCommand(ctx, cmd)
+	output, err := runArgoRolloutCommand(ctx, mcp.Header(request), cmd)
 	if err != nil {
 		return mcp.TextError("Error setting rollout image: " + err.Error())
 	}
@@ -239,7 +256,7 @@ func getLatestVersion(ctx context.Context) string {
 	return "0.5.0"
 }
 
-func configureGatewayPlugin(ctx context.Context, version, namespace string) GatewayPluginStatus {
+func configureGatewayPlugin(ctx context.Context, token, version, namespace string) GatewayPluginStatus {
 	arch, err := getSystemArchitecture()
 	if err != nil {
 		return GatewayPluginStatus{
@@ -283,7 +300,7 @@ data:
 
 	// Apply the ConfigMap
 	cmdArgs := []string{"apply", "-f", tmpFile.Name()}
-	output, err := runArgoRolloutCommand(ctx, cmdArgs)
+	output, err := runArgoRolloutCommandWithToken(ctx, token, cmdArgs)
 	if err != nil {
 		return GatewayPluginStatus{
 			Installed:    false,
@@ -315,9 +332,16 @@ func handleVerifyGatewayPlugin(ctx context.Context, request *sdkmcp.CallToolRequ
 		shouldInstall = *in.ShouldInstall
 	}
 
+	// Resolved once for both the check and the install, so a missing token is
+	// reported as such rather than as a ConfigMap that could not be applied.
+	token, err := mcp.PassthroughToken(mcp.Header(request))
+	if err != nil {
+		return mcp.TextError(err.Error())
+	}
+
 	// Check if ConfigMap exists and is configured
 	cmd := []string{"get", "configmap", "argo-rollouts-config", "-n", namespace, "-o", "yaml"}
-	output, err := runArgoRolloutCommand(ctx, cmd)
+	output, err := runArgoRolloutCommandWithToken(ctx, token, cmd)
 	if err == nil && strings.Contains(output, "argoproj-labs/gatewayAPI") {
 		status := GatewayPluginStatus{
 			Installed:    true,
@@ -335,7 +359,7 @@ func handleVerifyGatewayPlugin(ctx context.Context, request *sdkmcp.CallToolRequ
 	}
 
 	// Configure plugin
-	status := configureGatewayPlugin(ctx, version, namespace)
+	status := configureGatewayPlugin(ctx, token, version, namespace)
 	return mcp.TextResult(status.String())
 }
 
@@ -355,8 +379,15 @@ func handleCheckPluginLogs(ctx context.Context, request *sdkmcp.CallToolRequest,
 	}
 	_ = in.Timeout
 
+	// A missing token is a tool error, not a plugin status: resolve it before
+	// the command, whose failures are reported in the status.
+	token, err := mcp.PassthroughToken(mcp.Header(request))
+	if err != nil {
+		return mcp.TextError(err.Error())
+	}
+
 	cmd := []string{"logs", "-n", namespace, "-l", "app.kubernetes.io/name=argo-rollouts", "--tail", "100"}
-	output, err := runArgoRolloutCommand(ctx, cmd)
+	output, err := runArgoRolloutCommandWithToken(ctx, token, cmd)
 	if err != nil {
 		status := GatewayPluginStatus{
 			Installed:    false,
@@ -410,7 +441,7 @@ func handleListRollouts(ctx context.Context, request *sdkmcp.CallToolRequest, in
 		cmd = append(cmd, "-n", ns)
 	}
 
-	output, err := runArgoRolloutCommand(ctx, cmd)
+	output, err := runArgoRolloutCommand(ctx, mcp.Header(request), cmd)
 	if err != nil {
 		return mcp.TextError("Error listing rollouts: " + err.Error())
 	}

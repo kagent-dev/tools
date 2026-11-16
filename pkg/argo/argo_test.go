@@ -97,7 +97,7 @@ func TestConfigureGatewayPlugin(t *testing.T) {
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "configmap/argo-rollouts-config created", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		status := configureGatewayPlugin(ctx, "0.5.0", "argo-rollouts")
+		status := configureGatewayPlugin(ctx, "", "0.5.0", "argo-rollouts")
 		assert.True(t, status.Installed)
 		assert.Equal(t, "0.5.0", status.Version)
 		assert.NotEmpty(t, status.Architecture)
@@ -108,7 +108,7 @@ func TestConfigureGatewayPlugin(t *testing.T) {
 		mock.AddPartialMatcherString("kubectl", []string{"apply", "-f"}, "", assert.AnError)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		status := configureGatewayPlugin(ctx, "0.5.0", "argo-rollouts")
+		status := configureGatewayPlugin(ctx, "", "0.5.0", "argo-rollouts")
 		assert.False(t, status.Installed)
 		assert.Contains(t, status.ErrorMessage, "Error applying Gateway API plugin config")
 	})

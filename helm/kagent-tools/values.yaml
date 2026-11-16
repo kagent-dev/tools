@@ -55,8 +55,11 @@ tools:
       cpu: 1000m
       memory: 512Mi
   k8s:
-    # When true: a Bearer token in the Authorization header on each request is passed to kubectl; fails if missing
-    # When false: kubectl uses in-cluster ServiceAccount.
+    # When true: the Bearer token in the Authorization header of each request authenticates every CLI that
+    # reaches the cluster (kubectl, helm, istioctl, cilium, kubectl argo rollouts), through a per-call kubeconfig;
+    # such calls fail if it is missing. Calls that stay local (helm repo add/update, istioctl manifest/waypoint
+    # generate, the argo plugin version check) need no token. Kubescape (client-go) is not covered.
+    # When false: the CLIs use the in-cluster ServiceAccount.
     tokenPassthrough: false
   prometheus:
     url: "prometheus.kagent.svc.cluster.local:9090"

@@ -3,6 +3,7 @@ package istio
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/kagent-dev/tools/internal/commands"
@@ -28,7 +29,7 @@ func handleIstioProxyStatus(ctx context.Context, request *sdkmcp.CallToolRequest
 		args = append(args, in.PodName)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl proxy-status failed: %v", err))
 	}
@@ -36,11 +37,31 @@ func handleIstioProxyStatus(ctx context.Context, request *sdkmcp.CallToolRequest
 	return mcp.TextResult(result)
 }
 
-func runIstioCtl(ctx context.Context, args []string) (string, error) {
+// runIstioCtl runs an istioctl command that talks to the cluster. With
+// TOKEN_PASSTHROUGH it authenticates as the caller, with the bearer token from
+// headers, and is refused without one.
+func runIstioCtl(ctx context.Context, headers http.Header, args []string) (string, error) {
+	token, err := mcp.PassthroughToken(headers)
+	if err != nil {
+		return "", err
+	}
+	return runIstioCtlWithToken(ctx, token, args)
+}
+
+// runIstioCtlLocal runs an istioctl command that only renders YAML (manifest
+// generate, waypoint generate), so it neither needs nor uses the caller's token.
+func runIstioCtlLocal(ctx context.Context, args []string) (string, error) {
+	return runIstioCtlWithToken(ctx, "", args)
+}
+
+// runIstioCtlWithToken runs the command with the configured kubeconfig or, when token is
+// set, with a per-call kubeconfig that authenticates with token.
+func runIstioCtlWithToken(ctx context.Context, token string, args []string) (string, error) {
 	kubeconfigPath := utils.GetKubeconfig()
 	return commands.NewCommandBuilder("istioctl").
 		WithArgs(args...).
 		WithKubeconfig(kubeconfigPath).
+		WithToken(token).
 		Execute(ctx)
 }
 
@@ -68,7 +89,7 @@ func handleIstioProxyConfig(ctx context.Context, request *sdkmcp.CallToolRequest
 		args = append(args, in.PodName)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl proxy-config failed: %v", err))
 	}
@@ -88,7 +109,7 @@ func handleIstioInstall(ctx context.Context, request *sdkmcp.CallToolRequest, in
 
 	args := []string{"install", "--set", fmt.Sprintf("profile=%s", in.Profile), "-y"}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl install failed: %v", err))
 	}
@@ -108,7 +129,7 @@ func handleIstioGenerateManifest(ctx context.Context, request *sdkmcp.CallToolRe
 
 	args := []string{"manifest", "generate", "--set", fmt.Sprintf("profile=%s", in.Profile)}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtlLocal(ctx, args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl manifest generate failed: %v", err))
 	}
@@ -131,7 +152,7 @@ func handleIstioAnalyzeClusterConfiguration(ctx context.Context, request *sdkmcp
 		args = append(args, "-n", in.Namespace)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl analyze failed: %v", err))
 	}
@@ -151,7 +172,7 @@ func handleIstioVersion(ctx context.Context, request *sdkmcp.CallToolRequest, in
 		args = append(args, "--short")
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl version failed: %v", err))
 	}
@@ -165,7 +186,7 @@ type istioRemoteClustersInput struct{}
 func handleIstioRemoteClusters(ctx context.Context, request *sdkmcp.CallToolRequest, in istioRemoteClustersInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"remote-clusters"}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl remote-clusters failed: %v", err))
 	}
@@ -188,7 +209,7 @@ func handleWaypointList(ctx context.Context, request *sdkmcp.CallToolRequest, in
 		args = append(args, "-n", in.Namespace)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl waypoint list failed: %v", err))
 	}
@@ -227,7 +248,7 @@ func handleWaypointGenerate(ctx context.Context, request *sdkmcp.CallToolRequest
 		args = append(args, "--for", in.TrafficType)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtlLocal(ctx, args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl waypoint generate failed: %v", err))
 	}
@@ -252,7 +273,7 @@ func handleWaypointApply(ctx context.Context, request *sdkmcp.CallToolRequest, i
 		args = append(args, "--enroll-namespace")
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl waypoint apply failed: %v", err))
 	}
@@ -285,7 +306,7 @@ func handleWaypointDelete(ctx context.Context, request *sdkmcp.CallToolRequest, 
 
 	args = append(args, "-n", in.Namespace)
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl waypoint delete failed: %v", err))
 	}
@@ -312,7 +333,7 @@ func handleWaypointStatus(ctx context.Context, request *sdkmcp.CallToolRequest, 
 
 	args = append(args, "-n", in.Namespace)
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl waypoint status failed: %v", err))
 	}
@@ -337,7 +358,7 @@ func handleZtunnelConfig(ctx context.Context, request *sdkmcp.CallToolRequest, i
 		args = append(args, "-n", in.Namespace)
 	}
 
-	result, err := runIstioCtl(ctx, args)
+	result, err := runIstioCtl(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("istioctl ztunnel config failed: %v", err))
 	}
