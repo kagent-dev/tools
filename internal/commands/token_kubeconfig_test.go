@@ -21,7 +21,7 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-const testToken = "eyJhbGciOiJSUzI1NiJ9.passthrough-test-token.signature"
+const testToken = "test-passthrough-token-not-a-credential"
 
 var testCAData = []byte("-----BEGIN CERTIFICATE-----\nnot-a-real-ca\n-----END CERTIFICATE-----\n")
 

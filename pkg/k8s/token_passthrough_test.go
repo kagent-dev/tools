@@ -137,7 +137,7 @@ func assertTokenOnlyInKubeconfig(t *testing.T, args []string, seen *passthroughK
 // TestBearerTokenNotInFailedResult covers the reported leak: a failing kubectl
 // call's tool result must not contain the caller's token.
 func TestBearerTokenNotInFailedResult(t *testing.T) {
-	const token = "eyJhbGciOiJSUzI1NiJ9.leak-check-token.sig"
+	const token = "test-kubectl-token-not-a-credential"
 	mock := cmd.NewMockShellExecutor()
 	mock.AddPartialMatcherString("kubectl", []string{"get", "secrets"}, `Error from server (Forbidden): secrets is forbidden`, assert.AnError)
 	ctx, seen := withPassthroughKubeconfig(t, context.Background(), mock)
