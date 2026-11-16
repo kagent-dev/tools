@@ -126,6 +126,7 @@ rbac:
   # and the global.watchNamespaces fallback would be unreachable.
   # namespaces: []
   # When true, deploys a read-only ClusterRole (get, list, watch) instead of cluster-admin.
+  # The read-only role covers core workloads and kagent resources (api.kagent.dev).
   # Pairs well with the --read-only CLI flag which disables write operations at the application layer.
   # Only applies when rbac.create is true.
   # Defaults to False as to not introduce breaking changes. Worth revisiting later on.
