@@ -7,7 +7,7 @@ HELM_REPO ?= oci://ghcr.io/kagent-dev
 HELM_ACTION=upgrade --install
 
 KIND_CLUSTER_NAME ?= kagent
-KIND_IMAGE_VERSION ?= 1.34.0
+KIND_IMAGE_VERSION ?= 1.37.0
 KIND_CREATE_CMD ?= "kind create cluster --name $(KIND_CLUSTER_NAME) --image kindest/node:v$(KIND_IMAGE_VERSION) --config ./scripts/kind/kind-config.yaml"
 
 BUILD_DATE := $(shell date -u '+%Y-%m-%d')
@@ -130,7 +130,7 @@ RETAGGED_TOOLS_IMG = $(RETAGGED_DOCKER_REGISTRY)/$(DOCKER_REPO)/$(TOOLS_IMAGE_NA
 LOCALARCH ?= $(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
 
 #buildx settings
-BUILDKIT_VERSION = v0.23.0
+BUILDKIT_VERSION = v0.38.2
 BUILDX_NO_DEFAULT_ATTESTATIONS=1
 BUILDX_BUILDER_NAME ?= kagent-builder-$(BUILDKIT_VERSION)
 
@@ -138,8 +138,8 @@ DOCKER_BUILDER ?= docker buildx
 DOCKER_BUILD_ARGS ?= --pull --load --platform linux/$(LOCALARCH) --builder $(BUILDX_BUILDER_NAME)
 
 # tools image build args
-TOOLS_ISTIO_VERSION ?= 1.31.3
-TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.10.1
+TOOLS_ISTIO_VERSION ?= 1.32.0
+TOOLS_ARGO_ROLLOUTS_VERSION ?= 1.10.2
 TOOLS_KUBECTL_VERSION ?= 1.37.2
 TOOLS_HELM_VERSION ?= 4.3.1
 TOOLS_CILIUM_VERSION ?= 0.20.2
