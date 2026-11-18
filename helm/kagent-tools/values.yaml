@@ -60,11 +60,6 @@ tools:
     tokenPassthrough: false
   prometheus:
     url: "prometheus.kagent.svc.cluster.local:9090"
-    username: ""
-    password: ""
-  grafana: # kubectl port-forward svc/grafana 3000:3000
-    url: "http://grafana.kagent.svc.cluster.local:3000"
-    apiKey: ""
 
 service:
   type: ClusterIP
@@ -142,9 +137,9 @@ rbac:
 
 otel:
   tracing:
+    # When false, OTEL_SDK_DISABLED=true is set and no spans are exported or printed.
     enabled: false
     exporter:
       otlp:
         endpoint: http://host.docker.internal:4317
-        timeout: 15
         insecure: true

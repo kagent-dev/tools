@@ -70,37 +70,24 @@ spec:
           resources:
             {{- toYaml .Values.tools.resources | nindent 12 }}
           env:
-            - name: KAGENT_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: metadata.namespace
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "kagent-tools.fullname" . }}-openai
                   key: OPENAI_API_KEY
                   optional: true
-            - name: OTEL_TRACING_ENABLED
-              value: {{ .Values.otel.tracing.enabled | quote }}
+            - name: OTEL_SDK_DISABLED
+              value: {{ not .Values.otel.tracing.enabled | quote }}
+            {{- if .Values.otel.tracing.enabled }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.otel.tracing.exporter.otlp.endpoint | quote }}
-            - name: OTEL_EXPORTER_OTLP_TRACES_TIMEOUT
-              value: {{ .Values.otel.tracing.exporter.otlp.timeout | quote }}
             - name: OTEL_EXPORTER_OTLP_TRACES_INSECURE
               value: {{ .Values.otel.tracing.exporter.otlp.insecure | quote }}
+            {{- end }}
             - name: TOKEN_PASSTHROUGH
               value: {{ (index .Values.tools "k8s" | default dict).tokenPassthrough | default false | quote }}
             - name: PROMETHEUS_URL
               value: {{ .Values.tools.prometheus.url | quote }}
-            - name: PROMETHEUS_USERNAME
-              value: {{ .Values.tools.prometheus.username | quote }}
-            - name: PROMETHEUS_PASSWORD
-              value: {{ .Values.tools.prometheus.password | quote }}
-            - name: GRAFANA_URL
-              value: {{ .Values.tools.grafana.url | quote }}
-            - name: GRAFANA_API_KEY
-              value: {{ .Values.tools.grafana.apiKey | quote }}
           {{- with .Values.tools.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
