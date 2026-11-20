@@ -192,6 +192,6 @@ func TestBearerTokenNotInFailedResult(t *testing.T) {
 			}
 		}
 	}
-	assert.True(t, names["mcp.tool.k8s_get_resources"], "tool span recorded, got %v", names)
+	assert.True(t, names["tools/call k8s_get_resources"], "tool span recorded, got %v", names)
 	assert.True(t, names["commands.execute"], "command span recorded, got %v", names)
 }
