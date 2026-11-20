@@ -5,6 +5,10 @@ metadata:
   namespace: {{ include "kagent-tools.namespace" . }}
   labels:
     {{- include "kagent-tools.labels" . | nindent 4 }}
+  {{- with .Values.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:

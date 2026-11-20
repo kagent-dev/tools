@@ -78,6 +78,9 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# Annotations to add to the deployment
+deploymentAnnotations: {}
+
 podAnnotations: {}
 
 podSecurityContext: {}
@@ -90,7 +93,28 @@ securityContext: {}
   # readOnlyRootFilesystem: true
   # runAsNonRoot: true
   # runAsUser: 1000
-  
+
+# PodDisruptionBudget for the tools Deployment.
+# Only rendered when replicaCount > 1: with a single replica a PDB either
+# protects nothing or blocks node drains entirely.
+podDisruptionBudget:
+  # -- Set to true to create the PodDisruptionBudget.
+  enabled: false
+  # -- Minimum number of pods that must remain available. Int or percentage
+  # string (e.g. `1` or `"50%"`). Mutually exclusive with `maxUnavailable`;
+  # to use it, also set `maxUnavailable: null`.
+  minAvailable: null
+  # -- Maximum number of pods that may be unavailable. Int or percentage
+  # string (e.g. `1` or `"50%"`). Mutually exclusive with `minAvailable`.
+  maxUnavailable: 1
+  # -- `spec.unhealthyPodEvictionPolicy`: `IfHealthyBudget` (Kubernetes
+  # default) or `AlwaysAllow`. Unset leaves the Kubernetes default.
+  unhealthyPodEvictionPolicy: ""
+  # -- Extra labels for the PodDisruptionBudget.
+  labels: {}
+  # -- Annotations for the PodDisruptionBudget.
+  annotations: {}
+
 # Node taints which will be tolerated for Pod.
 tolerations: []
 

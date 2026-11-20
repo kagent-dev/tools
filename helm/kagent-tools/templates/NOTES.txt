@@ -7,4 +7,8 @@
 #
 #  2. Then visit http://127.0.0.1:{{.Values.service.ports.tools.port}}/mcp to use MCP
 #
-###############################################################################################
+###############################################################################################{{- if and (.Values.podDisruptionBudget).enabled (not (include "kagent-tools.pdb.shouldRender" .)) }}
+
+WARNING: podDisruptionBudget.enabled is true but replicaCount is {{ .Values.replicaCount }}.
+The PodDisruptionBudget was not created; set replicaCount > 1 to enable it.
+{{- end }}
