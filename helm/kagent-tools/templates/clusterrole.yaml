@@ -58,6 +58,19 @@
     - horizontalpodautoscalers
   verbs: ["get", "list", "watch"]
 
+# kagent resources (api.kagent.dev/v1alpha3)
+- apiGroups: ["api.kagent.dev"]
+  resources:
+    - agents
+    - agenttemplates
+    - egresspolicies
+    - harnesses
+    - modelconfigs
+    - modelproviderconfigs
+    - remotemcpservers
+    - sandboxtemplates
+  verbs: ["get", "list", "watch"]
+
 {{- if .Values.rbac.allowSecrets }}
 # Secrets (opt-in)
 - apiGroups: [""]

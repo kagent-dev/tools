@@ -12,6 +12,26 @@ tests:
           of: ClusterRoleBinding
         template: clusterrolebinding.yaml
 
+  - it: should grant read-only access to kagent v1alpha3 resources
+    set:
+      rbac.readOnly: true
+    template: clusterrole.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["api.kagent.dev"]
+            resources:
+              - agents
+              - agenttemplates
+              - egresspolicies
+              - harnesses
+              - modelconfigs
+              - modelproviderconfigs
+              - remotemcpservers
+              - sandboxtemplates
+            verbs: ["get", "list", "watch"]
+
   - it: should render Roles when rbac.namespaces is set
     set:
       rbac.namespaces:
