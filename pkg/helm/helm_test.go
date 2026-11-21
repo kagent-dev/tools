@@ -286,6 +286,45 @@ REVISION: 2`
 	})
 }
 
+func TestHandleHelmUpgradeReleaseTimeout(t *testing.T) {
+	t.Run("upgrade with wait and timeout", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedArgs := []string{"upgrade", "myapp", "stable/myapp", "--wait", "--timeout", "5m0s"}
+		mock.AddCommandString("helm", expectedArgs, "Upgraded", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		result, _, err := handleHelmUpgradeRelease(ctx, &sdkmcp.CallToolRequest{}, helmUpgradeReleaseInput{
+			Name:    "myapp",
+			Chart:   "stable/myapp",
+			Wait:    true,
+			Timeout: "5m",
+		})
+
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, expectedArgs, callLog[0].Args)
+	})
+
+	t.Run("upgrade with invalid timeout", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		for _, timeout := range []string{"soon", "0s", "-1m"} {
+			result, _, err := handleHelmUpgradeRelease(ctx, &sdkmcp.CallToolRequest{}, helmUpgradeReleaseInput{
+				Name:    "myapp",
+				Chart:   "stable/myapp",
+				Timeout: timeout,
+			})
+			assert.NoError(t, err)
+			assert.True(t, result.IsError, timeout)
+			assert.Contains(t, getResultText(result), "Invalid timeout")
+		}
+		assert.Len(t, mock.GetCallLog(), 0)
+	})
+}
+
 // Test Helm Uninstall
 func TestHandleHelmUninstall(t *testing.T) {
 	t.Run("basic uninstall", func(t *testing.T) {
