@@ -58,6 +58,21 @@ See [Using kagent-tools as a kagent 1.x skills bundle](docs/kagent-skills.md).
 
 For a quickstart guide on how to run KAgent tools using AgentGateway, please refer to the [Quickstart Guide](docs/quickstart.md).
 
+### Optional LLM-backed tools
+
+The server only advertises LLM-backed tools when their configuration is present at startup:
+
+- `prometheus_promql_tool` requires a non-empty `OPENAI_API_KEY` environment variable.
+  With the Helm chart, create a Secret named `<kagent-tools-fullname>-openai` in the release
+  namespace with an `OPENAI_API_KEY` key. The chart references this optional Secret but does
+  not create it. Restart the server after adding the key.
+- `k8s_generate_resource` requires a non-nil `llms.Model` passed to `k8s.RegisterTools` by
+  Go callers. The CLI does not configure this model, so it does not advertise this tool,
+  even when `OPENAI_API_KEY` is set.
+
+Other Kubernetes and Prometheus tools do not require LLM configuration. These requirements
+also apply in read-only mode; configuring an LLM does not enable write tools.
+
 ## Architecture
 
 The Go tools are implemented as a single MCP server that exposes all available tools through the MCP protocol. 
