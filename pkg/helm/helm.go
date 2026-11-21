@@ -3,6 +3,7 @@ package helm
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -76,7 +77,7 @@ func handleHelmListReleases(ctx context.Context, request *sdkmcp.CallToolRequest
 		args = append(args, "-o", in.Output)
 	}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, mcp.Header(request), args)
 	if err != nil {
 		// Check if it's a structured error
 		if toolErr, ok := err.(*errors.ToolError); ok {
@@ -93,13 +94,34 @@ func handleHelmListReleases(ctx context.Context, request *sdkmcp.CallToolRequest
 	return mcp.TextResult(result)
 }
 
-func runHelmCommand(ctx context.Context, args []string) (string, error) {
+// runHelmCommand runs a helm command that talks to the cluster. With
+// TOKEN_PASSTHROUGH it authenticates as the caller, with the bearer token from
+// headers, and is refused without one.
+func runHelmCommand(ctx context.Context, headers http.Header, args []string) (string, error) {
+	token, err := mcp.PassthroughToken(headers)
+	if err != nil {
+		return "", err
+	}
+	return runHelmWithToken(ctx, token, args)
+}
+
+// runHelmLocalCommand runs a helm command that only touches the local helm
+// configuration (repo add, repo update), so it neither needs nor uses the
+// caller's token.
+func runHelmLocalCommand(ctx context.Context, args []string) (string, error) {
+	return runHelmWithToken(ctx, "", args)
+}
+
+// runHelmWithToken runs the command with the configured kubeconfig or, when token is
+// set, with a per-call kubeconfig that authenticates with token.
+func runHelmWithToken(ctx context.Context, token string, args []string) (string, error) {
 	kubeconfigPath := utils.GetKubeconfig()
 
 	// Add timeout for helm upgrade commands
 	cmdBuilder := commands.NewCommandBuilder("helm").
 		WithArgs(args...).
-		WithKubeconfig(kubeconfigPath)
+		WithKubeconfig(kubeconfigPath).
+		WithToken(token)
 
 	// Only add timeout for upgrade commands
 	if len(args) > 0 && args[0] == "upgrade" {
@@ -144,7 +166,7 @@ func handleHelmGetRelease(ctx context.Context, request *sdkmcp.CallToolRequest, 
 
 	args := []string{"get", in.Resource, in.Name, "-n", in.Namespace}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("Helm get command failed: %v", err))
 	}
@@ -223,7 +245,7 @@ func handleHelmUpgradeRelease(ctx context.Context, request *sdkmcp.CallToolReque
 		args = append(args, "--wait")
 	}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("Helm upgrade command failed: %v", err))
 	}
@@ -254,7 +276,7 @@ func handleHelmUninstall(ctx context.Context, request *sdkmcp.CallToolRequest, i
 		args = append(args, "--wait")
 	}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmCommand(ctx, mcp.Header(request), args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("Helm uninstall command failed: %v", err))
 	}
@@ -285,7 +307,7 @@ func handleHelmRepoAdd(ctx context.Context, request *sdkmcp.CallToolRequest, in 
 
 	args := []string{"repo", "add", in.Name, in.URL}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmLocalCommand(ctx, args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("Helm repo add command failed: %v", err))
 	}
@@ -299,7 +321,7 @@ type helmRepoUpdateInput struct{}
 func handleHelmRepoUpdate(ctx context.Context, request *sdkmcp.CallToolRequest, in helmRepoUpdateInput) (*sdkmcp.CallToolResult, mcp.TextOutput, error) {
 	args := []string{"repo", "update"}
 
-	result, err := runHelmCommand(ctx, args)
+	result, err := runHelmLocalCommand(ctx, args)
 	if err != nil {
 		return mcp.TextError(fmt.Sprintf("Helm repo update command failed: %v", err))
 	}

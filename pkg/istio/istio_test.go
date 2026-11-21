@@ -298,7 +298,7 @@ func TestRunIstioCtl(t *testing.T) {
 		mock.AddCommandString("istioctl", []string{"version"}, "1.18.0", nil)
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
 
-		result, err := runIstioCtl(ctx, []string{"version"})
+		result, err := runIstioCtl(ctx, nil, []string{"version"})
 
 		require.NoError(t, err)
 		assert.Equal(t, "1.18.0", result)

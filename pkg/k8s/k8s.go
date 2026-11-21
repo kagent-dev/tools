@@ -30,11 +30,11 @@ type K8sTool struct {
 }
 
 func NewK8sTool(llmModel llms.Model) *K8sTool {
-	return &K8sTool{llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
+	return &K8sTool{llmModel: llmModel, tokenPassthrough: mcp.TokenPassthroughEnabled()}
 }
 
 func NewK8sToolWithConfig(kubeconfig string, llmModel llms.Model) *K8sTool {
-	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel, tokenPassthrough: os.Getenv("TOKEN_PASSTHROUGH") == "true"}
+	return &K8sTool{kubeconfig: kubeconfig, llmModel: llmModel, tokenPassthrough: mcp.TokenPassthroughEnabled()}
 }
 
 // runKubectlCommandWithCacheInvalidation runs a kubectl command and invalidates cache if it's a modification operation
@@ -807,26 +807,9 @@ func (k *K8sTool) handleGenerateResource(ctx context.Context, request *sdkmcp.Ca
 	return mcp.TextResult(responseText)
 }
 
-// extractBearerToken extracts the Bearer token from the Authorization header
-func extractBearerToken(headers http.Header) string {
-	if auth := headers.Get("Authorization"); auth != "" {
-		if strings.HasPrefix(auth, "Bearer ") {
-			return strings.TrimPrefix(auth, "Bearer ")
-		}
-	}
-	return ""
-}
-
 // tokenForKubectl returns the token to pass to kubectl and an error if passthrough is true but token is missing.
 func (k *K8sTool) tokenForKubectl(headers http.Header) (string, error) {
-	token := extractBearerToken(headers)
-	if k.tokenPassthrough && token == "" {
-		return "", fmt.Errorf("Bearer token required when TOKEN_PASSTHROUGH is true")
-	}
-	if k.tokenPassthrough {
-		return token, nil
-	}
-	return "", nil // do not use token when passthrough is false
+	return mcp.ResolvePassthroughToken(k.tokenPassthrough, headers)
 }
 
 // runKubectlCommand is a helper function to execute kubectl commands
