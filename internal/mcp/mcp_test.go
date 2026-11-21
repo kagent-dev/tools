@@ -278,7 +278,7 @@ func TestToolMiddleware_MarksSpanOkOnSuccess(t *testing.T) {
 // error that quotes a credential (a command line with --token, a bearer
 // header) must not put it in the span status or the recorded exception.
 func TestToolMiddleware_RedactsCredentialsOnSpan(t *testing.T) {
-	const secret = "eyJhbGciOiJSUzI1NiJ9.span-secret.sig"
+	const secret = "test-span-secret-not-a-credential"
 	exp := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
 	prev := otel.GetTracerProvider()
