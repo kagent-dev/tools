@@ -59,7 +59,7 @@ type getResourcesInput struct {
 	ResourceName  string `json:"resource_name" jsonschema:"Name of specific resource (optional)"`
 	Namespace     string `json:"namespace" jsonschema:"Namespace to query (optional)"`
 	AllNamespaces bool   `json:"all_namespaces" jsonschema:"Query all namespaces"`
-	Output        string `json:"output" jsonschema:"Output format (json, yaml, wide)"`
+	Output        string `json:"output" jsonschema:"kubectl output format (default: wide). Also accepts json, yaml, name, custom-columns=... and jsonpath=...; examples are not an enum."`
 }
 
 // Enhanced kubectl get
