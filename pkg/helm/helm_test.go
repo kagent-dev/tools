@@ -268,6 +268,31 @@ REVISION: 2`
 		assert.Equal(t, expectedArgs, callLog[0].Args)
 	})
 
+	t.Run("upgrade keeps commas inside set lists and escapes", func(t *testing.T) {
+		mock := cmd.NewMockShellExecutor()
+		expectedArgs := []string{
+			"upgrade", "myapp", "stable/myapp",
+			"--set", "args={--verbose,--debug}",
+			"--set", `annotation=a\,b`,
+			"--set", "replicas=2",
+			"--timeout", "30s",
+		}
+		mock.AddCommandString("helm", expectedArgs, "Upgraded", nil)
+		ctx := cmd.WithShellExecutor(context.Background(), mock)
+
+		result, _, err := handleHelmUpgradeRelease(ctx, &sdkmcp.CallToolRequest{}, helmUpgradeReleaseInput{
+			Name:  "myapp",
+			Chart: "stable/myapp",
+			Set:   `args={--verbose,--debug}, annotation=a\,b, replicas=2`,
+		})
+
+		assert.NoError(t, err)
+		assert.False(t, result.IsError)
+		callLog := mock.GetCallLog()
+		require.Len(t, callLog, 1)
+		assert.Equal(t, expectedArgs, callLog[0].Args)
+	})
+
 	t.Run("missing required parameters for upgrade", func(t *testing.T) {
 		mock := cmd.NewMockShellExecutor()
 		ctx := cmd.WithShellExecutor(context.Background(), mock)
@@ -439,4 +464,21 @@ func getResultText(result *sdkmcp.CallToolResult) string {
 		return textContent.Text
 	}
 	return ""
+}
+
+func TestSplitSetValues(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+	}{
+		{"replicas=5,image.tag=v1.2.0", []string{"replicas=5", "image.tag=v1.2.0"}},
+		{" replicas=5 , image.tag=v1.2.0 ", []string{"replicas=5", "image.tag=v1.2.0"}},
+		{"tolerations={a,b},replicas=1", []string{"tolerations={a,b}", "replicas=1"}},
+		{"outer={a,{b,c}},x=1", []string{"outer={a,{b,c}}", "x=1"}},
+		{`note=a\,b,x=1`, []string{`note=a\,b`, "x=1"}},
+		{"a=1,,b=2,", []string{"a=1", "b=2"}},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, splitSetValues(tt.in), tt.in)
+	}
 }

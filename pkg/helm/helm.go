@@ -205,9 +205,8 @@ func handleHelmUpgradeRelease(ctx context.Context, request *sdkmcp.CallToolReque
 
 	if in.Set != "" {
 		// Split multiple set values by comma
-		setValuesList := strings.Split(in.Set, ",")
-		for _, setValue := range setValuesList {
-			args = append(args, "--set", strings.TrimSpace(setValue))
+		for _, setValue := range splitSetValues(in.Set) {
+			args = append(args, "--set", setValue)
 		}
 	}
 
@@ -229,6 +228,40 @@ func handleHelmUpgradeRelease(ctx context.Context, request *sdkmcp.CallToolReque
 	}
 
 	return mcp.TextResult(result)
+}
+
+// splitSetValues splits a comma-separated list of key=value pairs into one
+// item per --set flag. Commas inside a {a,b} list or escaped as \, belong to
+// the value, as they do for helm's own --set parser.
+func splitSetValues(set string) []string {
+	var values []string
+	var current strings.Builder
+	depth := 0
+	escaped := false
+	flush := func() {
+		if value := strings.TrimSpace(current.String()); value != "" {
+			values = append(values, value)
+		}
+		current.Reset()
+	}
+	for _, r := range set {
+		switch {
+		case escaped:
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == '{':
+			depth++
+		case r == '}' && depth > 0:
+			depth--
+		case r == ',' && depth == 0:
+			flush()
+			continue
+		}
+		current.WriteRune(r)
+	}
+	flush()
+	return values
 }
 
 type helmUninstallInput struct {
